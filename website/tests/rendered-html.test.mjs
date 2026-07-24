@@ -26,8 +26,9 @@ test("renders the Anet product homepage", async () => {
   assert.match(html, /复制 → 发送给你的 AGENT/);
   assert.match(html, /INSTALL-ANET/);
   assert.match(html, /https:\/\/github\.com\/yunlux\/Anet/);
-  assert.match(html, /carrier-add &lt;AHUB_URL&gt;/);
-  assert.match(html, /--live-relay/);
+  assert.match(html, /\$install-anet Skill/);
+  assert.match(html, /first registered healthy host-local Ahub/);
+  assert.match(html, /never copy identity, start a second Ahub/);
   assert.match(html, /TLS 1\.3 \/ signed challenge/);
   assert.match(html, /SQLite WAL \/ durable queue/);
   assert.match(html, /install_windows\.ps1/);

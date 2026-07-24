@@ -13,13 +13,3 @@ updates:
     directory: /
     schedule:
       interval: weekly
-
-  - package-ecosystem: gradle
-    directory: /mobile
-    schedule:
-      interval: monthly
-
-  - package-ecosystem: gradle
-    directory: /mobile/companion-core
-    schedule:
-      interval: monthly

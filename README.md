@@ -27,23 +27,20 @@ The recommended installation flow is the same one shown on the
 prompt below and send it to Codex or another capable coding agent.
 
 ```text
-Install and verify Anet from the official repository on this machine:
-https://github.com/yunlux/Anet
-
-Detect the platform and use its bundled pinned installer: native Windows →
-scripts/install_windows.ps1; WSL → scripts/install_wsl.py; macOS →
-scripts/install_macos.py; other Linux → skills/install-anet (or its
-scripts/install.py). Install the mcp feature only.
-
-Do not create or copy a node identity, run anet init, change trust, edit an
-agent profile, register a service, use sudo, or bypass hash checks. Report
-platform, installed/reused, version, runtime/Python/CLI paths, MCP import
-result, and identity file count.
+Install the $install-anet Skill from https://github.com/yunlux/Anet and use it
+to install and bootstrap Anet for this WSL Agent: use this profile's stable
+local ID, reuse the first registered healthy host-local Ahub and create one
+only after confirming none exists, create or reuse one independent node for
+this Agent, explicitly pair it with the other local Agents managed around that
+Ahub, generate a least-privilege MCP configuration and register it with this
+profile, then report every reused/created resource, service state, and path;
+stop on identity, Ahub-state, hash, or permission conflicts, and never copy
+identity, start a second Ahub, use sudo, or bypass verification.
 ```
 
-This installs only the versioned Anet runtime. Installation does **not**
-authorize the agent to create a persistent node, copy an identity, modify
-trust, register a service, or edit another agent's profile.
+This prompt explicitly authorizes the bounded WSL bootstrap. A plain
+"install Anet" request remains runtime-only and does **not** authorize a
+persistent node, trust, Ahub, service, or profile change.
 
 Platform entry points:
 

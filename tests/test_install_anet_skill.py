@@ -16,6 +16,7 @@ def test_install_anet_skill_is_self_contained() -> None:
     required = (
         SKILL / "SKILL.md",
         SKILL / "scripts" / "install.py",
+        SKILL / "scripts" / "bootstrap_wsl.py",
         SKILL / "references" / "after-install.md",
         SKILL / "assets" / "SHA256SUMS",
         SKILL / "assets" / "anet_fabric-0.12.1-py3-none-any.whl",
@@ -50,11 +51,27 @@ def test_install_anet_skill_is_runtime_only_by_default() -> None:
     assert "Do not use `sudo`." in normalized
 
 
-def test_hermes_prompt_has_publish_placeholder_and_fail_closed_scope() -> None:
+def test_skill_exposes_explicit_full_runtime_for_wsl_bootstrap() -> None:
+    installer = (SKILL / "scripts" / "install.py").read_text(
+        encoding="utf-8"
+    )
+    bootstrap = (SKILL / "scripts" / "bootstrap_wsl.py").read_text(
+        encoding="utf-8"
+    )
+    assert 'choices=("mcp", "full")' in installer
+    assert '"--feature",' in bootstrap
+    assert '"full",' in bootstrap
+    assert "second Ahub" in bootstrap
+    assert "registered Node ID does not match node home" in bootstrap
+    assert "ANET_MCP_ALLOW_RAW_INBOX" in bootstrap
+
+
+def test_one_prompt_uses_published_repository_and_fail_closed_scope() -> None:
     guide = (ROOT / "docs" / "HERMES_SKILL_INSTALL.md").read_text(
         encoding="utf-8"
     )
-    assert "<OWNER>/<REPOSITORY>/skills/install-anet" in guide
-    assert "不要使用 --force" in guide
-    assert "不要运行 anet init" in guide
+    assert "https://github.com/yunlux/Anet" in guide
+    assert "bootstrap_wsl.py" in guide
+    assert "启动第二个 Ahub" in guide
+    assert "禁止复制身份" in guide
     assert re.search(r"identity_files[^\n]*0", guide)

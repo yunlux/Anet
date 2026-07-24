@@ -2,6 +2,11 @@
 
 Runtime installation does not create a node or authorize trust changes.
 
+For the explicitly authorized WSL host bootstrap, prefer
+`../scripts/bootstrap_wsl.py` instead of executing the commands below by hand.
+It enforces one host-local Ahub, one private home per Agent, complete-state
+validation, and idempotent service/MCP configuration.
+
 ## Bind an existing node
 
 Locate the deployment-owned absolute home first. Require both `identity.json`

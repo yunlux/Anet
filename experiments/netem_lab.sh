@@ -4,7 +4,7 @@ set -euo pipefail
 # Run from WSL/Linux. The script creates a temporary network namespace and
 # veth pair, injects netem faults, and removes every kernel object on exit.
 
-PY=${ANET_PYTHON:-"$HOME/.local/share/anet/venv/bin/python"}
+PY=${ANET_PYTHON:-"$HOME/.local/anet/current/venv/bin/python"}
 RESULTS=${1:-"$PWD/runtime/experiments"}
 RESULTS=$(mkdir -p "$RESULTS" && realpath "$RESULTS")
 RUN_ID=${ANET_LAB_RUN_ID:-"$(date -u +%Y%m%dT%H%M%SZ)"}

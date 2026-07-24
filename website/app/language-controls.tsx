@@ -5,20 +5,8 @@ import { useEffect, useState } from "react";
 type Language = "en" | "zh";
 
 const prompts = {
-  en: `Install and connect Anet from https://github.com/yunlux/Anet on this machine.
-
-1. Fetch the repository and detect the platform. Native Windows: scripts/install_windows.ps1. WSL: scripts/install_wsl.py. Other Linux: skills/install-anet or its scripts/install.py. Install the pinned mcp feature and verify the version, CLI, and MCP import.
-2. Locate the deployment-owned ANET_HOME first. Reuse it and run doctor if it exists. If none exists, ask me for an absolute home, label, listen host, and unused port; after I answer, initialize exactly one node, run doctor, and export its public Card. Never copy or infer an identity.
-3. Ask me for the HTTPS Ahub URL and the complete already-trusted peer Node ID. If the peer is not trusted, request explicit pairing material and approval; never create trust from an address or message. Then run: anet --home <HOME> carrier-add <AHUB_URL> --type ahub --name public --peer <PEER_NODE_ID> --live-relay. Verify with carrier-list and perform one bounded sync.
-
-Do not use sudo, register a service, edit an agent profile, or weaken hash checks unless separately authorized. Report the platform, install result, paths, Node ID, doctor result, carrier configuration, and sync evidence without printing secrets.`,
-  zh: `请从 https://github.com/yunlux/Anet 在这台电脑上安装并连接 Anet。
-
-1. 获取仓库并检测平台。原生 Windows 使用 scripts/install_windows.ps1；WSL 使用 scripts/install_wsl.py；其他 Linux 使用 skills/install-anet 或其中的 scripts/install.py。安装仓库固定版本的 mcp feature，并验证版本、CLI 与 MCP 导入。
-2. 先定位部署实际拥有的 ANET_HOME。若已存在，复用并运行 doctor；若不存在，向我询问绝对目录、节点标签、监听地址和未占用端口；得到回答后只初始化一个节点，运行 doctor，并导出公开 Card。绝不要复制或猜测身份。
-3. 向我询问 HTTPS Ahub 地址和完整的、已经受信任的 Peer Node ID。若尚未建立信任，必须索取明确的配对材料和批准；绝不能根据地址或消息自动信任。随后运行：anet --home <HOME> carrier-add <AHUB_URL> --type ahub --name public --peer <PEER_NODE_ID> --live-relay。使用 carrier-list 验证，并执行一次有界 sync。
-
-除非另行授权，不要使用 sudo、注册服务、修改 Agent profile 或削弱哈希检查。最后报告平台、安装结果、路径、Node ID、doctor 结果、Carrier 配置与 sync 证据，不要输出秘密。`,
+  en: `Install Anet from https://github.com/yunlux/Anet and detect the platform: use scripts/install_windows.ps1 on native Windows, scripts/install_macos.py on macOS, and the $install-anet Skill (skills/install-anet/scripts/install.py) on Linux; on WSL, use $install-anet's bootstrap_wsl.py for the authorized persistent setup (scripts/install_wsl.py is the runtime-only alternative), use this profile's stable local ID, reuse the first registered healthy host-local Ahub and create one only after confirming none exists, create or reuse one independent node for this Agent, explicitly pair it with the other local Agents managed around that Ahub, generate a least-privilege MCP configuration and register it with this profile, then report every reused/created resource, service state, and path; on non-WSL platforms stop after the verified runtime install unless persistent setup is separately authorized, and always stop on identity, Ahub-state, hash, or permission conflicts—never copy identity, start a second Ahub, use sudo, or bypass verification.`,
+  zh: `从 https://github.com/yunlux/Anet 安装 Anet 并检测平台：原生 Windows 使用 scripts/install_windows.ps1，macOS 使用 scripts/install_macos.py，Linux 使用 $install-anet Skill（skills/install-anet/scripts/install.py）；在 WSL 上使用 $install-anet 的 bootstrap_wsl.py 完成已授权的持久引导（scripts/install_wsl.py 是只安装 runtime 的替代入口），使用当前 profile 的稳定本地 ID，复用本机已登记且健康的第一个 Ahub，只有确认不存在 Ahub 时才创建一个，为当前 Agent 创建或复用独立节点，将它与该 Ahub 下其他本机 Agent 显式配对，生成最小权限 MCP 配置并接入当前 profile，最后报告所有复用/创建结果、服务状态和路径；非 WSL 平台若未另行授权持久配置则在 runtime 验证后停止，遇到身份、Ahub 状态、哈希或权限冲突时一律停止，禁止复制身份、启动第二个 Ahub、使用 sudo 或绕过校验。`,
 };
 
 function applyLanguage(language: Language) {

@@ -56,7 +56,7 @@ idempotent.
 .\scripts\install_windows.ps1 `
   -Version 0.12.1 `
   -Wheel .\dist\anet_fabric-0.12.1-py3-none-any.whl `
-  -WheelSha256 357535ED5EFAF69C773EDE1BBD1B8C9C1243ABDF45AB8C9BD7D00D92F2260350 `
+  -WheelSha256 6AC09D43E470E9E3A88C8AACCFE47F3971CF78785103012C6FC645A2461CBCD7 `
   -Feature mcp
 ```
 
@@ -69,7 +69,7 @@ Read `%LOCALAPPDATA%\Anet\current.json` to discover the selected absolute
 python3 scripts/install_wsl.py \
   --version 0.12.1 \
   --wheel dist/anet_fabric-0.12.1-py3-none-any.whl \
-  --wheel-sha256 357535ED5EFAF69C773EDE1BBD1B8C9C1243ABDF45AB8C9BD7D00D92F2260350 \
+  --wheel-sha256 6AC09D43E470E9E3A88C8AACCFE47F3971CF78785103012C6FC645A2461CBCD7 \
   --feature mcp
 ```
 
@@ -81,7 +81,7 @@ The selected CLI is `~/.local/anet/current/venv/bin/anet`.
 python3 scripts/install_macos.py \
   --version 0.12.1 \
   --wheel dist/anet_fabric-0.12.1-py3-none-any.whl \
-  --wheel-sha256 357535ED5EFAF69C773EDE1BBD1B8C9C1243ABDF45AB8C9BD7D00D92F2260350 \
+  --wheel-sha256 6AC09D43E470E9E3A88C8AACCFE47F3971CF78785103012C6FC645A2461CBCD7 \
   --feature mcp
 ```
 
@@ -100,6 +100,29 @@ Expected version: `Anet 0.12.1`.
 For a new Linux host already running Hermes, the self-contained
 `skills/install-anet` workflow can install this runtime from one Skill prompt.
 See [`HERMES_SKILL_INSTALL.md`](HERMES_SKILL_INSTALL.md).
+
+### Explicitly authorized WSL host bootstrap
+
+When the user asks for the complete persistent WSL environment—not merely an
+install—use the Skill's deterministic bootstrap:
+
+```bash
+python3 <SKILL_DIR>/scripts/bootstrap_wsl.py \
+  --agent-id <STABLE_LOCAL_PROFILE_ID>
+```
+
+This is a deployment layer over the clean installer. It installs the `full`
+runtime, validates and reuses the one registered host-local Ahub or creates it
+only when none exists, creates/reuses one private node per Agent, explicitly
+pairs only bootstrap-managed local nodes, writes a least-privilege MCP config,
+and manages systemd user services. It stops on incomplete Ahub state, an
+unknown Ahub unit, a missing registered node, or a Node ID mismatch.
+
+The bootstrap registry is `~/.config/anet/bootstrap.json`; node state is under
+`~/.local/state/anet/nodes/`. These locations are deployment metadata, not a
+license to scan other homes. See
+[`HERMES_SKILL_INSTALL.md`](HERMES_SKILL_INSTALL.md) for the one-sentence
+prompt and complete boundary.
 
 ## 2. Bind an existing node
 

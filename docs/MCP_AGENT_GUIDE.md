@@ -80,6 +80,20 @@ The MCP client owns the child process lifecycle. stdin/stdout are MCP protocol
 only. A separate deployment-owned `anet --home <HOME> serve` process handles
 continuous inbound networking.
 
+For an explicitly authorized WSL host bootstrap,
+`skills/install-anet/scripts/bootstrap_wsl.py` writes this same shape to:
+
+```text
+~/.config/anet/agents/<agent-id>/mcp-stdio.json
+```
+
+It fills `ANET_HOME`, the stable local owner, a profile-scoped group prefix,
+and only the complete Node IDs of other bootstrap-managed local Agents.
+Task capabilities remain empty and raw Inbox remains disabled. The invoking
+Agent may register this generated file through its own native MCP mechanism;
+the bootstrap itself contains no named-Agent profile format and never copies
+another profile's configuration.
+
 ## 3. Capability environment
 
 Tool arguments can narrow these values but cannot expand them:

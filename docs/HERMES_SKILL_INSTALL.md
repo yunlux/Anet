@@ -1,82 +1,118 @@
-# Install Anet on a new Linux Hermes Agent with one Skill prompt
+# Install and bootstrap Anet with one Agent prompt
 
-The repository contains a self-contained Hermes-compatible Skill at
-`skills/install-anet`. It bundles the pinned Anet wheel, verifies its SHA-256,
-installs an isolated `mcp` runtime under `~/.local/anet`, imports the MCP
-server, verifies the CLI, and confirms that no node identity was created.
+The public repository contains a self-contained Skill at
+`skills/install-anet`. It bundles the pinned Anet Wheel, verifies its SHA-256,
+and installs an isolated runtime under `~/.local/anet`.
 
-## Distribution prerequisite
+The Skill has two deliberately separate modes:
 
-The new computer must be able to read this repository from a public GitHub
-repository or an authenticated private GitHub repository. Replace
-`<OWNER>/<REPOSITORY>` below with the actual published repository.
+1. **Runtime-only installation** installs CLI + MCP without creating identity,
+   trust, configuration, or services.
+2. **Authorized WSL bootstrap** installs MCP + Ahub dependencies, reuses the
+   first verified host-local Ahub or creates it when none exists, creates or
+   reuses exactly one node for the current persistent Agent, links only the
+   bootstrap-managed local Agents, writes a restrictive MCP config, and starts
+   systemd user services.
 
-This repository currently has no Git remote. Until it is published at a stable
-address, no cross-computer prompt can truthfully guarantee retrieval.
+## One-sentence WSL prompt
 
-## One prompt to send the new Hermes Agent
+Send this sentence to a new persistent WSL Agent:
 
 ```text
-请在这台 Linux 电脑上安装 Anet。先使用 Hermes Skills 安装
-<OWNER>/<REPOSITORY>/skills/install-anet，并让新 Skill 立即生效；
-然后调用 /install-anet 完成固定版本的 CLI+MCP runtime 安装与验证。
-本次只授权安装和验证 runtime：不要创建或复制节点身份，不要运行 anet init，
-不要修改 Hermes profile、信任关系或 systemd 服务。最后报告 installed/reused、
-Anet 版本、runtime/python/cli 绝对路径、MCP 导入结果和 identity_files 数量。
-任何哈希、Python 版本、依赖下载或 Skill 安全检查失败时停止，不要使用 --force
-绕过，也不要使用 sudo。
+从 https://github.com/yunlux/Anet 安装 $install-anet Skill，并用它为当前 WSL Agent 自动安装和引导 Anet：使用当前 profile 的稳定本地 ID，复用本机已登记且健康的第一个 Ahub，只有确认不存在 Ahub 时才创建一个；为当前 Agent 创建或复用独立节点，将它与该 Ahub 下其他本机 Agent 显式配对，生成最小权限 MCP 配置并接入当前 profile，最后报告所有复用/创建结果、服务状态和路径，遇到身份、Ahub 状态、哈希或权限冲突时停止，禁止复制身份、启动第二个 Ahub、使用 sudo 或绕过校验。
 ```
 
-Hermes may implement the first sentence with:
+The equivalent English prompt is:
+
+```text
+Install the $install-anet Skill from https://github.com/yunlux/Anet and use it to install and bootstrap Anet for this WSL Agent: use this profile's stable local ID, reuse the first registered healthy host-local Ahub and create one only after confirming none exists, create or reuse one independent node for this Agent, explicitly pair it with the other local Agents managed around that Ahub, generate a least-privilege MCP configuration and register it with this profile, then report every reused/created resource, service state, and path; stop on identity, Ahub-state, hash, or permission conflicts, and never copy identity, start a second Ahub, use sudo, or bypass verification.
+```
+
+For Hermes, the first step may be implemented with:
 
 ```bash
-hermes skills install <OWNER>/<REPOSITORY>/skills/install-anet --now
+hermes skills install yunlux/Anet/skills/install-anet --now
 ```
 
-Official Hermes behavior is that the directory, bundled script, references,
-and wheel asset are copied together into `~/.hermes/skills/`. `--now`
-invalidates the Skill prompt cache so `/install-anet` can be used immediately.
+The Agent must then invoke the Skill's WSL bootstrap with its stable,
+profile-scoped identifier:
 
-## Expected result
-
-The Skill must return JSON equivalent to:
-
-```json
-{
-  "outcome": "installed",
-  "version": "0.12.1",
-  "feature": "mcp",
-  "runtime": "/home/<user>/.local/anet/versions/0.12.1-mcp/venv",
-  "python": "/home/<user>/.local/anet/current/venv/bin/python",
-  "cli": "/home/<user>/.local/anet/current/venv/bin/anet",
-  "identity_files": 0,
-  "mcp_import": "ok"
-}
+```bash
+python3 <SKILL_DIR>/scripts/bootstrap_wsl.py \
+  --agent-id <STABLE_LOCAL_PROFILE_ID>
 ```
 
-`outcome="reused"` is valid on a repeated run. The CLI must additionally
-return `Anet 0.12.1`.
+The identifier is a local namespace, not an Anet identity. It must not be a
+human name, organizational role, IP address, or another profile's identifier.
+
+## What the WSL bootstrap does
+
+The bootstrap is deterministic and idempotent:
+
+1. verifies WSL, Python 3.11+, and the systemd user manager;
+2. installs the pinned `full` runtime without identity files;
+3. obtains an exclusive host bootstrap lock;
+4. reads `~/.config/anet/bootstrap.json`;
+5. validates both Ahub databases before treating state as existing;
+6. reuses the registered healthy Ahub or starts one user service at the
+   default loopback endpoint only when no Ahub state or unit exists;
+7. validates a registered node's complete Node ID before reuse;
+8. creates one private home under
+   `~/.local/state/anet/nodes/<agent-id>` only when no registered node exists;
+9. allowlists each bootstrap-managed node in the single Ahub;
+10. explicitly exchanges signed public Cards between the managed local nodes;
+11. configures peer-scoped Ahub carriers and one node user service per Agent;
+12. writes a restrictive, profile-neutral MCP configuration under
+    `~/.config/anet/agents/<agent-id>/mcp-stdio.json`.
+
+It never scans arbitrary home directories. An unmanaged Ahub endpoint,
+unknown matching Ahub unit, incomplete Ahub database pair, missing registered
+node home, or Node ID mismatch stops the operation.
+
+## Generated MCP boundary
+
+The generated MCP config binds:
+
+- the current Agent's private `ANET_HOME`;
+- a stable `ANET_AGENT_ID`;
+- a profile-scoped durable consumer-group prefix;
+- `agent.task.` as the message kind prefix;
+- only the complete Node IDs of other bootstrap-managed local Agents as
+  outbound and task-sender peers;
+- no task capabilities by default;
+- `ANET_MCP_ALLOW_RAW_INBOX=0`.
+
+The bootstrap writes a runtime-neutral MCP JSON file. The invoking Agent may
+register that file through its own native MCP configuration mechanism, but
+must not copy another profile's file or widen its capabilities.
+
+## Runtime-only prompt
+
+Use this narrower prompt when the user wants installation but not identity,
+Ahub, trust, profile, or service changes:
+
+```text
+Install and verify Anet from https://github.com/yunlux/Anet using the bundled install-anet Skill. Install the pinned mcp feature only; do not create or copy a node identity, run anet init, change trust, edit an Agent profile, register a service, use sudo, or bypass hash checks. Report platform, installed/reused, version, runtime/Python/CLI paths, MCP import result, and identity file count.
+```
+
+The expected runtime-only result has `feature="mcp"`, `mcp_import="ok"`, and
+`identity_files=0`.
 
 ## Preconditions
 
-- Linux and Python 3.11 or newer;
-- a working Hermes installation with terminal and Skills support;
-- HTTPS access to the GitHub repository and Python dependency index;
-- `GITHUB_TOKEN` when the repository is private or unauthenticated GitHub rate
-  limits are exhausted.
+- WSL with Python 3.11 or newer;
+- WSL systemd enabled and a working systemd user session for persistent
+  bootstrap;
+- HTTPS access to GitHub and the Python dependency index;
+- a stable local profile identifier for each persistent Agent;
+- no expectation that installation alone authorizes a persistent node.
 
-The Skill never installs into the Hermes venv and never uses `sudo`.
+The bootstrap uses no `sudo`. Ahub and node services are systemd user services
+bound to loopback by default.
 
-## After runtime installation
+## Related guidance
 
-Creating or binding a persistent node is intentionally a separate prompt. If
-the user explicitly authorizes it, invoke `/install-anet` with that additional
-request; the Skill will load `references/after-install.md`. A missing expected
-home is not permission to create a replacement identity.
-
-## Official Hermes references
-
-- Skills workflow:
-  https://github.com/NousResearch/hermes-agent/blob/main/website/docs/guides/work-with-skills.md
-- Skills system and direct GitHub installs:
-  https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/features/skills.md
+- [`CLI_AGENT_GUIDE.md`](CLI_AGENT_GUIDE.md)
+- [`MCP_AGENT_GUIDE.md`](MCP_AGENT_GUIDE.md)
+- [`AHUB_OPERATIONS.md`](AHUB_OPERATIONS.md)
+- [`openwiki/operations/onboarding-and-recovery.md`](../openwiki/operations/onboarding-and-recovery.md)

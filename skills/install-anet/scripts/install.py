@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import os
@@ -13,7 +14,7 @@ from pathlib import Path
 
 
 VERSION = "0.12.1"
-FEATURE = "mcp"
+DEFAULT_FEATURE = "mcp"
 WHEEL_NAME = "anet_fabric-0.12.1-py3-none-any.whl"
 WHEEL_SHA256 = (
     "6AC09D43E470E9E3A88C8AACCFE47F3971CF78785103012C6FC645A2461CBCD7"
@@ -48,7 +49,7 @@ def digest(path: Path) -> str:
     return value.hexdigest().upper()
 
 
-def verify(venv: Path) -> None:
+def verify(venv: Path, feature: str) -> None:
     python = venv / "bin" / "python"
     cli = venv / "bin" / "anet"
     if not python.is_file() or not cli.is_file():
@@ -67,9 +68,26 @@ def verify(venv: Path) -> None:
     if run([str(cli), "--version"]) != f"Anet {VERSION}":
         raise InstallError("CLI version mismatch")
     run([str(python), "-c", "import anet.mcp_server, mcp"])
+    if feature == "full":
+        run([str(python), "-c", "import anet.ahub, uvicorn, websockets"])
+
+
+def parser() -> argparse.ArgumentParser:
+    result = argparse.ArgumentParser(
+        description="Install the pinned Anet Linux runtime."
+    )
+    result.add_argument(
+        "--feature",
+        choices=("mcp", "full"),
+        default=DEFAULT_FEATURE,
+        help="Install MCP only, or MCP plus the optional Ahub runtime.",
+    )
+    return result
 
 
 def main() -> int:
+    args = parser().parse_args()
+    feature = str(args.feature)
     if sys.platform != "linux":
         raise InstallError("this Skill supports Linux only")
     if sys.version_info < (3, 11):
@@ -86,7 +104,7 @@ def main() -> int:
     if root in {Path("/"), Path.home().resolve()}:
         raise InstallError("install root is too broad")
     versions = root / "versions"
-    destination = versions / f"{VERSION}-{FEATURE}"
+    destination = versions / f"{VERSION}-{feature}"
     venv = destination / "venv"
     manifest = destination / "release.json"
     versions.mkdir(parents=True, exist_ok=True)
@@ -100,12 +118,12 @@ def main() -> int:
         release = json.loads(manifest.read_text(encoding="utf-8"))
         expected = {
             "version": VERSION,
-            "feature": FEATURE,
+            "feature": feature,
             "wheel_sha256": WHEEL_SHA256,
         }
         if any(release.get(key) != value for key, value in expected.items()):
             raise InstallError("existing release manifest does not match Skill")
-        verify(venv)
+        verify(venv, feature)
         outcome = "reused"
     else:
         try:
@@ -120,7 +138,11 @@ def main() -> int:
                         "install",
                         "--python",
                         str(venv / "bin" / "python"),
-                        f"anet-fabric[mcp] @ {wheel.as_uri()}",
+                        (
+                            f"anet-fabric[mcp,ahub] @ {wheel.as_uri()}"
+                            if feature == "full"
+                            else f"anet-fabric[mcp] @ {wheel.as_uri()}"
+                        ),
                     ]
                 )
             else:
@@ -132,17 +154,21 @@ def main() -> int:
                         "pip",
                         "install",
                         "--disable-pip-version-check",
-                        f"anet-fabric[mcp] @ {wheel.as_uri()}",
+                        (
+                            f"anet-fabric[mcp,ahub] @ {wheel.as_uri()}"
+                            if feature == "full"
+                            else f"anet-fabric[mcp] @ {wheel.as_uri()}"
+                        ),
                     ]
                 )
-            verify(venv)
+            verify(venv, feature)
             manifest.write_text(
                 json.dumps(
                     {
                         "schema_version": 1,
                         "platform": "linux",
                         "version": VERSION,
-                        "feature": FEATURE,
+                        "feature": feature,
                         "wheel_sha256": WHEEL_SHA256,
                         "installed_by": "install-anet-skill",
                     },
@@ -166,12 +192,13 @@ def main() -> int:
     result = {
         "outcome": outcome,
         "version": VERSION,
-        "feature": FEATURE,
+        "feature": feature,
         "runtime": str(venv),
         "python": str(current / "venv" / "bin" / "python"),
         "cli": str(current / "venv" / "bin" / "anet"),
         "identity_files": identity_files,
         "mcp_import": "ok",
+        "ahub_import": "ok" if feature == "full" else "not-installed",
     }
     print(json.dumps(result, separators=(",", ":")))
     return 0

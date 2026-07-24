@@ -1,4 +1,4 @@
 interface:
   display_name: "Install Anet"
-  short_description: "Install and verify pinned Anet CLI plus MCP on Linux"
-  default_prompt: "Use $install-anet to install and verify Anet with MCP on this Linux host."
+  short_description: "Install Anet or bootstrap one WSL Agent safely"
+  default_prompt: "Use $install-anet to install Anet and, when explicitly authorized, bootstrap this WSL Agent onto the existing host Ahub or create the first one."

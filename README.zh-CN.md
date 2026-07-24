@@ -46,22 +46,17 @@ Anet 是一个面向 Agent 与人类边缘节点的私有加密通信原型。�
 Agent。
 
 ```text
-请从 Anet 官方仓库在这台电脑上安装并验证 Anet：
-https://github.com/yunlux/Anet
-
-先检测平台，再使用仓库内置的固定版本安装入口：原生 Windows →
-scripts/install_windows.ps1；WSL → scripts/install_wsl.py；macOS →
-scripts/install_macos.py；其他 Linux → skills/install-anet（或其中的
-scripts/install.py）。只安装 mcp feature。
-
-不要创建或复制节点身份，不要运行 anet init，不要修改信任、Agent profile
-或注册服务，不要使用 sudo，也不要绕过哈希检查。最后报告平台、
-installed/reused、版本、runtime/Python/CLI 路径、MCP 导入结果和 identity
-file 数量。
+从 https://github.com/yunlux/Anet 安装 $install-anet Skill，并用它为当前
+WSL Agent 自动安装和引导 Anet：使用当前 profile 的稳定本地 ID，复用本机
+已登记且健康的第一个 Ahub，只有确认不存在 Ahub 时才创建一个；为当前 Agent
+创建或复用独立节点，将它与该 Ahub 下其他本机 Agent 显式配对，生成最小权限
+MCP 配置并接入当前 profile，最后报告所有复用/创建结果、服务状态和路径，
+遇到身份、Ahub 状态、哈希或权限冲突时停止，禁止复制身份、启动第二个 Ahub、
+使用 sudo 或绕过校验。
 ```
 
-该流程只安装版本化 Anet runtime。安装不授权 Agent 创建持久节点、复制身份、
-修改信任、注册服务或编辑其他 Agent 的 profile。
+这句话明确授权了有界的 WSL 引导。普通的“安装 Anet”仍然只授权安装 runtime，
+不授权创建持久节点、信任、Ahub、服务或修改 profile。
 
 v0.5.2 为 TLS 直连增加可选的严格 SOCKS5/SOCKS5H 拨号。代理只替换到 peer 的 TCP 建链方式；Node ID、Peer Card、TLS 证书通道绑定、双向签名挑战、密文对象、信任和撤销语义均不改变。
 
