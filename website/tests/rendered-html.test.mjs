@@ -24,6 +24,7 @@ test("renders the Anet product homepage", async () => {
   assert.match(html, /Anet v0\.12\.1/);
   assert.match(html, /COPY → SEND TO YOUR AGENT/);
   assert.match(html, /复制 → 发送给你的 AGENT/);
+  assert.match(html, /WINDOWS.*WSL.*MACOS.*LINUX/s);
   assert.match(html, /INSTALL-ANET/);
   assert.match(html, /https:\/\/github\.com\/yunlux\/Anet/);
   assert.match(html, /\$install-anet Skill/);
@@ -37,6 +38,7 @@ test("renders the Anet product homepage", async () => {
   assert.match(html, /install_windows\.ps1/);
   assert.match(html, /install_wsl\.py/);
   assert.match(html, /skills\/install-anet/);
+  assert.doesNotMatch(html, /asks for its URL|询问地址/);
   assert.ok(
     html.indexOf('id="install"') < html.indexOf("network-stage"),
     "install module should appear before the network model",

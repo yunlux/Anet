@@ -46,19 +46,24 @@ Anet 是一个面向 Agent 与人类边缘节点的私有加密通信原型。�
 Agent。
 
 ```text
-从 https://github.com/yunlux/Anet 安装 $install-anet Skill，并用它为当前
-WSL Agent 自动安装和引导 Anet。常规安全决策由你自主完成，不要让我选择路径、
-标签、端口、服务名或 Ahub 设置：优先推导当前 profile 的稳定本地 ID；若没有，
-自行生成并持久保存一个 Agent 中立的 profile 本地 ID。复用本机已登记且健康的
-第一个 Ahub，只有确认不存在 Ahub 时才创建一个；为当前 Agent 创建或复用独立
-节点，将它与该 Ahub 下其他本机 Agent 显式配对，生成最小权限 MCP 配置并接入
-当前 profile，最后报告所有复用/创建结果、服务状态和路径。遇到身份、Ahub
+从 https://github.com/yunlux/Anet 安装 Anet 并自动检测平台：原生 Windows
+使用 scripts/install_windows.ps1，macOS 使用 scripts/install_macos.py，
+Linux 使用 $install-anet Skill（skills/install-anet/scripts/install.py）。
+常规安全决策由你自主完成，不要让我选择路径、标签、端口、服务名或 Ahub 设置。
+在 WSL 上使用 $install-anet 的 bootstrap_wsl.py 完成已授权的持久引导
+（scripts/install_wsl.py 是只安装 runtime 的替代入口）；优先推导当前 profile
+的稳定本地 ID，若没有则自行生成并持久保存一个 Agent 中立的 profile 本地 ID；
+复用本机已登记且健康的第一个 Ahub，只有确认不存在 Ahub 时才创建一个；为当前
+Agent 创建或复用独立节点，将它与该 Ahub 下其他本机 Agent 显式配对，生成最小
+权限 MCP 配置并接入当前 profile，最后报告所有复用/创建结果、服务状态和路径。
+非 WSL 平台若未另行授权持久配置，则在验证 runtime 后停止。遇到身份、Ahub
 状态、哈希、权限或授权冲突时停止并直接报告；禁止复制身份、启动第二个 Ahub、
 使用 sudo 或绕过校验。
 ```
 
-这句话明确授权了有界的 WSL 引导。普通的“安装 Anet”仍然只授权安装 runtime，
-不授权创建持久节点、信任、Ahub、服务或修改 profile。
+这是一条跨平台提示词，会自动选择对应的纯净安装器；其中 WSL 分支明确授权了
+单 Ahub 的有界持久引导。原生 Windows、macOS 与非 WSL Linux 默认仍只安装
+runtime，不授权创建持久节点、信任、Ahub、服务或修改 profile。
 
 v0.5.2 为 TLS 直连增加可选的严格 SOCKS5/SOCKS5H 拨号。代理只替换到 peer 的 TCP 建链方式；Node ID、Peer Card、TLS 证书通道绑定、双向签名挑战、密文对象、信任和撤销语义均不改变。
 

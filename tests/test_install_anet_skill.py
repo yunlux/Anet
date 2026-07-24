@@ -66,11 +66,14 @@ def test_skill_exposes_explicit_full_runtime_for_wsl_bootstrap() -> None:
     assert "ANET_MCP_ALLOW_RAW_INBOX" in bootstrap
 
 
-def test_one_prompt_uses_published_repository_and_fail_closed_scope() -> None:
+def test_one_prompt_is_cross_platform_and_fail_closed() -> None:
     guide = (ROOT / "docs" / "HERMES_SKILL_INSTALL.md").read_text(
         encoding="utf-8"
     )
     assert "https://github.com/yunlux/Anet" in guide
+    assert "scripts/install_windows.ps1" in guide
+    assert "scripts/install_macos.py" in guide
+    assert "On non-WSL platforms stop after the verified runtime install" in guide
     assert "bootstrap_wsl.py" in guide
     assert "启动第二个 Ahub" in guide
     assert "禁止复制身份" in guide

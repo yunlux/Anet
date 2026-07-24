@@ -1,4 +1,4 @@
 interface:
   display_name: "Install Anet"
-  short_description: "Install Anet or bootstrap one WSL Agent safely"
-  default_prompt: "Use $install-anet to install Anet and, when explicitly authorized, bootstrap this WSL Agent onto the existing host Ahub or create the first one."
+  short_description: "Install Anet on Linux or bootstrap WSL safely"
+  default_prompt: "Use $install-anet to install and verify pinned Anet on Linux, selecting the persistent single-Ahub WSL bootstrap only when that setup is authorized."

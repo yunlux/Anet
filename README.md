@@ -27,23 +27,30 @@ The recommended installation flow is the same one shown on the
 prompt below and send it to Codex or another capable coding agent.
 
 ```text
-Install the $install-anet Skill from https://github.com/yunlux/Anet and use it
-to install and bootstrap Anet for this WSL Agent. Make safe routine decisions
+Install Anet from https://github.com/yunlux/Anet and detect the platform:
+use scripts/install_windows.ps1 on native Windows, scripts/install_macos.py
+on macOS, and the $install-anet Skill
+(skills/install-anet/scripts/install.py) on Linux. Make safe routine decisions
 autonomously and do not ask me to choose paths, labels, ports, service names,
-or Ahub settings: derive this profile's stable local ID, or generate and
-persist an agent-neutral profile-local ID when none exists; reuse the first
-registered healthy host-local Ahub and create one only after confirming none
-exists; create or reuse one independent node for this Agent, explicitly pair
-it with the other local Agents managed around that Ahub, generate a
-least-privilege MCP configuration and register it with this profile, then
-report every reused/created resource, service state, and path. Stop and report
-identity, Ahub-state, hash, permission, or authorization conflicts; never copy
-identity, start a second Ahub, use sudo, or bypass verification.
+or Ahub settings. On WSL, use $install-anet's bootstrap_wsl.py for the
+authorized persistent setup (scripts/install_wsl.py is the runtime-only
+alternative); derive this profile's stable local ID, or generate and persist
+an agent-neutral profile-local ID when none exists; reuse the first registered
+healthy host-local Ahub and create one only after confirming none exists;
+create or reuse one independent node for this Agent, explicitly pair it with
+the other local Agents managed around that Ahub, generate a least-privilege
+MCP configuration and register it with this profile, then report every
+reused/created resource, service state, and path. On non-WSL platforms stop
+after the verified runtime install unless persistent setup is separately
+authorized. Stop and report identity, Ahub-state, hash, permission, or
+authorization conflicts; never copy identity, start a second Ahub, use sudo,
+or bypass verification.
 ```
 
-This prompt explicitly authorizes the bounded WSL bootstrap. A plain
-"install Anet" request remains runtime-only and does **not** authorize a
-persistent node, trust, Ahub, service, or profile change.
+This cross-platform prompt selects the native clean installer automatically.
+Its WSL branch explicitly authorizes the bounded single-Ahub bootstrap. On
+native Windows, macOS, and non-WSL Linux it remains runtime-only and does
+**not** authorize a persistent node, trust, Ahub, service, or profile change.
 
 Platform entry points:
 
