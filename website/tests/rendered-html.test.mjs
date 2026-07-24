@@ -22,9 +22,16 @@ test("renders the Anet product homepage", async () => {
   assert.match(html, /Private infrastructure/);
   assert.match(html, /Own the identity/);
   assert.match(html, /Anet v0\.12\.1/);
-  assert.match(html, /Copy this/);
-  assert.match(html, /发送给你的 Agent 即可安装/);
+  assert.match(html, /Copy once/);
+  assert.match(html, /复制 → 发送给你的 AGENT/);
   assert.match(html, /INSTALL-ANET/);
+  assert.match(html, /install_windows\.ps1/);
+  assert.match(html, /install_wsl\.py/);
+  assert.match(html, /skills\/install-anet/);
+  assert.ok(
+    html.indexOf('id="install"') < html.indexOf("network-stage"),
+    "install module should appear before the network model",
+  );
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 

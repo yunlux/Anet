@@ -31,6 +31,23 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="install-section shell" id="install">
+        <div className="install-intro">
+          <p className="section-label"><T en="INSTALL ANET" zh="安装 ANET" /></p>
+          <h2><T en={<>Copy once.<br />Your agent handles the platform.</>} zh={<>复制一次。<br />让 Agent 处理不同平台。</>} /></h2>
+          <p className="install-lead"><T en="One bounded prompt for native Windows, WSL, and Linux. It selects the repository’s pinned installer and stops before identity or trust changes." zh="一条有边界的提示词适用于原生 Windows、WSL 和 Linux。Agent 会选择仓库中的固定版本安装入口，并在创建身份或修改信任前停止。" /></p>
+          <div className="platform-pills"><span>WINDOWS</span><span>WSL</span><span>LINUX</span></div>
+        </div>
+        <div className="install-prompt">
+          <div className="install-callout">
+            <strong><T en="COPY → SEND TO YOUR AGENT" zh="复制 → 发送给你的 AGENT" /></strong>
+            <span><T en="The prompt detects the platform automatically." zh="提示词会让 Agent 自动判断平台。" /></span>
+          </div>
+          <SkillPrompt />
+          <p className="repo-note"><T en="If the official repository is not accessible, the agent must stop and ask for its URL." zh="如果无法访问官方仓库，Agent 必须停止并询问仓库地址。" /></p>
+        </div>
+      </section>
+
       <section className="network-stage shell" aria-label="Anet packet route diagram">
         <div className="stage-topline">
           <span><T en="PACKET ROUTE / LIVE MODEL" zh="PACKET 路径 / 实时模型" /></span>
@@ -118,22 +135,6 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="install-section shell section" id="install">
-        <div>
-          <p className="section-label"><T en="AGENT-NATIVE INSTALL" zh="让 AGENT 完成安装" /></p>
-          <h2><T en={<>Copy this.<br />Send it to your agent.</>} zh={<>复制下面的提示词。<br />发送给你的 Agent 即可安装。</>} /></h2>
-          <p className="install-lead"><T en="The bundled Skill verifies the pinned runtime and stops before identity, trust, or service changes." zh="内置 Skill 会验证固定版本的 runtime，并在创建身份、修改信任或注册服务之前停止。" /></p>
-        </div>
-        <div className="install-callout">
-          <strong><T en="COPY. SEND. INSTALLED." zh="复制。发送。完成安装。" /></strong>
-          <span><T en="Linux · Python 3.11+ · Hermes Skills" zh="Linux · Python 3.11+ · Hermes Skills" /></span>
-        </div>
-        <SkillPrompt />
-        <p className="repo-note"><T en="The official repository does not yet have a stable published URL. If your agent cannot access it, the prompt tells it to stop and ask—never to guess or bypass verification." zh="官方仓库目前还没有稳定的公开地址。如果 Agent 无法访问，提示词会要求它停止并询问，而不是猜测地址或绕过验证。" /></p>
-        <div className="install-next">
-          <Link className="button ghost" href="/docs#getting-started"><T en="After install: create two nodes" zh="安装后：创建两个节点" /> <span>→</span></Link>
-        </div>
-      </section>
       <Footer />
     </main>
   );
