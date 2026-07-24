@@ -1,0 +1,28 @@
+{
+  "category": "choice",
+  "created_ms": 1700000000000,
+  "dedupe_key": "04040404040404040404040404040404",
+  "expires_ms": 1700003600000,
+  "human_id": "hu1bbbbbbbbbbbbbbbbbbbb",
+  "intervention_id": "04040404040404040404040404040404",
+  "message": "你希望多久后再提醒？",
+  "object_type": "intervention",
+  "priority": "normal",
+  "protocol": "anet.companion",
+  "related_episode_ids": [
+    "03030303030303030303030303030303"
+  ],
+  "response_options": [
+    {
+      "action_id": "snooze.15m",
+      "label": "15 分钟"
+    },
+    {
+      "action_id": "decline",
+      "label": "不再提醒"
+    }
+  ],
+  "target_device_id": "an1aaaaaaaaaaaaaaaaaaaa",
+  "title": "稍后休息？",
+  "version": 1
+}

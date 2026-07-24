@@ -1,0 +1,14 @@
+{
+  "action_id": "snooze.15m",
+  "created_ms": 1700000001000,
+  "device_node_id": "an1aaaaaaaaaaaaaaaaaaaa",
+  "disposition": "answered",
+  "expires_ms": 1700003600000,
+  "human_id": "hu1bbbbbbbbbbbbbbbbbbbb",
+  "intervention_id": "04040404040404040404040404040404",
+  "object_type": "user_response",
+  "protocol": "anet.companion",
+  "response_id": "05050505050505050505050505050505",
+  "text": "",
+  "version": 1
+}

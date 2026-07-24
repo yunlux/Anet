@@ -1,0 +1,18 @@
+include LICENSE
+include CHANGELOG.md
+include CONTRIBUTING.md
+include PROTOCOL.md
+include SECURITY.md
+include scripts/bootstrap-macos.sh
+include scripts/wsl_release_gate.py
+include scripts/install_wsl.py
+include scripts/install_macos.py
+include scripts/install_windows.ps1
+include scripts/posix_runtime_installer.py
+include scripts/wsl_multi_node_release_gate.py
+include scripts/windows_release_gate.ps1
+include mcp-stdio.example.json
+recursive-include docs *.md *.json
+recursive-include openwiki *.md
+recursive-include skills/install-anet *
+global-exclude __pycache__ *.py[cod]

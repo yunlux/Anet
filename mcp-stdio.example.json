@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "anet": {
+      "command": "<ABSOLUTE_RUNTIME_PYTHON>",
+      "args": [
+        "-m",
+        "anet",
+        "mcp"
+      ],
+      "env": {
+        "ANET_HOME": "<ABSOLUTE_PRIVATE_NODE_HOME>",
+        "ANET_AGENT_ID": "<STABLE_LOCAL_OWNER>",
+        "ANET_MCP_GROUP_PREFIX": "<LOCAL_NAMESPACE>.",
+        "ANET_MCP_KIND_PREFIX": "agent.task.",
+        "ANET_MCP_ALLOWED_PEERS": "<COMPLETE_PINNED_NODE_ID>",
+        "ANET_MCP_TASK_ALLOWED_SENDERS": "<COMPLETE_PINNED_NODE_ID>",
+        "ANET_MCP_TASK_CAPABILITIES": "<EXACT_CAPABILITY_OR_NAMESPACE.*>",
+        "ANET_MCP_ALLOW_RAW_INBOX": "0"
+      }
+    }
+  }
+}

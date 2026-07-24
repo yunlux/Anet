@@ -1,0 +1,29 @@
+{
+  "consent": {
+    "basis": "device-essential",
+    "grant_id": "",
+    "scope": [
+      "device.network"
+    ]
+  },
+  "created_ms": 1700000000000,
+  "data_level": "operational",
+  "episode_id": "03030303030303030303030303030303",
+  "episode_type": "device.connectivity-window",
+  "expires_ms": 1700003600000,
+  "metrics": {
+    "metered": false,
+    "sample_count": 1,
+    "transport": "wifi"
+  },
+  "object_type": "episode",
+  "protocol": "anet.companion",
+  "source_batch_ids": [
+    "01010101010101010101010101010101"
+  ],
+  "source_node_id": "an1aaaaaaaaaaaaaaaaaaaa",
+  "transform_version": "connectivity.v1",
+  "version": 1,
+  "window_end_ms": 1699999999000,
+  "window_start_ms": 1699999940000
+}

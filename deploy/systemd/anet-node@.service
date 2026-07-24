@@ -1,0 +1,18 @@
+[Unit]
+Description=Anet encrypted node (%i)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/src/anet
+ExecStart=%h/.local/share/anet/venv/bin/python -m anet --home %h/.local/share/anet/nodes/%i serve
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-%h/.config/anet/%i.env
+
+[Install]
+WantedBy=default.target

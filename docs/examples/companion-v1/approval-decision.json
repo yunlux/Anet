@@ -1,0 +1,25 @@
+{
+  "action": {
+    "capability": "service.restart",
+    "parameters_digest": "abababababababababababababababababababababababababababababababab",
+    "resource": "anet://node/ahub/service/relay",
+    "summary": "重启 Relay 服务"
+  },
+  "created_ms": 1700000001000,
+  "decision": "approved",
+  "decision_id": "07070707070707070707070707070707",
+  "device_node_id": "an1aaaaaaaaaaaaaaaaaaaa",
+  "expires_ms": 1700000300000,
+  "human_id": "hu1bbbbbbbbbbbbbbbbbbbb",
+  "nonce": "09090909090909090909090909090909",
+  "object_type": "approval_decision",
+  "protocol": "anet.companion",
+  "reason": "",
+  "request_id": "06060606060606060606060606060606",
+  "scope": {
+    "grant_expires_ms": 1700000600000,
+    "max_uses": 1,
+    "mode": "once"
+  },
+  "version": 1
+}

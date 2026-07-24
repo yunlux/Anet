@@ -1,0 +1,23 @@
+{
+  "action": {
+    "capability": "service.restart",
+    "parameters_digest": "abababababababababababababababababababababababababababababababab",
+    "resource": "anet://node/ahub/service/relay",
+    "summary": "重启 Relay 服务"
+  },
+  "created_ms": 1700000000000,
+  "device_node_id": "an1aaaaaaaaaaaaaaaaaaaa",
+  "expires_ms": 1700000300000,
+  "human_id": "hu1bbbbbbbbbbbbbbbbbbbb",
+  "nonce": "09090909090909090909090909090909",
+  "object_type": "approval_request",
+  "protocol": "anet.companion",
+  "request_id": "06060606060606060606060606060606",
+  "risk": "会短暂中断实时 Relay，会话将重新建立。",
+  "scope": {
+    "grant_expires_ms": 1700000600000,
+    "max_uses": 1,
+    "mode": "once"
+  },
+  "version": 1
+}

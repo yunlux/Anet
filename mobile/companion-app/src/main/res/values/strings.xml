@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Anet Companion</string>
+    <string name="status_title">Anet Companion core ready</string>
+    <string name="status_detail">No node identity or network is configured. Pairing must be explicit.</string>
+</resources>

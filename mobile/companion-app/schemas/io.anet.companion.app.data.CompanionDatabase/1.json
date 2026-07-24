@@ -1,0 +1,308 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "7e81c80f0c72b189912c2058b608576d",
+    "entities": [
+      {
+        "tableName": "consent_grants",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`grantId` TEXT NOT NULL, `scopes` TEXT NOT NULL, `createdMs` INTEGER NOT NULL, `expiresMs` INTEGER NOT NULL, `state` TEXT NOT NULL, `withdrawnMs` INTEGER NOT NULL, PRIMARY KEY(`grantId`))",
+        "fields": [
+          {
+            "fieldPath": "grantId",
+            "columnName": "grantId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scopes",
+            "columnName": "scopes",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdMs",
+            "columnName": "createdMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expiresMs",
+            "columnName": "expiresMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "withdrawnMs",
+            "columnName": "withdrawnMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "grantId"
+          ]
+        }
+      },
+      {
+        "tableName": "outbox",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`semanticId` TEXT NOT NULL, `kind` TEXT NOT NULL, `bodyHash` TEXT NOT NULL, `ciphertext` BLOB NOT NULL, `iv` BLOB NOT NULL, `aad` BLOB NOT NULL, `createdMs` INTEGER NOT NULL, `expiresMs` INTEGER NOT NULL, `consentGrantId` TEXT NOT NULL, `state` TEXT NOT NULL, `owner` TEXT NOT NULL, `claimToken` TEXT NOT NULL, `leaseUntilMs` INTEGER NOT NULL, `retryAfterMs` INTEGER NOT NULL, `attempts` INTEGER NOT NULL, `updatedMs` INTEGER NOT NULL, PRIMARY KEY(`semanticId`))",
+        "fields": [
+          {
+            "fieldPath": "semanticId",
+            "columnName": "semanticId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bodyHash",
+            "columnName": "bodyHash",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ciphertext",
+            "columnName": "ciphertext",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "iv",
+            "columnName": "iv",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "aad",
+            "columnName": "aad",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdMs",
+            "columnName": "createdMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expiresMs",
+            "columnName": "expiresMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "consentGrantId",
+            "columnName": "consentGrantId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "owner",
+            "columnName": "owner",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "claimToken",
+            "columnName": "claimToken",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "leaseUntilMs",
+            "columnName": "leaseUntilMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "retryAfterMs",
+            "columnName": "retryAfterMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attempts",
+            "columnName": "attempts",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedMs",
+            "columnName": "updatedMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "semanticId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_outbox_state_retryAfterMs_leaseUntilMs_createdMs",
+            "unique": false,
+            "columnNames": [
+              "state",
+              "retryAfterMs",
+              "leaseUntilMs",
+              "createdMs"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_outbox_state_retryAfterMs_leaseUntilMs_createdMs` ON `${TABLE_NAME}` (`state`, `retryAfterMs`, `leaseUntilMs`, `createdMs`)"
+          },
+          {
+            "name": "index_outbox_claimToken",
+            "unique": true,
+            "columnNames": [
+              "claimToken"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_outbox_claimToken` ON `${TABLE_NAME}` (`claimToken`)"
+          },
+          {
+            "name": "index_outbox_consentGrantId",
+            "unique": false,
+            "columnNames": [
+              "consentGrantId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_outbox_consentGrantId` ON `${TABLE_NAME}` (`consentGrantId`)"
+          }
+        ]
+      },
+      {
+        "tableName": "interventions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`interventionId` TEXT NOT NULL, `dedupeKey` TEXT NOT NULL, `bodyHash` TEXT NOT NULL, `ciphertext` BLOB NOT NULL, `iv` BLOB NOT NULL, `aad` BLOB NOT NULL, `humanId` TEXT NOT NULL, `targetDeviceId` TEXT NOT NULL, `createdMs` INTEGER NOT NULL, `expiresMs` INTEGER NOT NULL, `state` TEXT NOT NULL, `responseId` TEXT NOT NULL, `receivedMs` INTEGER NOT NULL, `updatedMs` INTEGER NOT NULL, PRIMARY KEY(`interventionId`))",
+        "fields": [
+          {
+            "fieldPath": "interventionId",
+            "columnName": "interventionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dedupeKey",
+            "columnName": "dedupeKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bodyHash",
+            "columnName": "bodyHash",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ciphertext",
+            "columnName": "ciphertext",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "iv",
+            "columnName": "iv",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "aad",
+            "columnName": "aad",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "humanId",
+            "columnName": "humanId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "targetDeviceId",
+            "columnName": "targetDeviceId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdMs",
+            "columnName": "createdMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expiresMs",
+            "columnName": "expiresMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "responseId",
+            "columnName": "responseId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "receivedMs",
+            "columnName": "receivedMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedMs",
+            "columnName": "updatedMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "interventionId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_interventions_dedupeKey",
+            "unique": true,
+            "columnNames": [
+              "dedupeKey"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_interventions_dedupeKey` ON `${TABLE_NAME}` (`dedupeKey`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '7e81c80f0c72b189912c2058b608576d')"
+    ]
+  }
+}
