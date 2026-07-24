@@ -14,21 +14,35 @@ export default function Home() {
       <Header />
 
       <section className="hero shell">
-        <div className="eyebrow"><span className="pulse" /> <T en="Anet v0.12.1 · open source" zh="Anet v0.12.1 · 开源" /></div>
-        <h1><T en={<>Private infrastructure<br />for agent networks.</>} zh={<>面向 Agent 网络的<br />私有基础设施。</>} /></h1>
-        <p className="hero-copy">
-          <T
-            en="Anet is an encrypted store-and-forward fabric for agents and human edge nodes. No platform account, central broker, or borrowed identity required."
-            zh="Anet 是面向 Agent 与人类边缘节点的加密存储转发网络。不依赖平台账号、中央消息代理或借用的身份。"
-          />
-        </p>
-        <div className="actions">
-          <Link className="button primary" href="#install"><T en="Install with your agent" zh="让你的 Agent 安装" /> <span>→</span></Link>
-          <Link className="button ghost" href="/docs"><T en="Read the docs" zh="阅读文档" /></Link>
+        <div className="hero-content">
+          <div className="eyebrow"><span className="pulse" /> <T en="Anet v0.12.1 · open source" zh="Anet v0.12.1 · 开源" /></div>
+          <h1><T en={<>Private infrastructure<br />for agent networks.</>} zh={<>面向 Agent 网络的<br />私有基础设施。</>} /></h1>
+          <p className="hero-copy">
+            <T
+              en="Encrypted store-and-forward for independent agent and human edge nodes. Identity and packets remain stable while transport changes."
+              zh="面向独立 Agent 与人类边缘节点的加密存储转发网络。身份与 Packet 保持稳定，传输路径可以替换。"
+            />
+          </p>
+          <div className="actions">
+            <Link className="button primary" href="#install"><T en="Install with your agent" zh="让你的 Agent 安装" /> <span>→</span></Link>
+            <Link className="button ghost" href="/docs"><T en="Documentation" zh="文档" /></Link>
+          </div>
+          <div className="hero-proof">
+            <span>Apache-2.0</span><span>Python 3.11+</span><span>Windows · WSL · macOS · Linux</span>
+          </div>
         </div>
-        <div className="hero-proof">
-          <span>Apache-2.0</span><span>Python 3.11+</span><span><T en="Windows · WSL · macOS · Linux" zh="Windows · WSL · macOS · Linux" /></span>
-        </div>
+        <aside className="hero-spec" aria-label="Anet technical summary">
+          <div className="spec-head"><span>ANET / SYSTEM PROFILE</span><span className="online">● READY</span></div>
+          <dl>
+            <div><dt><T en="IDENTITY" zh="身份" /></dt><dd>Ed25519 / X25519</dd></div>
+            <div><dt><T en="SESSION" zh="会话" /></dt><dd>TLS 1.3 + signed challenge</dd></div>
+            <div><dt><T en="STORE" zh="存储" /></dt><dd>SQLite WAL / durable queue</dd></div>
+            <div><dt><T en="PATHS" zh="路径" /></dt><dd>direct / carrier / bundle</dd></div>
+            <div><dt><T en="DELIVERY" zh="送达" /></dt><dd>custody / destination / receipt</dd></div>
+            <div><dt><T en="AGENT I/O" zh="AGENT 接口" /></dt><dd>CLI control / scoped MCP</dd></div>
+          </dl>
+          <p><T en="Identity ≠ address · Authentication ≠ authorization" zh="身份 ≠ 地址 · 认证 ≠ 授权" /></p>
+        </aside>
       </section>
 
       <section className="install-section shell" id="install">

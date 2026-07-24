@@ -25,6 +25,9 @@ test("renders the Anet product homepage", async () => {
   assert.match(html, /Copy once/);
   assert.match(html, /复制 → 发送给你的 AGENT/);
   assert.match(html, /INSTALL-ANET/);
+  assert.match(html, /ANET \/ SYSTEM PROFILE/);
+  assert.match(html, /TLS 1\.3 \+ signed challenge/);
+  assert.match(html, /SQLite WAL \/ durable queue/);
   assert.match(html, /install_windows\.ps1/);
   assert.match(html, /install_wsl\.py/);
   assert.match(html, /skills\/install-anet/);
