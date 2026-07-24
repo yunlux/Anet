@@ -31,35 +31,25 @@ export default function Home() {
             <span>Apache-2.0</span><span>Python 3.11+</span><span>Windows · WSL · macOS · Linux</span>
           </div>
         </div>
-        <aside className="hero-spec" aria-label="Anet technical summary">
-          <div className="spec-head"><span>ANET / SYSTEM PROFILE</span><span className="online">● READY</span></div>
-          <dl>
-            <div><dt><T en="IDENTITY" zh="身份" /></dt><dd>Ed25519 / X25519</dd></div>
-            <div><dt><T en="SESSION" zh="会话" /></dt><dd>TLS 1.3 + signed challenge</dd></div>
-            <div><dt><T en="STORE" zh="存储" /></dt><dd>SQLite WAL / durable queue</dd></div>
-            <div><dt><T en="PATHS" zh="路径" /></dt><dd>direct / carrier / bundle</dd></div>
-            <div><dt><T en="DELIVERY" zh="送达" /></dt><dd>custody / destination / receipt</dd></div>
-            <div><dt><T en="AGENT I/O" zh="AGENT 接口" /></dt><dd>CLI control / scoped MCP</dd></div>
-          </dl>
-          <p><T en="Identity ≠ address · Authentication ≠ authorization" zh="身份 ≠ 地址 · 认证 ≠ 授权" /></p>
+        <aside className="hero-install" id="install" aria-label="Install Anet with an agent">
+          <div className="install-callout">
+            <strong><T en="COPY → SEND TO YOUR AGENT" zh="复制 → 发送给你的 AGENT" /></strong>
+            <span><T en="Auto-detects the platform" zh="自动判断平台" /></span>
+          </div>
+          <div className="hero-install-meta">
+            <div><span>WINDOWS</span><span>WSL</span><span>LINUX</span></div>
+            <p><T en="Pinned runtime · MCP feature · no identity changes" zh="固定版本 Runtime · MCP feature · 不修改身份" /></p>
+          </div>
+          <SkillPrompt />
+          <p className="repo-note"><T en="If the repository is unavailable, the agent stops and asks for its URL." zh="如果无法访问仓库，Agent 会停止并询问地址。" /></p>
         </aside>
       </section>
 
-      <section className="install-section shell" id="install">
-        <div className="install-intro">
-          <p className="section-label"><T en="INSTALL ANET" zh="安装 ANET" /></p>
-          <h2><T en={<>Copy once.<br />Your agent handles the platform.</>} zh={<>复制一次。<br />让 Agent 处理不同平台。</>} /></h2>
-          <p className="install-lead"><T en="One bounded prompt for native Windows, WSL, and Linux. It selects the repository’s pinned installer and stops before identity or trust changes." zh="一条有边界的提示词适用于原生 Windows、WSL 和 Linux。Agent 会选择仓库中的固定版本安装入口，并在创建身份或修改信任前停止。" /></p>
-          <div className="platform-pills"><span>WINDOWS</span><span>WSL</span><span>LINUX</span></div>
-        </div>
-        <div className="install-prompt">
-          <div className="install-callout">
-            <strong><T en="COPY → SEND TO YOUR AGENT" zh="复制 → 发送给你的 AGENT" /></strong>
-            <span><T en="The prompt detects the platform automatically." zh="提示词会让 Agent 自动判断平台。" /></span>
-          </div>
-          <SkillPrompt />
-          <p className="repo-note"><T en="If the official repository is not accessible, the agent must stop and ask for its URL." zh="如果无法访问官方仓库，Agent 必须停止并询问仓库地址。" /></p>
-        </div>
+      <section className="system-strip shell" aria-label="Anet technical summary">
+        <div><span><T en="IDENTITY" zh="身份" /></span><strong>Ed25519 / X25519</strong></div>
+        <div><span><T en="SESSION" zh="会话" /></span><strong>TLS 1.3 / signed challenge</strong></div>
+        <div><span><T en="STORE" zh="存储" /></span><strong>SQLite WAL / durable queue</strong></div>
+        <div><span><T en="PATHS" zh="路径" /></span><strong>direct / carrier / bundle</strong></div>
       </section>
 
       <section className="network-stage shell" aria-label="Anet packet route diagram">

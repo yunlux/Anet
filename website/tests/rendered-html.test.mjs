@@ -22,11 +22,10 @@ test("renders the Anet product homepage", async () => {
   assert.match(html, /Private infrastructure/);
   assert.match(html, /Own the identity/);
   assert.match(html, /Anet v0\.12\.1/);
-  assert.match(html, /Copy once/);
+  assert.match(html, /COPY → SEND TO YOUR AGENT/);
   assert.match(html, /复制 → 发送给你的 AGENT/);
   assert.match(html, /INSTALL-ANET/);
-  assert.match(html, /ANET \/ SYSTEM PROFILE/);
-  assert.match(html, /TLS 1\.3 \+ signed challenge/);
+  assert.match(html, /TLS 1\.3 \/ signed challenge/);
   assert.match(html, /SQLite WAL \/ durable queue/);
   assert.match(html, /install_windows\.ps1/);
   assert.match(html, /install_wsl\.py/);
