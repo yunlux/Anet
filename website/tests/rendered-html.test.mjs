@@ -27,6 +27,9 @@ test("renders the Anet product homepage", async () => {
   assert.match(html, /INSTALL-ANET/);
   assert.match(html, /https:\/\/github\.com\/yunlux\/Anet/);
   assert.match(html, /\$install-anet Skill/);
+  assert.match(html, /Make safe routine decisions autonomously/);
+  assert.match(html, /do not ask me to choose paths, labels, ports/);
+  assert.match(html, /常规安全决策由你自主完成/);
   assert.match(html, /first registered healthy host-local Ahub/);
   assert.match(html, /never copy identity, start a second Ahub/);
   assert.match(html, /TLS 1\.3 \/ signed challenge/);

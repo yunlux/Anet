@@ -19,13 +19,13 @@ The Skill has two deliberately separate modes:
 Send this sentence to a new persistent WSL Agent:
 
 ```text
-从 https://github.com/yunlux/Anet 安装 $install-anet Skill，并用它为当前 WSL Agent 自动安装和引导 Anet：使用当前 profile 的稳定本地 ID，复用本机已登记且健康的第一个 Ahub，只有确认不存在 Ahub 时才创建一个；为当前 Agent 创建或复用独立节点，将它与该 Ahub 下其他本机 Agent 显式配对，生成最小权限 MCP 配置并接入当前 profile，最后报告所有复用/创建结果、服务状态和路径，遇到身份、Ahub 状态、哈希或权限冲突时停止，禁止复制身份、启动第二个 Ahub、使用 sudo 或绕过校验。
+从 https://github.com/yunlux/Anet 安装 $install-anet Skill，并用它为当前 WSL Agent 自动安装和引导 Anet。常规安全决策由你自主完成，不要让我选择路径、标签、端口、服务名或 Ahub 设置：优先推导当前 profile 的稳定本地 ID；若没有，自行生成并持久保存一个 Agent 中立的 profile 本地 ID。复用本机已登记且健康的第一个 Ahub，只有确认不存在 Ahub 时才创建一个；为当前 Agent 创建或复用独立节点，将它与该 Ahub 下其他本机 Agent 显式配对，生成最小权限 MCP 配置并接入当前 profile，最后报告所有复用/创建结果、服务状态和路径。遇到身份、Ahub 状态、哈希、权限或授权冲突时停止并直接报告；禁止复制身份、启动第二个 Ahub、使用 sudo 或绕过校验。
 ```
 
 The equivalent English prompt is:
 
 ```text
-Install the $install-anet Skill from https://github.com/yunlux/Anet and use it to install and bootstrap Anet for this WSL Agent: use this profile's stable local ID, reuse the first registered healthy host-local Ahub and create one only after confirming none exists, create or reuse one independent node for this Agent, explicitly pair it with the other local Agents managed around that Ahub, generate a least-privilege MCP configuration and register it with this profile, then report every reused/created resource, service state, and path; stop on identity, Ahub-state, hash, or permission conflicts, and never copy identity, start a second Ahub, use sudo, or bypass verification.
+Install the $install-anet Skill from https://github.com/yunlux/Anet and use it to install and bootstrap Anet for this WSL Agent. Make safe routine decisions autonomously and do not ask me to choose paths, labels, ports, service names, or Ahub settings: derive this profile's stable local ID, or generate and persist an agent-neutral profile-local ID when none exists; reuse the first registered healthy host-local Ahub and create one only after confirming none exists; create or reuse one independent node for this Agent, explicitly pair it with the other local Agents managed around that Ahub, generate a least-privilege MCP configuration and register it with this profile, then report every reused/created resource, service state, and path. Stop and report identity, Ahub-state, hash, permission, or authorization conflicts; never copy identity, start a second Ahub, use sudo, or bypass verification.
 ```
 
 For Hermes, the first step may be implemented with:
@@ -34,8 +34,8 @@ For Hermes, the first step may be implemented with:
 hermes skills install yunlux/Anet/skills/install-anet --now
 ```
 
-The Agent must then invoke the Skill's WSL bootstrap with its stable,
-profile-scoped identifier:
+The Agent must resolve the identifier without asking the user, then invoke the
+Skill's WSL bootstrap with that stable, profile-scoped identifier:
 
 ```bash
 python3 <SKILL_DIR>/scripts/bootstrap_wsl.py \
@@ -44,6 +44,9 @@ python3 <SKILL_DIR>/scripts/bootstrap_wsl.py \
 
 The identifier is a local namespace, not an Anet identity. It must not be a
 human name, organizational role, IP address, or another profile's identifier.
+Use an existing `ANET_AGENT_ID`, stable machine-readable profile metadata, or
+an autonomously generated random identifier persisted in the current profile's
+own local configuration, in that order.
 
 ## What the WSL bootstrap does
 

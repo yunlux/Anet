@@ -47,11 +47,13 @@ Agent。
 
 ```text
 从 https://github.com/yunlux/Anet 安装 $install-anet Skill，并用它为当前
-WSL Agent 自动安装和引导 Anet：使用当前 profile 的稳定本地 ID，复用本机
-已登记且健康的第一个 Ahub，只有确认不存在 Ahub 时才创建一个；为当前 Agent
-创建或复用独立节点，将它与该 Ahub 下其他本机 Agent 显式配对，生成最小权限
-MCP 配置并接入当前 profile，最后报告所有复用/创建结果、服务状态和路径，
-遇到身份、Ahub 状态、哈希或权限冲突时停止，禁止复制身份、启动第二个 Ahub、
+WSL Agent 自动安装和引导 Anet。常规安全决策由你自主完成，不要让我选择路径、
+标签、端口、服务名或 Ahub 设置：优先推导当前 profile 的稳定本地 ID；若没有，
+自行生成并持久保存一个 Agent 中立的 profile 本地 ID。复用本机已登记且健康的
+第一个 Ahub，只有确认不存在 Ahub 时才创建一个；为当前 Agent 创建或复用独立
+节点，将它与该 Ahub 下其他本机 Agent 显式配对，生成最小权限 MCP 配置并接入
+当前 profile，最后报告所有复用/创建结果、服务状态和路径。遇到身份、Ahub
+状态、哈希、权限或授权冲突时停止并直接报告；禁止复制身份、启动第二个 Ahub、
 使用 sudo 或绕过校验。
 ```
 

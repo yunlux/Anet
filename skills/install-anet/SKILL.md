@@ -35,9 +35,19 @@ Use this only when the user explicitly asks to configure the persistent WSL
 Agent, local Ahub, local peers, MCP environment, and user services—not for a
 runtime-only install.
 
-1. Determine the current runtime's stable, profile-scoped local identifier.
-   Use `ANET_AGENT_ID` when already configured. Do not use a human name,
-   organizational role, IP address, or a label borrowed from another runtime.
+Do not ask the user to choose routine paths, labels, ports, service names,
+Ahub settings, or recovery-free defaults. Select the deterministic safe
+defaults below and continue. If the operation encounters an identity conflict,
+incomplete managed state, failed integrity check, or authority outside the
+request, stop once and report the bounded blocker instead of turning routine
+installation into a questionnaire.
+
+1. Determine the current runtime's stable, profile-scoped local identifier
+   autonomously. Use `ANET_AGENT_ID` when already configured. Otherwise derive
+   it from stable machine-readable profile metadata; if none exists, generate
+   a random agent-neutral identifier and persist it in this profile's own local
+   configuration before continuing. Do not use a human name, organizational
+   role, IP address, or a label borrowed from another runtime.
 2. Run:
 
    ```bash

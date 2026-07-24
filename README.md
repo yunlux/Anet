@@ -28,13 +28,16 @@ prompt below and send it to Codex or another capable coding agent.
 
 ```text
 Install the $install-anet Skill from https://github.com/yunlux/Anet and use it
-to install and bootstrap Anet for this WSL Agent: use this profile's stable
-local ID, reuse the first registered healthy host-local Ahub and create one
-only after confirming none exists, create or reuse one independent node for
-this Agent, explicitly pair it with the other local Agents managed around that
-Ahub, generate a least-privilege MCP configuration and register it with this
-profile, then report every reused/created resource, service state, and path;
-stop on identity, Ahub-state, hash, or permission conflicts, and never copy
+to install and bootstrap Anet for this WSL Agent. Make safe routine decisions
+autonomously and do not ask me to choose paths, labels, ports, service names,
+or Ahub settings: derive this profile's stable local ID, or generate and
+persist an agent-neutral profile-local ID when none exists; reuse the first
+registered healthy host-local Ahub and create one only after confirming none
+exists; create or reuse one independent node for this Agent, explicitly pair
+it with the other local Agents managed around that Ahub, generate a
+least-privilege MCP configuration and register it with this profile, then
+report every reused/created resource, service state, and path. Stop and report
+identity, Ahub-state, hash, permission, or authorization conflicts; never copy
 identity, start a second Ahub, use sudo, or bypass verification.
 ```
 

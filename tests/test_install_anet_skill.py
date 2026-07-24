@@ -74,4 +74,7 @@ def test_one_prompt_uses_published_repository_and_fail_closed_scope() -> None:
     assert "bootstrap_wsl.py" in guide
     assert "启动第二个 Ahub" in guide
     assert "禁止复制身份" in guide
+    assert "不要让我选择" in guide
+    assert "without asking the user" in guide
+    assert "autonomously generated random identifier" in guide
     assert re.search(r"identity_files[^\n]*0", guide)
