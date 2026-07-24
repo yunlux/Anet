@@ -24,7 +24,6 @@ export default function Home() {
             />
           </p>
           <div className="actions">
-            <Link className="button primary" href="#install"><T en="Install with your agent" zh="让你的 Agent 安装" /> <span>→</span></Link>
             <Link className="button ghost" href="/docs"><T en="Documentation" zh="文档" /></Link>
           </div>
           <div className="hero-proof">
