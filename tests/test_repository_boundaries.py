@@ -165,6 +165,8 @@ def test_github_actions_are_pinned_to_full_commit_shas() -> None:
 
 def test_release_metadata_is_present() -> None:
     for relative in (
+        "README.md",
+        "README.zh-CN.md",
         "LICENSE",
         "CONTRIBUTING.md",
         "SECURITY.md",
@@ -173,3 +175,21 @@ def test_release_metadata_is_present() -> None:
         "docs/RELEASE_CHECKLIST.md",
     ):
         assert (ROOT / relative).is_file()
+
+
+def test_readme_defaults_to_english_and_links_the_chinese_version() -> None:
+    english = (ROOT / "README.md").read_text(encoding="utf-8")
+    chinese = (ROOT / "README.zh-CN.md").read_text(encoding="utf-8")
+
+    assert "**English** | [简体中文](README.zh-CN.md)" in english
+    assert "[English](README.md) | **简体中文**" in chinese
+    assert "## Install with your agent" in english
+    assert "## 让 Agent 安装" in chinese
+    for installer in (
+        "scripts/install_windows.ps1",
+        "scripts/install_wsl.py",
+        "scripts/install_macos.py",
+        "skills/install-anet",
+    ):
+        assert installer in english
+        assert installer in chinese
