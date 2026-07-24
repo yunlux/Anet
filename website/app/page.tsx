@@ -27,7 +27,11 @@ export default function Home() {
             <Link className="button ghost" href="/docs"><T en="Documentation" zh="文档" /></Link>
           </div>
           <div className="hero-proof">
-            <span>Apache-2.0</span><span>Python 3.11+</span><span>Windows · WSL · macOS · Linux</span>
+            <a className="github-proof" href="https://github.com/yunlux/Anet" target="_blank" rel="noreferrer">
+              <img src="https://github.githubassets.com/favicons/favicon.svg" alt="" aria-hidden="true" />
+              yunlux/Anet ↗
+            </a>
+            <span>Apache-2.0</span><span>Python 3.11+</span>
           </div>
         </div>
         <aside className="hero-install" id="install" aria-label="Install Anet with an agent">
@@ -37,7 +41,7 @@ export default function Home() {
           </div>
           <div className="hero-install-meta">
             <div><span>WINDOWS</span><span>WSL</span><span>LINUX</span></div>
-            <p><T en="Pinned runtime · MCP feature · no identity changes" zh="固定版本 Runtime · MCP feature · 不修改身份" /></p>
+            <p><T en="Runtime → node → Ahub carrier" zh="Runtime → 节点 → Ahub Carrier" /></p>
           </div>
           <SkillPrompt />
           <p className="repo-note"><T en="If the repository is unavailable, the agent stops and asks for its URL." zh="如果无法访问仓库，Agent 会停止并询问地址。" /></p>

@@ -47,6 +47,8 @@ body[data-language="zh"] .lang-zh { display: revert !important; }
 nav { display: flex; align-items: center; gap: 36px; font-size: 14px; }
 nav a { color: #494a45; transition: color .2s; }
 nav a:hover { color: var(--ink); }
+.github-nav { display: inline-flex; align-items: center; gap: 7px; font-family: var(--font-mono); }
+.github-nav img, .github-proof img { width: 14px; height: 14px; display: block; }
 .header-cta { padding: 10px 14px; border: 1px solid var(--ink); font: 600 13px var(--font-mono); }
 .header-cta span { color: var(--orange); }
 .header-actions { display: flex; align-items: center; gap: 20px; }
@@ -77,6 +79,8 @@ nav a:hover { color: var(--ink); }
 .button.ghost { background: rgba(255,255,255,.35); }
 .hero .actions { margin-top: 24px; }
 .hero-proof { margin-top: 30px; display: flex; gap: 20px; color: #72736d; font: 9px var(--font-mono); letter-spacing: .05em; text-transform: uppercase; }
+.github-proof { display: inline-flex; align-items: center; gap: 7px; color: var(--ink); text-transform: none; }
+.github-proof:hover { color: var(--orange); }
 .hero-install { position: relative; z-index: 2; min-width: 0; color: #f1f2ec; border: 1px solid #343730; background: var(--panel); box-shadow: 0 22px 50px rgba(18,20,17,.18); }
 .hero-install-meta { padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border-bottom: 1px solid #41443e; }
 .hero-install-meta > div { display: flex; gap: 6px; }

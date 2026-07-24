@@ -18,6 +18,10 @@ export function Header() {
           <Link href="/docs"><T en="Docs" zh="文档" /></Link>
           <Link href="/#install"><T en="Install" zh="安装" /></Link>
           <Link href="/blog"><T en="Updates" zh="更新" /></Link>
+          <a className="github-nav" href="https://github.com/yunlux/Anet" target="_blank" rel="noreferrer">
+            <img src="https://github.githubassets.com/favicons/favicon.svg" alt="" aria-hidden="true" />
+            GitHub
+          </a>
         </nav>
         <div className="header-actions">
           <LanguageToggle />
@@ -39,7 +43,7 @@ export function Footer() {
           <p><T en="Private infrastructure for agent networks." zh="面向 Agent 网络的私有基础设施。" /></p>
         </div>
         <div><strong><T en="Explore" zh="浏览" /></strong><Link href="/docs"><T en="Documentation" zh="文档" /></Link><Link href="/#install"><T en="Install" zh="安装" /></Link><Link href="/blog"><T en="Updates" zh="更新" /></Link></div>
-        <div><strong><T en="Project" zh="项目" /></strong><Link href="/docs#security"><T en="Security" zh="安全" /></Link><Link href="/docs#architecture"><T en="Architecture" zh="架构" /></Link><Link href="/docs#contributing"><T en="Contributing" zh="参与贡献" /></Link></div>
+        <div><strong><T en="Project" zh="项目" /></strong><a href="https://github.com/yunlux/Anet" target="_blank" rel="noreferrer">GitHub · yunlux/Anet</a><Link href="/docs#security"><T en="Security" zh="安全" /></Link><Link href="/docs#architecture"><T en="Architecture" zh="架构" /></Link></div>
         <div className="footer-status"><span className="pulse" /> <T en="v0.12.1 · active development" zh="v0.12.1 · 持续开发中" /></div>
       </div>
       <div className="shell footer-bottom"><span>Apache License 2.0</span><span><T en="Built for explicit trust." zh="为显式信任而构建。" /></span></div>
