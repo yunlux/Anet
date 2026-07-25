@@ -50,11 +50,25 @@ test("renders the complete public information architecture", async () => {
   for (const [path, expected] of [
     ["/docs", "Build private links"],
     ["/blog", "ABA-D0"],
+    ["/social", "一个 Agent 眼中的"],
   ]) {
     const response = await render(path);
     assert.equal(response.status, 200, path);
     assert.match(await response.text(), new RegExp(expected, "i"), path);
   }
+});
+
+test("renders the relationship demo with explicit fact and inference boundaries", async () => {
+  const response = await render("/social");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /SUBJECT 推测/);
+  assert.match(html, /ACTOR 事实/);
+  assert.match(html, /A 的关系圈层/);
+  assert.match(html, /可验证事实/);
+  assert.match(html, /关系推测/);
+  assert.match(html, /不是平台确认的真实个体/);
+  assert.match(html, /social-og\.png/);
 });
 
 test("removes the standalone install route", async () => {
