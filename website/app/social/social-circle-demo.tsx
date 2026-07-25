@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import QRCode from "qrcode";
 import styles from "./social.module.css";
 
 type Circle = "family" | "close" | "friend" | "collab" | "known";
@@ -30,7 +31,7 @@ const circleMeta: Record<Circle, { label: string; index: string }> = {
   known: { label: "新认识", index: "05" },
 };
 
-const subjects: SubjectModel[] = [
+const baseSubjects: SubjectModel[] = [
   {
     id: "h",
     name: "H",
@@ -137,6 +138,26 @@ const subjects: SubjectModel[] = [
   },
 ];
 
+const scannedFriend: SubjectModel = {
+  id: "f",
+  name: "F",
+  mark: "F",
+  accent: "#58d7ba",
+  kind: "主体形态未知",
+  circle: "friend",
+  rel: 35,
+  confidence: 50,
+  summary: "通过双向签名二维码完成好友配对。Actor 已验证，背后的 Subject 仍是初始推测。",
+  labels: ["二维码好友", "刚刚加入", "主体待观察"],
+  actors: [{ name: "F · an1…e82", proof: "QR 签名挑战", confidence: 100 }],
+  trust: [
+    { label: "身份控制", value: 100 },
+    { label: "普通消息", value: 55 },
+    { label: "文件执行", value: 8 },
+  ],
+  position: { left: "38%", top: "27%" },
+};
+
 const formationEvents = [
   {
     title: "发现可验证 Actor",
@@ -180,6 +201,15 @@ export function SocialCircleDemo() {
   const [selectedId, setSelectedId] = useState("b");
   const [viewMode, setViewMode] = useState<ViewMode>("subjects");
   const [step, setStep] = useState(5);
+  const [qrOpen, setQrOpen] = useState(false);
+  const [qrStep, setQrStep] = useState(0);
+  const [friendAdded, setFriendAdded] = useState(false);
+  const [qrImage, setQrImage] = useState("");
+
+  const subjects = useMemo(
+    () => (friendAdded ? [...baseSubjects, scannedFriend] : baseSubjects),
+    [friendAdded],
+  );
 
   const selected = subjects.find((subject) => subject.id === selectedId) ?? subjects[1];
   const activeEvents = formationEvents.slice(0, step + 1);
@@ -195,8 +225,35 @@ export function SocialCircleDemo() {
         },
         { family: 0, close: 0, friend: 0, collab: 0, known: 0 },
       ),
-    [demoCircle],
+    [demoCircle, subjects],
   );
+
+  useEffect(() => {
+    if (!qrOpen || qrStep === 2) {
+      return;
+    }
+    const payload =
+      qrStep === 0
+        ? "anet://friend/v1/invite/eJx-demo-signed-expiring-offer-agent-a"
+        : "anet://friend/v1/acceptance/eJx-demo-challenge-bound-response-agent-f";
+    QRCode.toDataURL(payload, {
+      errorCorrectionLevel: "L",
+      margin: 2,
+      width: 270,
+      color: { dark: "#151613", light: "#f7f5ef" },
+    }).then(setQrImage);
+  }, [qrOpen, qrStep]);
+
+  function openFriendScan() {
+    setQrStep(friendAdded ? 2 : 0);
+    setQrOpen(true);
+  }
+
+  function completeFriendScan() {
+    setFriendAdded(true);
+    setQrStep(2);
+    setSelectedId("f");
+  }
 
   return (
     <div className={styles.demo}>
@@ -246,7 +303,73 @@ export function SocialCircleDemo() {
           <span><i className={styles.factDot} /> 可验证</span>
           <span><i className={styles.guessDot} /> 推测</span>
         </div>
+        <button className={styles.scanButton} type="button" onClick={openFriendScan}>
+          <span>⌗</span> {friendAdded ? "查看扫码好友" : "扫码添加好友"}
+        </button>
       </section>
+
+      {qrOpen && (
+        <div className={styles.qrBackdrop} role="presentation">
+          <section className={styles.qrDialog} role="dialog" aria-modal="true" aria-labelledby="qr-title">
+            <button className={styles.qrClose} type="button" onClick={() => setQrOpen(false)} aria-label="关闭">×</button>
+            <div className={styles.qrDialogHead}>
+              <p className={styles.kicker}>SIGNED QR FRIENDSHIP</p>
+              <h2 id="qr-title">
+                {qrStep === 0 && "让另一个 Agent 扫描 A。"}
+                {qrStep === 1 && "A 扫描 F 的回应。"}
+                {qrStep === 2 && "Agent F 已进入朋友圈。"}
+              </h2>
+              <p>
+                {qrStep === 0 && "二维码包含公开 Peer Card、短期 nonce、有效期和 A 的签名，不包含任何私钥。"}
+                {qrStep === 1 && "F 已验证 A，并返回绑定原邀请摘要的签名回应。A 仍需扫描完成自己的确认。"}
+                {qrStep === 2 && "双方 Actor 已完成双向验证。关系被记录为朋友，但 Subject 身份置信度仍只有 50%。"}
+              </p>
+            </div>
+
+            <div className={styles.qrProgress}>
+              {["A 发出邀请", "F 签名回应", "双方成为朋友"].map((label, index) => (
+                <div className={index <= qrStep ? styles.qrProgressActive : ""} key={label}>
+                  <span>{index + 1}</span><b>{label}</b>
+                </div>
+              ))}
+            </div>
+
+            {qrStep < 2 ? (
+              <div className={styles.qrExchange}>
+                <div className={styles.qrImage}>
+                  {qrImage ? <img src={qrImage} alt={qrStep === 0 ? "A 的好友邀请二维码" : "F 的好友回应二维码"} /> : <span>正在生成…</span>}
+                  <small>{qrStep === 0 ? "ANET FRIEND INVITE · 10 MIN" : "CHALLENGE-BOUND ACCEPTANCE"}</small>
+                </div>
+                <div className={styles.qrFacts}>
+                  <div><span>可验证 Actor</span><strong>{qrStep === 0 ? "A · an1…4b7" : "F · an1…e82"}</strong></div>
+                  <div><span>关系意图</span><strong>friend</strong></div>
+                  <div><span>Subject 判断</span><strong>未知 · 本地推测</strong></div>
+                  <div><span>高风险权限</span><strong>0 · 不随好友关系授予</strong></div>
+                  <button type="button" onClick={() => qrStep === 0 ? setQrStep(1) : completeFriendScan()}>
+                    {qrStep === 0 ? "模拟 F 扫描并回应 →" : "模拟 A 扫描回应 →"}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className={styles.qrComplete}>
+                <div className={styles.qrCompleteNodes}>
+                  <span>A</span><i /><b>双向签名好友</b><i /><span>F</span>
+                </div>
+                <div className={styles.qrCompleteGrid}>
+                  <div><span>ACTOR</span><strong>签名验证完成</strong></div>
+                  <div><span>CIRCLE</span><strong>朋友圈 03</strong></div>
+                  <div><span>SUBJECT</span><strong>假设置信度 50%</strong></div>
+                </div>
+                <button type="button" onClick={() => setQrOpen(false)}>回到 A 的关系圈查看 F</button>
+              </div>
+            )}
+
+            <p className={styles.qrBoundary}>
+              扫码是明确的好友配对动作；好友关系影响圈层显示，不自动开放任务、文件、工具、付款或监护权限。
+            </p>
+          </section>
+        </div>
+      )}
 
       <section className={styles.workspace}>
         <div className={styles.mapPanel}>

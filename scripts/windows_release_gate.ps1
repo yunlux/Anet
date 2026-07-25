@@ -67,7 +67,7 @@ function Get-NodeSnapshot {
     $protected = [ordered]@{}
     foreach ($name in @(
         "identity.json", "card.json", "config.json", "peers.json",
-        "tls-key.pem", "revocations.json"
+        "relationships.json", "tls-key.pem", "revocations.json"
     )) {
         $path = Join-Path $NodePath $name
         if (Test-Path -LiteralPath $path) {

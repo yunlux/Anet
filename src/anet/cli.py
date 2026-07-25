@@ -45,6 +45,14 @@ from .discord_social import (
 )
 from .encoding import b64e
 from .experiments import monitor_probes, run_probe_series
+from .friendship import (
+    FriendAcceptance,
+    FriendInvite,
+    decode_friend_code,
+    encode_friend_code,
+    read_friend_code,
+    write_friend_code,
+)
 from .identity import Identity, PeerCard
 from .locator import parse_locator, validate_locator_context
 from .node import AnetNode
@@ -52,6 +60,7 @@ from .pairing import PairOffer, PairResponse
 from .packet import inspect_packet
 from .peers import PeerBook
 from .prekeys import PreKeyBundle, generate_prekey_bundle, import_prekey_bundle
+from .relations import RelationshipBook
 from .scheduling import AdaptiveSchedule
 from .social import SocialPolicy, SocialThreshold
 from .store import PacketStore
@@ -156,14 +165,24 @@ def cmd_peer_revoke(args: argparse.Namespace) -> int:
     peer_id = str(args.peer).strip()
     if str(args.confirm).strip() != peer_id:
         raise ValueError("--confirm must exactly match the peer Node ID")
-    _, _, peers, store = _load_runtime(args.home)
+    config, identity, peers, store = _load_runtime(args.home)
     try:
         record = peers.revoke(peer_id, reason=args.reason)
         cleanup = store.revoke_peer(peer_id)
+        relation = RelationshipBook(
+            config.relationships_path,
+            own_actor_id=identity.node_id,
+        ).revoke_actor(
+            peer_id,
+            evidence_ref=f"revocation:{record['revoked_ms']}",
+        )
         _print_json(
             {
                 "revoked": record,
                 "cleanup": cleanup,
+                "relationship": (
+                    relation.to_dict() if relation is not None else None
+                ),
                 "revocations_file": str(peers.revocations_path.resolve()),
                 "restart_required": False,
                 "warning": (
@@ -337,6 +356,112 @@ def cmd_pair_complete(args: argparse.Namespace) -> int:
             "trusted_peers": len(peers.all()),
         }
     )
+    return 0
+
+
+def cmd_friend_qr(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    addresses = () if args.keys_only else config.effective_addresses()
+    card = identity.card(addresses=addresses, capabilities=config.capabilities)
+    invite = FriendInvite.create(
+        identity,
+        card,
+        ttl_seconds=args.ttl,
+    )
+    payload = encode_friend_code(invite)
+    write_friend_code(payload, args.out)
+    _print_json(
+        {
+            "type": "friend_invite",
+            "offer_id": invite.offer.offer_id,
+            "node_id": identity.node_id,
+            "expires_ms": invite.offer.expires_ms,
+            "path": str(Path(args.out).resolve()),
+            "relationship": invite.relationship,
+        }
+    )
+    return 0
+
+
+def cmd_friend_scan(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    peers = PeerBook(config.peers_path, own_node_id=identity.node_id)
+    relationships = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=identity.node_id,
+    )
+    payload = read_friend_code(args.source)
+    code = decode_friend_code(payload)
+    if isinstance(code, FriendInvite):
+        if code.offer.card.node_id == identity.node_id:
+            raise ValueError("cannot scan a local friend invite")
+        if args.out is None:
+            raise ValueError("--out is required when accepting a friend invite")
+        addresses = () if args.keys_only else config.effective_addresses()
+        local_card = identity.card(
+            addresses=addresses,
+            capabilities=config.capabilities,
+        )
+        acceptance = FriendAcceptance.create(code, identity, local_card)
+        response_payload = encode_friend_code(acceptance)
+        # Render the response before changing persistent trust. Missing optional
+        # QR support or an unwritable output therefore fails without mutation.
+        write_friend_code(response_payload, args.out)
+        peers.add(code.offer.card)
+        relation = relationships.confirm_friend(
+            code.offer.card,
+            evidence_ref=f"friend:{code.offer.offer_id}:accepted",
+        )
+        _print_json(
+            {
+                "type": "friend_acceptance",
+                "accepted": code.offer.card.node_id,
+                "offer_id": code.offer.offer_id,
+                "response": str(Path(args.out).resolve()),
+                "circle": relation.circle,
+                "subject_ref": relation.subject_ref,
+                "trusted_peers": len(peers.all()),
+            }
+        )
+        return 0
+
+    if args.out is not None:
+        raise ValueError("--out is only used when accepting a friend invite")
+    invite = code.invite
+    if (
+        invite.offer.card.node_id != identity.node_id
+        or invite.offer.card.sign_public != identity.sign_public
+        or invite.offer.card.box_public != identity.box_public
+    ):
+        raise ValueError("friend acceptance is not for this local identity")
+    peers.add(code.response.card)
+    relation = relationships.confirm_friend(
+        code.response.card,
+        evidence_ref=f"friend:{invite.offer.offer_id}:completed",
+    )
+    _print_json(
+        {
+            "type": "friend_completed",
+            "completed": code.response.card.node_id,
+            "offer_id": invite.offer.offer_id,
+            "circle": relation.circle,
+            "subject_ref": relation.subject_ref,
+            "trusted_peers": len(peers.all()),
+        }
+    )
+    return 0
+
+
+def cmd_relation_list(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    relationships = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=identity.node_id,
+    )
+    _print_json([record.to_dict() for record in relationships.all()])
     return 0
 
 
@@ -1969,6 +2094,50 @@ def build_parser() -> argparse.ArgumentParser:
     pair_complete.add_argument("offer", type=Path)
     pair_complete.add_argument("response", type=Path)
     pair_complete.set_defaults(func=cmd_pair_complete)
+
+    friend_qr = sub.add_parser(
+        "friend-qr",
+        help="create a signed, expiring QR friend invite",
+    )
+    friend_qr.add_argument("--out", type=Path, required=True)
+    friend_qr.add_argument(
+        "--ttl",
+        type=int,
+        default=600,
+        help="validity in seconds",
+    )
+    friend_qr.add_argument(
+        "--keys-only",
+        action="store_true",
+        help="omit direct network addresses",
+    )
+    friend_qr.set_defaults(func=cmd_friend_qr)
+
+    friend_scan = sub.add_parser(
+        "friend-scan",
+        help="scan a QR friend invite or its challenge-bound acceptance",
+    )
+    friend_scan.add_argument(
+        "source",
+        help="QR image, .anetqr/.txt payload file, or anet:// friend code",
+    )
+    friend_scan.add_argument(
+        "--out",
+        type=Path,
+        help="response QR path when accepting an invite",
+    )
+    friend_scan.add_argument(
+        "--keys-only",
+        action="store_true",
+        help="omit direct network addresses from an acceptance",
+    )
+    friend_scan.set_defaults(func=cmd_friend_scan)
+
+    relation_list = sub.add_parser(
+        "relation-list",
+        help="list local subject hypotheses and relationship circles",
+    )
+    relation_list.set_defaults(func=cmd_relation_list)
 
     prekey_generate = sub.add_parser(
         "prekey-generate",

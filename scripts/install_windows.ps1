@@ -68,7 +68,7 @@ if (Test-Path -LiteralPath $destination) {
         $extras = switch ($Feature) {
             "core" { "" }
             "mcp" { "mcp" }
-            "full" { "mcp,ahub" }
+            "full" { "mcp,ahub,qr" }
         }
         $wheelUri = ([System.Uri]$wheelPath).AbsoluteUri
         $requirement = if ($extras) {

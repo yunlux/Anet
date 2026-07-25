@@ -118,7 +118,7 @@ def install_runtime(
             extras = {
                 "core": "",
                 "mcp": "mcp",
-                "full": "mcp,ahub",
+                "full": "mcp,ahub,qr",
             }[feature]
             requirement = (
                 str(wheel)

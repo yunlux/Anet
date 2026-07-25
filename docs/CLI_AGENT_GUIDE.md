@@ -175,6 +175,21 @@ anet --home <HOME_A> pair-complete <OFFER_FILE> <RESPONSE_FILE>
 They require explicit operator policy; receiving a Card or task is not consent
 to trust it.
 
+For a human-style camera or image exchange, use the signed QR friend flow:
+
+```text
+anet --home <A_HOME> friend-qr --out <A_INVITE.png> --ttl 600
+anet --home <B_HOME> friend-scan <A_INVITE.png> --out <B_RESPONSE.png>
+anet --home <A_HOME> friend-scan <B_RESPONSE.png>
+anet --home <A_HOME> relation-list
+```
+
+`friend-scan` remains an explicit trust-changing action. The code is signed,
+time-bounded, and challenge-bound; it contains no private key. A successful
+exchange adds each verified Node Actor to the local `friend` circle, but does
+not prove the concrete Subject behind that Actor or grant tool/task/file
+capabilities. See [`QR_FRIENDS.md`](QR_FRIENDS.md).
+
 ## 5. Run and communicate
 
 The long-running network process is separate from one-shot CLI and MCP calls:

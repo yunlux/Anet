@@ -139,7 +139,7 @@ def main() -> int:
                         "--python",
                         str(venv / "bin" / "python"),
                         (
-                            f"anet-fabric[mcp,ahub] @ {wheel.as_uri()}"
+                            f"anet-fabric[mcp,ahub,qr] @ {wheel.as_uri()}"
                             if feature == "full"
                             else f"anet-fabric[mcp] @ {wheel.as_uri()}"
                         ),
@@ -155,7 +155,7 @@ def main() -> int:
                         "install",
                         "--disable-pip-version-check",
                         (
-                            f"anet-fabric[mcp,ahub] @ {wheel.as_uri()}"
+                            f"anet-fabric[mcp,ahub,qr] @ {wheel.as_uri()}"
                             if feature == "full"
                             else f"anet-fabric[mcp] @ {wheel.as_uri()}"
                         ),

@@ -37,13 +37,16 @@ test = [
   "build>=1.2,<2",
   "pytest>=9.0",
   "pytest-asyncio>=1.0",
+  "qrcode[pil]>=8.2,<9",
   "ruff>=0.12,<1",
   "twine>=6,<7",
   "uvicorn>=0.35,<1",
   "websockets>=16.1,<17",
+  "zxing-cpp>=3.1,<4",
 ]
 mcp = ["mcp>=1.0"]
 ahub = ["uvicorn>=0.35,<1", "websockets>=16.1,<17"]
+qr = ["qrcode[pil]>=8.2,<9", "zxing-cpp>=3.1,<4"]
 
 [project.scripts]
 anet = "anet.cli:main"

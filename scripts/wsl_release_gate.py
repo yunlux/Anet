@@ -166,6 +166,7 @@ class ReleaseGate:
             "card.json",
             "config.json",
             "peers.json",
+            "relationships.json",
             "tls-key.pem",
             "revocations.json",
         )
@@ -182,6 +183,7 @@ class ReleaseGate:
             "card.json",
             "config.json",
             "peers.json",
+            "relationships.json",
             "tls-key.pem",
             "revocations.json",
             "anet.sqlite3",

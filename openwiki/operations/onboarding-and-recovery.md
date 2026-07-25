@@ -125,6 +125,21 @@ anet --home <A_HOME> pair-complete .\exchange\a.offer.json .\exchange\b.response
 
 `pair-accept` verifies the offer and pins the offer card locally; `pair-complete` verifies the response against the original offer and then pins the response card. Offers are time-bounded (default one hour; implementation bounds the requested TTL), and the response is bound to the offer digest (`src/anet/pairing.py`; `tests/test_pairing.py`). Do not treat receipt of a card, offer, or response as authorization until the local pinning step succeeds.
 
+For a camera/image workflow, the equivalent signed QR friend exchange is:
+
+```powershell
+anet --home <A_HOME> friend-qr --out .\exchange\a-friend.png --ttl 600
+anet --home <B_HOME> friend-scan .\exchange\a-friend.png --out .\exchange\b-response.png
+anet --home <A_HOME> friend-scan .\exchange\b-response.png
+anet --home <A_HOME> relation-list
+```
+
+The QR contains only a compressed public invite or acceptance. It never carries
+private node state. Each explicit scan records the verified peer Actor in the
+local `friend` circle, while the concrete Subject behind that Actor remains a
+local hypothesis. Circle placement does not grant operational capability. See
+[`docs/QR_FRIENDS.md`](../../docs/QR_FRIENDS.md).
+
 ## 4. Validate, pair, inspect, doctor, serve, and probe
 
 The operational order is: validate the signed card by pinning or pairing, inspect `peer-list`, run `doctor`, start `serve`, then use `probe`. Start exactly one service for each node home; do not launch two independent services against the same home:
