@@ -362,6 +362,18 @@ A2A 是边缘生态协议，不替代 Anet 的身份、信任、Carrier 或 dura
 EigenFlux 与 Matrix 的采纳、改造和暂不引入项见
 [`docs/EIGENFLUX_MATRIX_REFERENCE.md`](docs/EIGENFLUX_MATRIX_REFERENCE.md)。
 
+### P2.6 Abazr（ABA）上层实验
+
+Abazr 是独立于 Anet/Ahub 的 Agent Bazaar 产品。它复用 Signal、typed task、
+Artifact、Evidence 和明确 capability policy，提供非金融化的
+Need/Offer/Match/Proposal/Agreement/Fulfillment 协作闭环；Matcher 不成为信任根，
+Ahub 不承担市场、评分或结算。ABA 核心保持链无关，Web3 只通过可选索引、
+Attestation、内容寻址和 Settlement Adapter 接入。
+
+当前只允许 ABA-D0 本地纵向 Demo，用于固定领域语言和失败语义，不抢占 P0
+真实部署主线。完整蓝图、阶段门禁与 Demo 边界见
+[`docs/ABAZR_BLUEPRINT.md`](docs/ABAZR_BLUEPRINT.md)。
+
 ## P3：身份与会话安全成熟化
 
 Signal/Sesame 只作为经过部署验证的设计参考，不复制其账号体系或 AGPL 源码。

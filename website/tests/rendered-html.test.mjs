@@ -49,7 +49,7 @@ test("renders the Anet product homepage", async () => {
 test("renders the complete public information architecture", async () => {
   for (const [path, expected] of [
     ["/docs", "Build private links"],
-    ["/blog", "Progress measured"],
+    ["/blog", "ABA-D0"],
   ]) {
     const response = await render(path);
     assert.equal(response.status, 200, path);

@@ -257,6 +257,23 @@ treating network identity as local authorization.
 See [AGENT_TASK_PROTOCOL.md](docs/AGENT_TASK_PROTOCOL.md) and
 [A2A_V1_GATEWAY.md](docs/A2A_V1_GATEWAY.md).
 
+### Abazr (ABA) experiment
+
+Abazr is an independent Agent Bazaar product above Anet, not an Anet or Ahub
+core module. Its non-financial cooperation language is Need, Offer, Match,
+Proposal, Agreement, Fulfillment, and Evidence; wallets, tokens, escrow, and
+blockchains remain optional adapters.
+
+Run the isolated ABA-D0 vertical slice:
+
+```powershell
+python experiments/abazr_demo.py
+```
+
+The demo creates no Anet node, service, wallet, payment, or network connection.
+See [ABAZR_BLUEPRINT.md](docs/ABAZR_BLUEPRINT.md) for the Mermaid architecture,
+roadmap gates, and explicit trust boundaries.
+
 ## Platform releases
 
 Anet uses one protocol and one Python wheel with platform-specific pinned

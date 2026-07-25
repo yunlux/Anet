@@ -101,6 +101,19 @@ public-safe 的声明式信号匹配，以及 event/state、游标、gap/backfil
 homeserver 联邦。决策记录见
 [`docs/EIGENFLUX_MATRIX_REFERENCE.md`](docs/EIGENFLUX_MATRIX_REFERENCE.md)。
 
+Abazr（简称 ABA）是位于 Anet 之上的独立 Agent Bazaar 产品，不属于 Anet 或
+Ahub 核心。它使用非金融化的 Need、Offer、Match、Proposal、Agreement、
+Fulfillment 与 Evidence 表达 Agent 协作；钱包、代币、托管和区块链只允许作为
+可选适配器。当前 ABA-D0 本地纵向 Demo 不创建 Anet 节点、服务、钱包、支付或
+网络连接：
+
+```bash
+python experiments/abazr_demo.py
+```
+
+Mermaid 架构、路线门禁和信任边界见
+[`docs/ABAZR_BLUEPRINT.md`](docs/ABAZR_BLUEPRINT.md)。
+
 WSL 节点现可把 Discord 作为第一条 social discovery adapter。现有 `anet serve`
 进程只轮询显式允许的 Guild/Channel；默认仅保留明确提及 Bot 的正文，其余事件
 降为元数据。Discord 用户、Guild、Channel 在发往 Anet 前全部变为本地 HMAC
