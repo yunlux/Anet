@@ -80,6 +80,11 @@ test("renders the relationship demo with explicit fact and inference boundaries"
   assert.match(html, /OBSERVER-LOCAL DISCLOSURE SCHEDULE/);
   assert.match(html, /history replay: off/);
   assert.match(html, /NO AUDIENCE PULL/);
+  assert.match(html, /VIEWPOINT WORKBENCH/);
+  assert.match(html, /SENDER-REPORTED/);
+  assert.match(html, /PARTIAL-UNKNOWN/);
+  assert.match(html, /history-baseline-unknown/);
+  assert.match(html, /G 的本地判断/);
   assert.match(html, /AUTHORIZATION EFFECT: NONE/);
   assert.match(html, /本地持久化顺序回放/);
   assert.match(html, /social-og-activity\.png/);

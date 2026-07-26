@@ -21,6 +21,7 @@ from anet.mcp_server import (
     anet_relation_activity,
     anet_relation_disclose,
     anet_relation_disclosures,
+    anet_relation_reported_view,
     anet_send,
     anet_settle,
     anet_status,
@@ -83,6 +84,8 @@ def test_mcp_relationship_disclosure_is_disabled_by_default(
             await anet_relation_disclose("an1" + ("a" * 32))
         with pytest.raises(PermissionError, match="outside"):
             await anet_relation_disclosures()
+        with pytest.raises(PermissionError, match="outside"):
+            await anet_relation_reported_view("an1" + ("a" * 32))
 
     asyncio.run(scenario())
 
@@ -168,6 +171,12 @@ def test_mcp_queues_audience_bound_relationship_disclosure(
             received = json.loads(await anet_relation_disclosures())
             assert received["received"] == []
             assert received["projection_into_local_relations"] is False
+            reported = json.loads(
+                await anet_relation_reported_view(audience.node_id)
+            )
+            assert reported["viewpoint"] == "sender-reported"
+            assert reported["completeness"] == "partial-unknown"
+            assert "no-disclosure-received" in reported["warnings"]
 
     asyncio.run(scenario())
 

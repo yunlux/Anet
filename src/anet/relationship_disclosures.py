@@ -611,10 +611,10 @@ class RelationshipDisclosureBook:
         self,
         *,
         sender_actor_id: str = "",
-        limit: int = 100,
+        limit: int | None = 100,
     ) -> tuple[ReceivedRelationshipDisclosure, ...]:
-        page_limit = int(limit)
-        if not 1 <= page_limit <= 500:
+        page_limit = None if limit is None else int(limit)
+        if page_limit is not None and not 1 <= page_limit <= 500:
             raise ValueError("relationship disclosure list limit must be 1-500")
         sender = (
             validate_actor_id(sender_actor_id)
@@ -628,4 +628,4 @@ class RelationshipDisclosureBook:
         )
         if sender:
             items = [item for item in items if item.sender_actor_id == sender]
-        return tuple(items[:page_limit])
+        return tuple(items if page_limit is None else items[:page_limit])

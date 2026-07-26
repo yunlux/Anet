@@ -84,6 +84,26 @@ anet --home <B_HOME> relation-disclosure-list
 anet --home <B_HOME> relation-disclosure-list --sender <A_NODE_ID>
 ```
 
+Derive a display-ready Reported relationship view for one sender:
+
+```text
+anet --home <B_HOME> relation-reported-view <A_NODE_ID>
+anet --home <B_HOME> relation-reported-view <A_NODE_ID> \
+  --subject <A_SUBJECT_REF> --include-activities
+```
+
+The derived view folds repeated structural reports into reported Subject
+states, Actor links, circles, contextual trust estimates, transition lineage,
+and interaction counts. Every value remains attributed to A. It reports
+`completeness: partial-unknown` because v1 does not prove a historical baseline
+or cross-Packet append continuity. Packet and disclosure provenance, receive
+times, cursor heads, and coverage warnings remain visible.
+
+Overlapping disclosed pages are deduplicated by activity ID. A conflicting body
+for the same activity ID fails closed instead of choosing one. Arrival and
+issue times are useful provenance but do not prove the sender's complete
+cross-Packet event order.
+
 `relation-disclose` requires an already pinned destination. Queueing is not
 delivery; run the normal Anet service or synchronization path.
 
@@ -142,7 +162,8 @@ ANET_MCP_ALLOW_RELATION_DISCLOSURE=0
 An operator may explicitly enable it for a scoped process. The tools are:
 
 - `anet_relation_disclose` — queue one disclosure to an allowed peer;
-- `anet_relation_disclosures` — read trusted received disclosures.
+- `anet_relation_disclosures` — read trusted received disclosures;
+- `anet_relation_reported_view` — derive one sender-attributed partial view.
 
 `ANET_MCP_ALLOWED_PEERS` still limits destinations. Enabling disclosure does
 not enable raw Inbox access or relationship activity unless those separate

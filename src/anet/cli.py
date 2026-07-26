@@ -72,6 +72,9 @@ from .relationship_disclosures import (
 from .relationship_disclosure_schedules import (
     RelationshipDisclosureScheduleBook,
 )
+from .reported_relationship_views import (
+    ReportedRelationshipViewProjector,
+)
 from .relationship_claims import (
     MutualRelationshipClaim,
     RelationshipClaimBook,
@@ -665,6 +668,25 @@ def cmd_relation_disclosure_list(args: argparse.Namespace) -> int:
             "projection_into_local_relations": False,
             "authorization_effect": "none",
         }
+    )
+    return 0
+
+
+def cmd_relation_reported_view(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    book = RelationshipDisclosureBook(
+        config.relationship_disclosures_path,
+        own_actor_id=identity.node_id,
+    )
+    _print_json(
+        ReportedRelationshipViewProjector.project(
+            book,
+            sender_actor_id=args.sender,
+            subject_ref=args.subject or "",
+            include_activities=args.include_activities,
+            activity_limit=args.limit,
+        )
     )
     return 0
 
@@ -2863,6 +2885,31 @@ def build_parser() -> argparse.ArgumentParser:
     relation_disclosure_list.set_defaults(
         func=cmd_relation_disclosure_list
     )
+
+    relation_reported_view = sub.add_parser(
+        "relation-reported-view",
+        help="derive one sender-attributed view from received disclosures",
+    )
+    relation_reported_view.add_argument(
+        "sender",
+        help="complete Actor ID of the reporting observer",
+    )
+    relation_reported_view.add_argument(
+        "--subject",
+        help="limit output to one reported subj_ hypothesis",
+    )
+    relation_reported_view.add_argument(
+        "--include-activities",
+        action="store_true",
+        help="include bounded source activities behind the derived view",
+    )
+    relation_reported_view.add_argument(
+        "--limit",
+        type=int,
+        default=100,
+        help="maximum source activities when included (1-500; default: 100)",
+    )
+    relation_reported_view.set_defaults(func=cmd_relation_reported_view)
 
     relation_schedule_add = sub.add_parser(
         "relation-disclosure-schedule-add",

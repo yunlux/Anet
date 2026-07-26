@@ -311,6 +311,7 @@ anet --home <A_HOME> relation-disclose <B_NODE_ID> --limit 100
 anet --home <A_HOME> relation-disclose <B_NODE_ID> \
   --after <RAC_CURSOR>
 anet --home <B_HOME> relation-disclosure-list --sender <A_NODE_ID>
+anet --home <B_HOME> relation-reported-view <A_NODE_ID>
 ```
 
 Use `--subject <SUBJECT_REF>` only when the operator intends to expose that
@@ -318,6 +319,12 @@ stable local hypothesis reference to the encrypted audience. A received
 disclosure remains the sender's reported worldview and is never imported into
 the receiver's own relationship model or authorization. See
 [`RELATIONSHIP_DISCLOSURES_V1.md`](RELATIONSHIP_DISCLOSURES_V1.md).
+
+Prefer `relation-reported-view` when an Agent or UI needs a compact remote
+circle view instead of raw disclosure envelopes. The result is explicitly
+`sender-reported` and `partial-unknown`; provenance and missing-coverage
+warnings must remain visible. Use `--subject` to select one remote hypothesis
+and `--include-activities` only when source-event inspection is needed.
 
 For continuous future disclosure, create an observer-local schedule. It starts
 at the current cursor unless historical replay is explicitly requested:

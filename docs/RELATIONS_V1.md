@@ -265,11 +265,15 @@ The receiver reads the sender's worldview separately:
 
 ```text
 anet --home <B_HOME> relation-disclosure-list --sender <A_NODE_ID>
+anet --home <B_HOME> relation-reported-view <A_NODE_ID>
 ```
 
 Received disclosures are stored in `relationship-disclosures.json`, not folded
 into `relationships.json`. They cannot create a local Actor, Subject, circle,
 contextual trust estimate, PeerBook trust, capability, or authorization.
+`relation-reported-view` is a derived, sender-attributed read model for UI and
+Agent consumption. It always declares unknown coverage because v1 cannot prove
+a complete baseline or continuous order across Packets.
 See [`RELATIONSHIP_DISCLOSURES_V1.md`](RELATIONSHIP_DISCLOSURES_V1.md).
 
 ## CLI interface

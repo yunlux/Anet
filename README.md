@@ -253,6 +253,11 @@ model. See
 [RELATIONSHIP_DISCLOSURES_V1.md](docs/RELATIONSHIP_DISCLOSURES_V1.md). Do not
 expose the complete MCP surface by default.
 
+For a display-ready remote perspective, use
+`relation-reported-view <SENDER_NODE_ID>`. It derives a provenance-bearing,
+`partial-unknown` report from received disclosures without treating the
+sender's Subjects, circles, or contextual trust as local state.
+
 ### Typed tasks
 
 Anet defines strict `agent.task.request`, `agent.task.status`,

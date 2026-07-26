@@ -26,6 +26,9 @@ from .relationship_disclosures import (
     RelationshipDisclosure,
     RelationshipDisclosureBook,
 )
+from .reported_relationship_views import (
+    ReportedRelationshipViewProjector,
+)
 from .relations import RelationshipBook
 
 
@@ -354,6 +357,38 @@ async def anet_relation_disclosures(
             "projection_into_local_relations": False,
             "authorization_effect": "none",
         }
+    )
+
+
+@server.tool(
+    name="anet_relation_reported_view",
+    description=(
+        "Derive one sender-attributed, partial relationship view from trusted "
+        "received disclosures. Disabled unless "
+        "ANET_MCP_ALLOW_RELATION_DISCLOSURE=1; never projects into local "
+        "relations or authorization."
+    ),
+)
+async def anet_relation_reported_view(
+    sender_actor_id: str,
+    subject_ref: str = "",
+    include_activities: bool = False,
+    activity_limit: int = 100,
+) -> str:
+    _require_relation_disclosure_enabled()
+    node = _require_node()
+    book = RelationshipDisclosureBook(
+        node.config.relationship_disclosures_path,
+        own_actor_id=node.identity.node_id,
+    )
+    return _dump(
+        ReportedRelationshipViewProjector.project(
+            book,
+            sender_actor_id=sender_actor_id,
+            subject_ref=subject_ref,
+            include_activities=include_activities,
+            activity_limit=activity_limit,
+        )
     )
 
 

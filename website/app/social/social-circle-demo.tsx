@@ -629,6 +629,9 @@ export function SocialCircleDemo() {
   const [disclosureSchedule, setDisclosureSchedule] = useState<
     "off" | "active" | "revoked"
   >("off");
+  const [reportedViewpoint, setReportedViewpoint] = useState<
+    "local" | "reported"
+  >("reported");
   const [demoDecisions, setDemoDecisions] = useState<
     Record<string, "accepted" | "rejected">
   >({});
@@ -1276,6 +1279,78 @@ export function SocialCircleDemo() {
               </p>
               <b>AUTHORIZATION EFFECT: NONE</b>
             </article>
+          </div>
+
+          <div className={styles.viewpointWorkbench}>
+            <div className={styles.viewpointTabs}>
+              <div>
+                <small>VIEWPOINT WORKBENCH</small>
+                <strong>同一屏幕，两个不可混合的观察世界</strong>
+              </div>
+              <div>
+                <button
+                  type="button"
+                  className={
+                    reportedViewpoint === "local" ? styles.viewpointActive : ""
+                  }
+                  onClick={() => setReportedViewpoint("local")}
+                >
+                  G 的本地判断
+                </button>
+                <button
+                  type="button"
+                  className={
+                    reportedViewpoint === "reported"
+                      ? styles.viewpointActive
+                      : ""
+                  }
+                  onClick={() => setReportedViewpoint("reported")}
+                >
+                  A 报告的判断
+                </button>
+              </div>
+            </div>
+
+            {reportedViewpoint === "reported" ? (
+              <>
+                <div className={styles.reportedMeta}>
+                  <span><b>VIEWPOINT</b> SENDER-REPORTED</span>
+                  <span><b>OBSERVER</b> ACTOR A</span>
+                  <span><b>COMPLETENESS</b> PARTIAL-UNKNOWN</span>
+                  <span><b>LOCAL PROJECTION</b> NONE</span>
+                </div>
+                <div className={styles.reportedSubjects}>
+                  {[
+                    ["subj_8f2…", "亲密", "研究伙伴", "78"],
+                    ["subj_21a…", "朋友", "创作伙伴", "66"],
+                    ["subj_c40…", "协作", "远端 Agent", "54"],
+                  ].map(([id, circle, label, score]) => (
+                    <article key={id}>
+                      <small>{id} · A&apos;S HYPOTHESIS</small>
+                      <strong>{label}</strong>
+                      <p><b>{circle}</b> · reported confidence {score}%</p>
+                      <em>来源：A 的加密披露事件</em>
+                    </article>
+                  ))}
+                </div>
+                <div className={styles.coverageWarning}>
+                  <b>COVERAGE WARNING</b>
+                  history-baseline-unknown ·
+                  cross-packet-append-continuity-unproven
+                  <span>2 authenticated Packets · 11 unique activities</span>
+                </div>
+              </>
+            ) : (
+              <div className={styles.localViewEmpty}>
+                <small>G LOCAL RELATIONSHIP BOOK</small>
+                <strong>A 的 3 个 Subject 没有被复制到这里。</strong>
+                <p>
+                  G 可以把远端报告作为后续观察的线索，但必须执行新的本地观察，
+                  才能形成自己的 Actor、Subject、圈层或 contextual trust。
+                </p>
+                <b>0 LOCAL RELATIONSHIP MUTATIONS</b>
+              </div>
+            )}
           </div>
 
           <p className={styles.disclosureBoundary}>

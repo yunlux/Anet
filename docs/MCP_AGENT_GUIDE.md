@@ -171,6 +171,7 @@ raw payloads, and always reports `authorization_effect: none`.
 | --- | --- |
 | `anet_relation_disclose` | Queue one selected content-free activity page to an allowed pinned peer. |
 | `anet_relation_disclosures` | Read trusted disclosures received by this node without importing them into local relations. |
+| `anet_relation_reported_view` | Derive a compact sender-attributed partial relationship view with provenance and coverage warnings. |
 
 Both tools are unavailable unless
 `ANET_MCP_ALLOW_RELATION_DISCLOSURE=1`. Sending is additionally restricted by
@@ -181,6 +182,9 @@ destination, encrypted by the normal Anet transport, and reports
 Enabling these tools does not enable `anet_relation_activity` or raw Inbox
 access. Received disclosures remain in the separate observation book described
 by [`RELATIONSHIP_DISCLOSURES_V1.md`](RELATIONSHIP_DISCLOSURES_V1.md).
+The reported-view tool never claims synchronized state: it returns
+`completeness: partial-unknown` and cannot alter local Subjects, circles, trust,
+capabilities, or authorization.
 
 ### Typed task execution
 

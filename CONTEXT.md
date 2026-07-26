@@ -114,6 +114,13 @@ cursor unless history replay is explicitly selected. The audience cannot
 create, pull, widen, or renew it.
 _Avoid_: Remote subscription, shared feed, delegated observation authority
 
+**Reported relationship view**:
+A receiver-local, read-only reconstruction of what one remote observer reported
+through authenticated Relationship disclosures. It preserves remote
+attribution and provenance, declares unknown coverage, and never becomes the
+receiver's own Subject hypotheses, Relationship estimates, trust, or authority.
+_Avoid_: Shared social graph, synchronized relationship state, current truth
+
 **Mutual relationship claim**:
 A portable statement signed by two verified Actors that they both accepted the
 same circle and public relationship labels. Each observer attributes the claim
