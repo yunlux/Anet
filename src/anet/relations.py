@@ -12,7 +12,7 @@ from .encoding import atomic_json
 from .identity import PeerCard
 
 
-RELATION_BOOK_VERSION = 3
+RELATION_BOOK_VERSION = 4
 RELATION_CIRCLES = (
     "public",
     "known",
@@ -43,6 +43,7 @@ INTERACTION_OUTCOMES = frozenset(
         "rejected",
     }
 )
+SUBJECT_TRANSITION_TYPES = frozenset({"split", "merge", "supersede"})
 
 
 def _now_ms(now: int | None) -> int:
@@ -489,6 +490,82 @@ class InteractionEvidence:
 
 
 @dataclass(frozen=True)
+class SubjectTransition:
+    """Immutable lineage for one observer-local hypothesis revision."""
+
+    transition_id: str
+    transition_type: str
+    source_subject_refs: tuple[str, ...]
+    replacement_subject_refs: tuple[str, ...]
+    confidence: int
+    evidence_ref: str
+    observed_ms: int
+
+    def __post_init__(self) -> None:
+        if not self.transition_id.startswith("strn_"):
+            raise ValueError("invalid Subject transition ID")
+        if self.transition_type not in SUBJECT_TRANSITION_TYPES:
+            raise ValueError("invalid Subject transition type")
+        if not self.source_subject_refs or not self.replacement_subject_refs:
+            raise ValueError("Subject transition requires sources and replacements")
+        refs = (*self.source_subject_refs, *self.replacement_subject_refs)
+        if any(not item.startswith("subj_") for item in refs):
+            raise ValueError("invalid Subject transition reference")
+        if len(refs) != len(set(refs)):
+            raise ValueError("Subject transition contains a duplicate reference")
+        if self.transition_type == "split" and (
+            len(self.source_subject_refs) != 1
+            or len(self.replacement_subject_refs) < 2
+        ):
+            raise ValueError("split requires one source and multiple replacements")
+        if self.transition_type == "merge" and (
+            len(self.source_subject_refs) < 2
+            or len(self.replacement_subject_refs) != 1
+        ):
+            raise ValueError("merge requires multiple sources and one replacement")
+        if self.transition_type == "supersede" and (
+            len(self.source_subject_refs) != 1
+            or len(self.replacement_subject_refs) != 1
+        ):
+            raise ValueError("supersede requires one source and one replacement")
+        _confidence(self.confidence, label="Subject transition confidence")
+        _bounded_text(
+            self.evidence_ref,
+            label="Subject transition evidence reference",
+            maximum=MAX_EVIDENCE_LENGTH,
+        )
+        if self.observed_ms <= 0:
+            raise ValueError("invalid Subject transition time")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "transition_id": self.transition_id,
+            "transition_type": self.transition_type,
+            "source_subject_refs": list(self.source_subject_refs),
+            "replacement_subject_refs": list(self.replacement_subject_refs),
+            "confidence": self.confidence,
+            "evidence_ref": self.evidence_ref,
+            "observed_ms": self.observed_ms,
+        }
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "SubjectTransition":
+        return cls(
+            transition_id=str(value["transition_id"]),
+            transition_type=str(value["transition_type"]),
+            source_subject_refs=tuple(
+                str(item) for item in value.get("source_subject_refs", ())
+            ),
+            replacement_subject_refs=tuple(
+                str(item) for item in value.get("replacement_subject_refs", ())
+            ),
+            confidence=int(value["confidence"]),
+            evidence_ref=str(value["evidence_ref"]),
+            observed_ms=int(value["observed_ms"]),
+        )
+
+
+@dataclass(frozen=True)
 class RelationshipRecord:
     """Compatibility projection for one Actor through its primary Subject."""
 
@@ -529,6 +606,7 @@ class RelationshipBook:
         self._relationships: dict[str, RelationshipEstimate] = {}
         self._events: list[RelationshipEvent] = []
         self._interactions: dict[str, InteractionEvidence] = {}
+        self._transitions: list[SubjectTransition] = []
         self.reload()
 
     def reload(self) -> None:
@@ -538,13 +616,14 @@ class RelationshipBook:
             self._relationships = {}
             self._events = []
             self._interactions = {}
+            self._transitions = []
             return
         value = json.loads(self.path.read_text(encoding="utf-8"))
         version = int(value.get("version", 0))
         if version == 1:
             self._load_v1(value)
             return
-        if version not in {2, RELATION_BOOK_VERSION}:
+        if version not in {2, 3, RELATION_BOOK_VERSION}:
             raise ValueError("unsupported relationship book version")
         actors = {
             item.actor_id: item
@@ -576,18 +655,24 @@ class RelationshipBook:
                 for item in value.get("interactions", ())
             )
         }
+        transitions = [
+            SubjectTransition.from_dict(dict(item))
+            for item in value.get("subject_transitions", ())
+        ]
         self._validate_model(
             actors,
             subjects,
             relationships,
             events,
             interactions,
+            transitions,
         )
         self._actors = actors
         self._subjects = subjects
         self._relationships = relationships
         self._events = events
         self._interactions = interactions
+        self._transitions = transitions
 
     def _load_v1(self, value: dict[str, Any]) -> None:
         actors: dict[str, ActorRecord] = {}
@@ -653,6 +738,7 @@ class RelationshipBook:
         self._relationships = relationships
         self._events = []
         self._interactions = {}
+        self._transitions = []
 
     def _validate_model(
         self,
@@ -661,6 +747,7 @@ class RelationshipBook:
         relationships: dict[str, RelationshipEstimate],
         events: list[RelationshipEvent],
         interactions: dict[str, InteractionEvidence] | None = None,
+        transitions: list[SubjectTransition] | None = None,
     ) -> None:
         if self.own_actor_id in actors:
             raise ValueError("relationship book contains the local Actor")
@@ -672,8 +759,16 @@ class RelationshipBook:
                 linked_actors.add(link.actor_id)
         if linked_actors != set(actors):
             raise ValueError("every observed Actor must belong to a Subject hypothesis")
-        if set(relationships) - set(subjects):
-            raise ValueError("relationship references an unknown Subject hypothesis")
+        active_linked_actors = {
+            link.actor_id
+            for subject in subjects.values()
+            if subject.state == "active"
+            for link in subject.actor_links
+        }
+        if active_linked_actors != set(actors):
+            raise ValueError("every observed Actor must have an active Subject hypothesis")
+        if set(relationships) != set(subjects):
+            raise ValueError("every Subject hypothesis must have one relationship")
         event_ids = [event.event_id for event in events]
         if len(event_ids) != len(set(event_ids)):
             raise ValueError("relationship book contains a duplicate event")
@@ -687,6 +782,53 @@ class RelationshipBook:
                 link.actor_id for link in subject.actor_links
             }:
                 raise ValueError("interaction Actor is not linked to its Subject")
+        transition_values = transitions or []
+        transition_ids = [item.transition_id for item in transition_values]
+        if len(transition_ids) != len(set(transition_ids)):
+            raise ValueError("relationship book contains a duplicate transition")
+        transition_sources: set[str] = set()
+        transition_replacements: set[str] = set()
+        lineage: dict[str, set[str]] = {}
+        for transition in transition_values:
+            for source_ref in transition.source_subject_refs:
+                if source_ref in transition_sources:
+                    raise ValueError("Subject hypothesis has multiple outgoing transitions")
+                transition_sources.add(source_ref)
+                source = subjects.get(source_ref)
+                if source is None:
+                    raise ValueError("transition references an unknown source Subject")
+                if source.state != "superseded":
+                    raise ValueError("transition source Subject is not superseded")
+                lineage.setdefault(source_ref, set()).update(
+                    transition.replacement_subject_refs
+                )
+            for replacement_ref in transition.replacement_subject_refs:
+                if replacement_ref in transition_replacements:
+                    raise ValueError(
+                        "Subject hypothesis has multiple incoming transitions"
+                    )
+                transition_replacements.add(replacement_ref)
+                replacement = subjects.get(replacement_ref)
+                if replacement is None:
+                    raise ValueError(
+                        "transition references an unknown replacement Subject"
+                    )
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def visit(subject_ref: str) -> None:
+            if subject_ref in visiting:
+                raise ValueError("Subject transition lineage contains a cycle")
+            if subject_ref in visited:
+                return
+            visiting.add(subject_ref)
+            for replacement_ref in lineage.get(subject_ref, ()):
+                visit(replacement_ref)
+            visiting.remove(subject_ref)
+            visited.add(subject_ref)
+
+        for subject_ref in lineage:
+            visit(subject_ref)
 
     def save(self) -> None:
         atomic_json(
@@ -706,6 +848,9 @@ class RelationshipBook:
                 "interactions": [
                     self._interactions[key].to_dict()
                     for key in sorted(self._interactions)
+                ],
+                "subject_transitions": [
+                    item.to_dict() for item in self._transitions
                 ],
             },
             private=True,
@@ -855,6 +1000,399 @@ class RelationshipBook:
         )
         self.save()
         return True
+
+    @staticmethod
+    def _replacement_relationship(
+        subject_ref: str,
+        *,
+        source: RelationshipEstimate | None,
+        evidence_ref: str,
+        now: int,
+    ) -> RelationshipEstimate:
+        if source is None:
+            return RelationshipEstimate(
+                subject_ref=subject_ref,
+                circle="known",
+                state="active",
+                relationship_labels=(),
+                relationship_confidence=25,
+                context_trust=(),
+                evidence_refs=(evidence_ref,),
+                updated_ms=now,
+            )
+        return RelationshipEstimate(
+            subject_ref=subject_ref,
+            circle=source.circle,
+            state=source.state,
+            relationship_labels=source.relationship_labels,
+            relationship_confidence=source.relationship_confidence,
+            context_trust=source.context_trust,
+            evidence_refs=_unique_text(
+                (*source.evidence_refs, evidence_ref),
+                label="relationship evidence reference",
+                maximum=MAX_EVIDENCE_LENGTH,
+            ),
+            updated_ms=now,
+        )
+
+    def _commit_subject_transition(
+        self,
+        transition: SubjectTransition,
+        replacements: tuple[SubjectHypothesis, ...],
+        *,
+        inheritance: dict[str, str],
+    ) -> SubjectTransition:
+        subjects = dict(self._subjects)
+        relationships = dict(self._relationships)
+        events = list(self._events)
+        for source_ref in transition.source_subject_refs:
+            source = subjects[source_ref]
+            subjects[source_ref] = SubjectHypothesis(
+                subject_ref=source.subject_ref,
+                state="superseded",
+                labels=source.labels,
+                actor_links=source.actor_links,
+                evidence_refs=_unique_text(
+                    (*source.evidence_refs, transition.evidence_ref),
+                    label="Subject evidence reference",
+                    maximum=MAX_EVIDENCE_LENGTH,
+                ),
+                updated_ms=transition.observed_ms,
+            )
+            relationship = relationships[source_ref]
+            relationships[source_ref] = RelationshipEstimate(
+                subject_ref=relationship.subject_ref,
+                circle=relationship.circle,
+                state=(
+                    "dormant"
+                    if relationship.state == "active"
+                    else relationship.state
+                ),
+                relationship_labels=relationship.relationship_labels,
+                relationship_confidence=relationship.relationship_confidence,
+                context_trust=relationship.context_trust,
+                evidence_refs=_unique_text(
+                    (*relationship.evidence_refs, transition.evidence_ref),
+                    label="relationship evidence reference",
+                    maximum=MAX_EVIDENCE_LENGTH,
+                ),
+                updated_ms=transition.observed_ms,
+            )
+            events.append(
+                RelationshipEvent(
+                    event_id=f"revt_{secrets.token_hex(12)}",
+                    event_type=f"subject.{transition.transition_type}",
+                    actor_id="",
+                    subject_ref=source_ref,
+                    evidence_ref=transition.evidence_ref,
+                    observed_ms=transition.observed_ms,
+                )
+            )
+
+        for replacement in replacements:
+            subjects[replacement.subject_ref] = replacement
+            inherited_ref = inheritance.get(replacement.subject_ref)
+            relationships[replacement.subject_ref] = self._replacement_relationship(
+                replacement.subject_ref,
+                source=(
+                    self._relationships[inherited_ref]
+                    if inherited_ref is not None
+                    else None
+                ),
+                evidence_ref=transition.evidence_ref,
+                now=transition.observed_ms,
+            )
+
+        transitions = [*self._transitions, transition]
+        self._validate_model(
+            self._actors,
+            subjects,
+            relationships,
+            events,
+            self._interactions,
+            transitions,
+        )
+        self._subjects = subjects
+        self._relationships = relationships
+        self._events = events
+        self._transitions = transitions
+        self.save()
+        return transition
+
+    def supersede_subject(
+        self,
+        subject_ref: str,
+        *,
+        confidence: int,
+        evidence_ref: str,
+        labels: Iterable[str] = (),
+        now: int | None = None,
+    ) -> SubjectTransition:
+        source_ref = _bounded_text(
+            subject_ref,
+            label="Subject reference",
+            maximum=128,
+        )
+        source = self._subjects.get(source_ref)
+        if source is None:
+            raise KeyError(f"unknown Subject hypothesis: {source_ref}")
+        if source.state != "active":
+            raise ValueError("cannot supersede an inactive Subject hypothesis")
+        transition_confidence = _confidence(
+            confidence,
+            label="Subject transition confidence",
+        )
+        evidence = _bounded_text(
+            evidence_ref,
+            label="Subject transition evidence reference",
+            maximum=MAX_EVIDENCE_LENGTH,
+        )
+        current = _now_ms(now)
+        replacement_ref = f"subj_{secrets.token_hex(8)}"
+        replacement = SubjectHypothesis(
+            subject_ref=replacement_ref,
+            state="active",
+            labels=_unique_text(
+                (*source.labels, *labels),
+                label="Subject label",
+                maximum=MAX_LABEL_LENGTH,
+            ),
+            actor_links=tuple(
+                SubjectActorLink(
+                    actor_id=link.actor_id,
+                    confidence=link.confidence,
+                    evidence_refs=_unique_text(
+                        (*link.evidence_refs, evidence),
+                        label="Subject link evidence reference",
+                        maximum=MAX_EVIDENCE_LENGTH,
+                    ),
+                    updated_ms=current,
+                )
+                for link in source.actor_links
+            ),
+            evidence_refs=_unique_text(
+                (*source.evidence_refs, evidence),
+                label="Subject evidence reference",
+                maximum=MAX_EVIDENCE_LENGTH,
+            ),
+            updated_ms=current,
+        )
+        transition = SubjectTransition(
+            transition_id=f"strn_{secrets.token_hex(12)}",
+            transition_type="supersede",
+            source_subject_refs=(source_ref,),
+            replacement_subject_refs=(replacement_ref,),
+            confidence=transition_confidence,
+            evidence_ref=evidence,
+            observed_ms=current,
+        )
+        return self._commit_subject_transition(
+            transition,
+            (replacement,),
+            inheritance={replacement_ref: source_ref},
+        )
+
+    def merge_subjects(
+        self,
+        subject_refs: Iterable[str],
+        *,
+        confidence: int,
+        evidence_ref: str,
+        inherit_subject_ref: str = "",
+        labels: Iterable[str] = (),
+        now: int | None = None,
+    ) -> SubjectTransition:
+        source_refs = tuple(dict.fromkeys(str(item).strip() for item in subject_refs))
+        if len(source_refs) < 2:
+            raise ValueError("merge requires at least two Subject hypotheses")
+        sources: list[SubjectHypothesis] = []
+        for source_ref in source_refs:
+            source = self._subjects.get(source_ref)
+            if source is None:
+                raise KeyError(f"unknown Subject hypothesis: {source_ref}")
+            if source.state != "active":
+                raise ValueError("cannot merge an inactive Subject hypothesis")
+            sources.append(source)
+        inherited_ref = str(inherit_subject_ref).strip()
+        if inherited_ref and inherited_ref not in source_refs:
+            raise ValueError("merge inheritance must name one source Subject")
+        transition_confidence = _confidence(
+            confidence,
+            label="Subject transition confidence",
+        )
+        evidence = _bounded_text(
+            evidence_ref,
+            label="Subject transition evidence reference",
+            maximum=MAX_EVIDENCE_LENGTH,
+        )
+        current = _now_ms(now)
+        links: dict[str, SubjectActorLink] = {}
+        for source in sources:
+            for link in source.actor_links:
+                previous = links.get(link.actor_id)
+                links[link.actor_id] = SubjectActorLink(
+                    actor_id=link.actor_id,
+                    confidence=max(
+                        link.confidence,
+                        previous.confidence if previous is not None else 0,
+                    ),
+                    evidence_refs=_unique_text(
+                        (
+                            *(previous.evidence_refs if previous is not None else ()),
+                            *link.evidence_refs,
+                            evidence,
+                        ),
+                        label="Subject link evidence reference",
+                        maximum=MAX_EVIDENCE_LENGTH,
+                    ),
+                    updated_ms=current,
+                )
+        replacement_ref = f"subj_{secrets.token_hex(8)}"
+        replacement = SubjectHypothesis(
+            subject_ref=replacement_ref,
+            state="active",
+            labels=_unique_text(
+                (
+                    *(label for source in sources for label in source.labels),
+                    *labels,
+                ),
+                label="Subject label",
+                maximum=MAX_LABEL_LENGTH,
+            ),
+            actor_links=tuple(links.values()),
+            evidence_refs=_unique_text(
+                (
+                    *(
+                        ref
+                        for source in sources
+                        for ref in source.evidence_refs
+                    ),
+                    evidence,
+                ),
+                label="Subject evidence reference",
+                maximum=MAX_EVIDENCE_LENGTH,
+            ),
+            updated_ms=current,
+        )
+        transition = SubjectTransition(
+            transition_id=f"strn_{secrets.token_hex(12)}",
+            transition_type="merge",
+            source_subject_refs=source_refs,
+            replacement_subject_refs=(replacement_ref,),
+            confidence=transition_confidence,
+            evidence_ref=evidence,
+            observed_ms=current,
+        )
+        return self._commit_subject_transition(
+            transition,
+            (replacement,),
+            inheritance=(
+                {replacement_ref: inherited_ref}
+                if inherited_ref
+                else {}
+            ),
+        )
+
+    def split_subject(
+        self,
+        subject_ref: str,
+        groups: Iterable[Iterable[str]],
+        *,
+        confidence: int,
+        evidence_ref: str,
+        inherit_group: int | None = None,
+        labels: Iterable[str] = (),
+        now: int | None = None,
+    ) -> SubjectTransition:
+        source_ref = _bounded_text(
+            subject_ref,
+            label="Subject reference",
+            maximum=128,
+        )
+        source = self._subjects.get(source_ref)
+        if source is None:
+            raise KeyError(f"unknown Subject hypothesis: {source_ref}")
+        if source.state != "active":
+            raise ValueError("cannot split an inactive Subject hypothesis")
+        normalized_groups = tuple(
+            tuple(dict.fromkeys(str(actor).strip() for actor in group))
+            for group in groups
+        )
+        if len(normalized_groups) < 2 or any(not group for group in normalized_groups):
+            raise ValueError("split requires at least two non-empty Actor groups")
+        flattened = tuple(actor for group in normalized_groups for actor in group)
+        if len(flattened) != len(set(flattened)):
+            raise ValueError("split Actor groups overlap")
+        source_actors = {link.actor_id for link in source.actor_links}
+        if set(flattened) != source_actors:
+            raise ValueError("split groups must exactly partition the source Actors")
+        if inherit_group is not None and not 0 <= inherit_group < len(normalized_groups):
+            raise ValueError("split inheritance group is out of range")
+        transition_confidence = _confidence(
+            confidence,
+            label="Subject transition confidence",
+        )
+        evidence = _bounded_text(
+            evidence_ref,
+            label="Subject transition evidence reference",
+            maximum=MAX_EVIDENCE_LENGTH,
+        )
+        current = _now_ms(now)
+        source_links = {link.actor_id: link for link in source.actor_links}
+        replacements: list[SubjectHypothesis] = []
+        for group in normalized_groups:
+            replacement_ref = f"subj_{secrets.token_hex(8)}"
+            replacements.append(
+                SubjectHypothesis(
+                    subject_ref=replacement_ref,
+                    state="active",
+                    labels=_unique_text(
+                        (*source.labels, *labels),
+                        label="Subject label",
+                        maximum=MAX_LABEL_LENGTH,
+                    ),
+                    actor_links=tuple(
+                        SubjectActorLink(
+                            actor_id=actor_id,
+                            confidence=source_links[actor_id].confidence,
+                            evidence_refs=_unique_text(
+                                (*source_links[actor_id].evidence_refs, evidence),
+                                label="Subject link evidence reference",
+                                maximum=MAX_EVIDENCE_LENGTH,
+                            ),
+                            updated_ms=current,
+                        )
+                        for actor_id in group
+                    ),
+                    evidence_refs=_unique_text(
+                        (*source.evidence_refs, evidence),
+                        label="Subject evidence reference",
+                        maximum=MAX_EVIDENCE_LENGTH,
+                    ),
+                    updated_ms=current,
+                )
+            )
+        transition = SubjectTransition(
+            transition_id=f"strn_{secrets.token_hex(12)}",
+            transition_type="split",
+            source_subject_refs=(source_ref,),
+            replacement_subject_refs=tuple(
+                item.subject_ref for item in replacements
+            ),
+            confidence=transition_confidence,
+            evidence_ref=evidence,
+            observed_ms=current,
+        )
+        inheritance = (
+            {replacements[inherit_group].subject_ref: source_ref}
+            if inherit_group is not None
+            else {}
+        )
+        return self._commit_subject_transition(
+            transition,
+            tuple(replacements),
+            inheritance=inheritance,
+        )
 
     def link_actor(
         self,
@@ -1173,6 +1711,9 @@ class RelationshipBook:
                 for key in sorted(self._interactions)
             ],
             "interaction_stats": self.interaction_stats(),
+            "subject_transitions": [
+                item.to_dict() for item in self._transitions
+            ],
         }
 
     def interaction_stats(self) -> list[dict[str, Any]]:

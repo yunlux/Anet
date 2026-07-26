@@ -203,6 +203,24 @@ contextual trust estimate, and never grants a capability. `relation-link`,
 model. They never grant Anet trust or execution capability. Do not place raw
 private content in their `--evidence` references.
 
+When Actor-to-Subject explanations change, preserve lineage instead of editing
+or deleting a `subj_` record:
+
+```text
+anet --home <HOME> subject-supersede <SUBJECT> \
+  --confidence 80 --evidence "claim:revision"
+anet --home <HOME> subject-merge <SUBJECT_A> <SUBJECT_B> \
+  --confidence 75 --evidence "claim:same-subject"
+anet --home <HOME> subject-split <SUBJECT> \
+  --group <ACTOR_A> --group <ACTOR_B> \
+  --confidence 75 --evidence "claim:separate-controllers"
+```
+
+Merge and split replacements start as `known`. Use `--inherit <SUBJECT>` or
+`--inherit-group <N>` only when evidence justifies transferring one existing
+relationship to exactly one replacement. Never copy one relationship or
+contextual trust estimate to multiple replacements.
+
 ## 5. Run and communicate
 
 The long-running network process is separate from one-shot CLI and MCP calls:

@@ -45,6 +45,26 @@ New evidence may:
 
 The original Actor observations and events remain unchanged.
 
+### Subject transition
+
+A Subject transition records how the observer revised its explanation:
+
+- `supersede`: one hypothesis is replaced by one revised hypothesis;
+- `merge`: several hypotheses are replaced by one combined hypothesis;
+- `split`: one hypothesis is replaced by an exact, non-overlapping partition
+  of its Actors.
+
+Every replacement receives a new opaque `subj_...` reference. Sources remain
+in the book with state `superseded`, their relationships become dormant, and
+the transition records both sides of the lineage, confidence, evidence
+reference, and time. A transition never claims that a real entity was
+literally divided or combined.
+
+One-to-one supersession inherits the source relationship. Merge and split
+default every replacement to `known` with no contextual trust. The caller may
+explicitly choose exactly one source-to-replacement inheritance path; the same
+relationship or trust estimate is never multiplied across replacements.
+
 ### Relationship estimate
 
 A Relationship estimate describes the observer's current relationship with
@@ -138,7 +158,7 @@ human-device grants, or application-specific approval.
 
 ## Persistent model
 
-`relationships.json` version 3 is private node-local state with six persisted
+`relationships.json` version 4 is private node-local state with seven persisted
 sections:
 
 ```text
@@ -148,16 +168,17 @@ Subject hypotheses and Actor links
 Relationship estimates
 Relationship events
 Content-free interaction evidence
+Subject transition lineage
 ```
 
-`relation-list --model` adds a seventh, derived `interaction_stats` projection;
+`relation-list --model` adds an eighth, derived `interaction_stats` projection;
 the redundant counters are not persisted.
 
-The loader accepts version 1 and version 2 books. It projects v1
+The loader accepts version 1, version 2, and version 3 books. It projects v1
 one-Actor/one-Subject records into the current model and treats a v2 book as
-having no interaction evidence. The next mutation writes version 3. Migration
-does not increase Subject confidence, invent interaction evidence, or invent
-events.
+having no interaction evidence and a v3 book as having no Subject transitions.
+The next mutation writes version 4. Migration does not increase Subject
+confidence, invent interaction evidence, transitions, or events.
 
 Interaction statistics are derived from evidence and are deliberately not
 trust scores. Repeated traffic can increase a count but cannot raise
@@ -212,6 +233,31 @@ anet --home <HOME> relation-trust <SUBJECT_REF> code.review \
   --estimate 88 --confidence 76 --evidence "task:review-42"
 ```
 
+Revise one hypothesis one-to-one while inheriting its relationship:
+
+```text
+anet --home <HOME> subject-supersede <SUBJECT_REF> \
+  --confidence 84 --evidence "claim:revised-explanation"
+```
+
+Merge hypotheses. Without `--inherit`, the replacement starts as `known`:
+
+```text
+anet --home <HOME> subject-merge <SUBJECT_A> <SUBJECT_B> \
+  --confidence 78 --evidence "claim:same-controller" \
+  --inherit <SUBJECT_A>
+```
+
+Split one hypothesis into an exact Actor partition. Only the selected
+one-based group inherits the previous relationship:
+
+```text
+anet --home <HOME> subject-split <SUBJECT_REF> \
+  --group <ACTOR_A>,<ACTOR_B> --group <ACTOR_C> \
+  --confidence 83 --evidence "claim:controllers-diverged" \
+  --inherit-group 1
+```
+
 These commands mutate observer-local social state. They do not mutate PeerBook
 trust or create task, tool, file, payment, guardian, or delegation capability.
 
@@ -247,7 +293,6 @@ automatically.
 Relations v1 does not yet standardize:
 
 - signed mutual-relationship claims;
-- Subject split, merge, or supersession commands;
 - policy suggestions derived from relationship changes;
 - encrypted projection streams for human observers;
 - cross-node portable relation bundles;

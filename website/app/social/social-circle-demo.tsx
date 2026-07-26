@@ -45,6 +45,13 @@ type RelationSnapshot = {
     outgoing: number;
     outcomes: Record<string, number>;
   }[];
+  subject_transitions?: {
+    transition_id: string;
+    transition_type: "split" | "merge" | "supersede";
+    source_subject_refs: string[];
+    replacement_subject_refs: string[];
+    confidence: number;
+  }[];
 };
 
 type SubjectModel = {
@@ -61,6 +68,7 @@ type SubjectModel = {
   actors: { name: string; proof: string; confidence: number }[];
   trust: { label: string; value: number }[];
   activity?: { label: string; count: number; detail: string }[];
+  lineage?: { label: string; detail: string; confidence: number }[];
   position: { left: string; top: string };
 };
 
@@ -106,12 +114,12 @@ function projectSnapshot(value: unknown): {
   }
   const snapshot = value as RelationSnapshot;
   if (
-    ![2, 3].includes(snapshot.version) ||
+    ![2, 3, 4].includes(snapshot.version) ||
     !Array.isArray(snapshot.actors) ||
     !Array.isArray(snapshot.subjects) ||
     !Array.isArray(snapshot.relationships)
   ) {
-    throw new Error("仅支持 relation-list --model 输出的 v2/v3 模型");
+    throw new Error("仅支持 relation-list --model 输出的 v2/v3/v4 模型");
   }
   const actors = new Map(snapshot.actors.map((actor) => [actor.actor_id, actor]));
   const relationships = new Map(
@@ -123,7 +131,12 @@ function projectSnapshot(value: unknown): {
   const interactionStats = Array.isArray(snapshot.interaction_stats)
     ? snapshot.interaction_stats
     : [];
-  const projected = snapshot.subjects.map((subject, index) => {
+  const transitions = Array.isArray(snapshot.subject_transitions)
+    ? snapshot.subject_transitions
+    : [];
+  const projected = snapshot.subjects
+    .filter((subject) => subject.state === "active")
+    .map((subject, index) => {
     const relationship = relationships.get(subject.subject_ref);
     const circle =
       relationship && isCircle(relationship.circle)
@@ -173,9 +186,25 @@ function projectSnapshot(value: unknown): {
           count: Number(item.incoming ?? 0) + Number(item.outgoing ?? 0),
           detail: `收 ${Number(item.incoming ?? 0)} · 发 ${Number(item.outgoing ?? 0)}`,
         })),
+      lineage: transitions
+        .filter((item) =>
+          item.replacement_subject_refs.includes(subject.subject_ref),
+        )
+        .map((item) => ({
+          label:
+            item.transition_type === "merge"
+              ? "由多个假设合并产生"
+              : item.transition_type === "split"
+                ? "由一个假设拆分产生"
+                : "由旧假设修订产生",
+          detail: item.source_subject_refs
+            .map((ref) => `${ref.slice(0, 13)}…`)
+            .join(" + "),
+          confidence: Number(item.confidence ?? 0),
+        })),
       position: importPositions[index % importPositions.length],
     } satisfies SubjectModel;
-  });
+    });
   if (!projected.length) {
     throw new Error("模型中还没有 Subject 假设");
   }
@@ -671,6 +700,24 @@ export function SocialCircleDemo() {
                     <i />
                     <span><strong>{item.label}</strong><small>{item.detail}</small></span>
                     <b>{item.count}</b>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {selected.lineage && selected.lineage.length > 0 && (
+            <>
+              <div className={styles.sectionTitle}>
+                <span>SUBJECT LINEAGE</span>
+                <small>假设修订 · 不是身份变形</small>
+              </div>
+              <div className={styles.actorList}>
+                {selected.lineage.map((item) => (
+                  <div key={`${item.label}:${item.detail}`}>
+                    <i />
+                    <span><strong>{item.label}</strong><small>{item.detail}</small></span>
+                    <b>{item.confidence}%</b>
                   </div>
                 ))}
               </div>

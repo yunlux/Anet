@@ -29,6 +29,14 @@ Actors. It is local, probabilistic, and may be split, merged, or superseded as
 evidence changes.
 _Avoid_: Subject identity, Principal, account owner
 
+**Subject transition**:
+An evidence-backed local revision that replaces one or more Subject hypotheses
+through `split`, `merge`, or one-to-one `supersede`. Source hypotheses remain
+as superseded history and replacements receive new opaque references. A
+transition revises an observer's explanation; it does not transform, combine,
+or divide real entities.
+_Avoid_: Identity merge, account split, entity mutation
+
 **Relationship estimate**:
 One observer's evidence-backed estimate of its relationship with a Subject
 hypothesis, including a circle, labels, and contextual trust. It is not a

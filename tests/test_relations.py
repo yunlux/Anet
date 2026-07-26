@@ -7,7 +7,7 @@ import pytest
 from anet.cli import main
 from anet.config import NodeConfig
 from anet.identity import Identity
-from anet.relations import RelationshipBook
+from anet.relations import InteractionEvidence, RelationshipBook
 
 
 def test_relationship_book_keeps_actor_facts_and_subject_hypotheses_separate(
@@ -135,7 +135,7 @@ def test_version_one_relationship_book_migrates_without_claiming_identity(
 
     book = RelationshipBook(path, own_actor_id=observer.node_id)
     snapshot = book.snapshot()
-    assert snapshot["version"] == 3
+    assert snapshot["version"] == 4
     assert snapshot["actors"][0]["actor_id"] == peer.node_id
     assert snapshot["subjects"][0]["confidence"] == 50
     assert snapshot["relationships"][0]["circle"] == "friend"
@@ -149,7 +149,7 @@ def test_version_one_relationship_book_migrates_without_claiming_identity(
         evidence_ref="message:legacy-upgrade",
         now=1_800_000_000_002,
     )
-    assert json.loads(path.read_text(encoding="utf-8"))["version"] == 3
+    assert json.loads(path.read_text(encoding="utf-8"))["version"] == 4
 
 
 def test_version_two_relationship_book_loads_with_empty_interactions(
@@ -171,10 +171,46 @@ def test_version_two_relationship_book_loads_with_empty_interactions(
 
     migrated = RelationshipBook(path, own_actor_id=observer.node_id)
     snapshot = migrated.snapshot()
-    assert snapshot["version"] == 3
+    assert snapshot["version"] == 4
     assert snapshot["interactions"] == []
     assert snapshot["interaction_stats"] == []
     assert migrated.get(peer.node_id) is not None
+
+
+def test_version_three_relationship_book_preserves_interaction_evidence(
+    tmp_path,
+) -> None:
+    observer = Identity.generate("observer")
+    peer = Identity.generate("peer")
+    path = tmp_path / "relationships.json"
+    original = RelationshipBook(path, own_actor_id=observer.node_id)
+    subject = original.observe_actor(
+        peer.card(),
+        evidence_ref="packet:legacy-v3",
+        now=1_800_000_000_001,
+    )
+    original.record_interaction(
+        InteractionEvidence.create(
+            actor_id=peer.node_id,
+            subject_ref=subject.subject_ref,
+            direction="incoming",
+            facets=("message",),
+            context="communication",
+            outcome="received",
+            evidence_ref="packet:" + "c" * 32,
+            occurred_ms=1_800_000_000_002,
+        )
+    )
+    value = json.loads(path.read_text(encoding="utf-8"))
+    value["version"] = 3
+    value.pop("subject_transitions", None)
+    path.write_text(json.dumps(value), encoding="utf-8")
+
+    migrated = RelationshipBook(path, own_actor_id=observer.node_id)
+    snapshot = migrated.snapshot()
+    assert snapshot["version"] == 4
+    assert len(snapshot["interactions"]) == 1
+    assert snapshot["subject_transitions"] == []
 
 
 def test_relationship_book_rejects_unknown_links_and_invalid_scores(tmp_path) -> None:
@@ -205,6 +241,156 @@ def test_relationship_book_rejects_unknown_links_and_invalid_scores(tmp_path) ->
             confidence=50,
             evidence_ref="task:invalid",
         )
+
+
+def test_subject_transition_lineage_preserves_history_without_multiplying_trust(
+    tmp_path,
+) -> None:
+    observer = Identity.generate("observer")
+    first = Identity.generate("first")
+    second = Identity.generate("second")
+    book = RelationshipBook(
+        tmp_path / "relationships.json",
+        own_actor_id=observer.node_id,
+    )
+    first_subject = book.observe_actor(
+        first.card(),
+        evidence_ref="packet:first",
+        now=1_800_000_000_001,
+    )
+    second_subject = book.observe_actor(
+        second.card(),
+        evidence_ref="packet:second",
+        now=1_800_000_000_002,
+    )
+    book.set_circle(
+        first_subject.subject_ref,
+        "close",
+        confidence=80,
+        evidence_ref="relationship:first-close",
+        now=1_800_000_000_003,
+    )
+    book.set_context_trust(
+        first_subject.subject_ref,
+        "code.review",
+        estimate=90,
+        confidence=75,
+        evidence_ref="task:review",
+        now=1_800_000_000_004,
+    )
+    book.record_interaction(
+        InteractionEvidence.create(
+            actor_id=first.node_id,
+            subject_ref=first_subject.subject_ref,
+            direction="incoming",
+            facets=("task",),
+            context="task",
+            outcome="completed",
+            evidence_ref="packet:" + "a" * 32,
+            occurred_ms=1_800_000_000_005,
+        )
+    )
+
+    merged = book.merge_subjects(
+        (first_subject.subject_ref, second_subject.subject_ref),
+        confidence=78,
+        evidence_ref="claim:same-subject",
+        inherit_subject_ref=first_subject.subject_ref,
+        now=1_800_000_000_006,
+    )
+    merged_ref = merged.replacement_subject_refs[0]
+    assert book.subject(first_subject.subject_ref).state == "superseded"
+    assert book.relationship(first_subject.subject_ref).state == "dormant"
+    assert book.relationship(merged_ref).circle == "close"
+    assert book.relationship(merged_ref).context_trust[0].estimate == 90
+
+    split = book.split_subject(
+        merged_ref,
+        ((first.node_id,), (second.node_id,)),
+        confidence=83,
+        evidence_ref="claim:controllers-diverged",
+        inherit_group=0,
+        now=1_800_000_000_007,
+    )
+    inherited_ref, fresh_ref = split.replacement_subject_refs
+    assert book.relationship(inherited_ref).circle == "close"
+    assert book.relationship(fresh_ref).circle == "known"
+    assert book.relationship(fresh_ref).context_trust == ()
+    assert book.primary_subject(first.node_id).subject_ref == inherited_ref
+    assert book.primary_subject(second.node_id).subject_ref == fresh_ref
+
+    superseded = book.supersede_subject(
+        fresh_ref,
+        confidence=88,
+        evidence_ref="claim:revised-explanation",
+        labels=("controller:unknown",),
+        now=1_800_000_000_008,
+    )
+    revised_ref = superseded.replacement_subject_refs[0]
+    assert book.relationship(revised_ref).circle == "known"
+    assert book.subject(revised_ref).labels == ("controller:unknown",)
+
+    snapshot = book.snapshot()
+    assert [
+        item["transition_type"] for item in snapshot["subject_transitions"]
+    ] == ["merge", "split", "supersede"]
+    assert snapshot["interactions"][0]["subject_ref"] == first_subject.subject_ref
+    assert snapshot["interaction_stats"][0]["subject_ref"] == (
+        first_subject.subject_ref
+    )
+    assert RelationshipBook(
+        tmp_path / "relationships.json",
+        own_actor_id=observer.node_id,
+    ).snapshot() == snapshot
+
+
+def test_merge_without_explicit_inheritance_starts_known_and_split_is_atomic(
+    tmp_path,
+) -> None:
+    observer = Identity.generate("observer")
+    first = Identity.generate("first")
+    second = Identity.generate("second")
+    book = RelationshipBook(
+        tmp_path / "relationships.json",
+        own_actor_id=observer.node_id,
+    )
+    first_subject = book.observe_actor(
+        first.card(),
+        evidence_ref="packet:first",
+        now=1_800_000_000_001,
+    )
+    second_subject = book.observe_actor(
+        second.card(),
+        evidence_ref="packet:second",
+        now=1_800_000_000_002,
+    )
+    book.set_circle(
+        first_subject.subject_ref,
+        "family",
+        confidence=95,
+        evidence_ref="relationship:family",
+        now=1_800_000_000_003,
+    )
+    transition = book.merge_subjects(
+        (first_subject.subject_ref, second_subject.subject_ref),
+        confidence=60,
+        evidence_ref="claim:possible-merge",
+        now=1_800_000_000_004,
+    )
+    merged_ref = transition.replacement_subject_refs[0]
+    assert book.relationship(merged_ref).circle == "known"
+    assert book.relationship(merged_ref).context_trust == ()
+
+    before = book.snapshot()
+    with pytest.raises(ValueError, match="exactly partition"):
+        book.split_subject(
+            merged_ref,
+            ((first.node_id,), ("an1missing",)),
+            confidence=50,
+            evidence_ref="claim:invalid-split",
+            now=1_800_000_000_005,
+        )
+    assert book.snapshot() == before
 
 
 def test_relation_cli_edits_and_exports_the_full_local_model(
@@ -309,7 +495,123 @@ def test_relation_cli_edits_and_exports_the_full_local_model(
 
     assert main(["--home", str(home), "relation-list", "--model"]) == 0
     model = json.loads(capsys.readouterr().out)
-    assert model["version"] == 3
+    assert model["version"] == 4
     assert len(model["actors"]) == 2
     assert len(model["subjects"]) == 2
     assert model["events"][-1]["event_type"] == "relationship.context-trust-set"
+
+
+def test_subject_transition_cli_exposes_explicit_inheritance(tmp_path, capsys) -> None:
+    home = tmp_path / "observer"
+    assert (
+        main(
+            [
+                "--home",
+                str(home),
+                "init",
+                "--label",
+                "observer",
+                "--port",
+                "48302",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    config = NodeConfig.load(home)
+    observer = Identity.load(config.identity_path)
+    first = Identity.generate("first")
+    second = Identity.generate("second")
+    book = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=observer.node_id,
+    )
+    first_subject = book.observe_actor(
+        first.card(),
+        evidence_ref="packet:first",
+        now=1_800_000_000_001,
+    )
+    second_subject = book.observe_actor(
+        second.card(),
+        evidence_ref="packet:second",
+        now=1_800_000_000_002,
+    )
+    book.set_circle(
+        first_subject.subject_ref,
+        "friend",
+        confidence=90,
+        evidence_ref="friend:explicit",
+        now=1_800_000_000_003,
+    )
+
+    assert (
+        main(
+            [
+                "--home",
+                str(home),
+                "subject-merge",
+                first_subject.subject_ref,
+                second_subject.subject_ref,
+                "--confidence",
+                "80",
+                "--evidence",
+                "claim:same-subject",
+                "--inherit",
+                first_subject.subject_ref,
+            ]
+        )
+        == 0
+    )
+    merged = json.loads(capsys.readouterr().out)
+    merged_ref = merged["transition"]["replacement_subject_refs"][0]
+    assert merged["replacements"][0]["relationship"]["circle"] == "friend"
+
+    assert (
+        main(
+            [
+                "--home",
+                str(home),
+                "subject-split",
+                merged_ref,
+                "--group",
+                first.node_id,
+                "--group",
+                second.node_id,
+                "--confidence",
+                "85",
+                "--evidence",
+                "claim:split",
+                "--inherit-group",
+                "1",
+            ]
+        )
+        == 0
+    )
+    split = json.loads(capsys.readouterr().out)
+    assert [
+        item["relationship"]["circle"] for item in split["replacements"]
+    ] == ["friend", "known"]
+
+    second_replacement = split["transition"]["replacement_subject_refs"][1]
+    assert (
+        main(
+            [
+                "--home",
+                str(home),
+                "subject-supersede",
+                second_replacement,
+                "--confidence",
+                "70",
+                "--evidence",
+                "claim:revision",
+                "--label",
+                "controller:unknown",
+            ]
+        )
+        == 0
+    )
+    superseded = json.loads(capsys.readouterr().out)
+    assert superseded["transition"]["transition_type"] == "supersede"
+    assert superseded["replacements"][0]["subject"]["labels"] == [
+        "controller:unknown"
+    ]

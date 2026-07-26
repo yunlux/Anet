@@ -521,6 +521,90 @@ def cmd_relation_trust(args: argparse.Namespace) -> int:
     return 0
 
 
+def _subject_transition_output(
+    relationships: RelationshipBook,
+    transition: Any,
+) -> dict[str, Any]:
+    replacements = []
+    for subject_ref in transition.replacement_subject_refs:
+        subject = relationships.subject(subject_ref)
+        relationship = relationships.relationship(subject_ref)
+        if subject is None or relationship is None:
+            raise RuntimeError("Subject transition replacement was not persisted")
+        replacements.append(
+            {
+                "subject": subject.to_dict(),
+                "relationship": relationship.to_dict(),
+            }
+        )
+    return {
+        "transition": transition.to_dict(),
+        "replacements": replacements,
+    }
+
+
+def cmd_subject_supersede(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    relationships = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=identity.node_id,
+    )
+    transition = relationships.supersede_subject(
+        args.subject,
+        confidence=args.confidence,
+        evidence_ref=args.evidence,
+        labels=args.label,
+    )
+    _print_json(_subject_transition_output(relationships, transition))
+    return 0
+
+
+def cmd_subject_merge(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    relationships = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=identity.node_id,
+    )
+    transition = relationships.merge_subjects(
+        args.subjects,
+        confidence=args.confidence,
+        evidence_ref=args.evidence,
+        inherit_subject_ref=args.inherit,
+        labels=args.label,
+    )
+    _print_json(_subject_transition_output(relationships, transition))
+    return 0
+
+
+def cmd_subject_split(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    relationships = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=identity.node_id,
+    )
+    groups = [
+        tuple(item.strip() for item in raw.split(",") if item.strip())
+        for raw in args.group
+    ]
+    transition = relationships.split_subject(
+        args.subject,
+        groups,
+        confidence=args.confidence,
+        evidence_ref=args.evidence,
+        inherit_group=(
+            args.inherit_group - 1
+            if args.inherit_group is not None
+            else None
+        ),
+        labels=args.label,
+    )
+    _print_json(_subject_transition_output(relationships, transition))
+    return 0
+
+
 def cmd_prekey_generate(args: argparse.Namespace) -> int:
     _, identity, peers, store = _load_runtime(args.home)
     try:
@@ -2258,6 +2342,110 @@ def build_parser() -> argparse.ArgumentParser:
         help="bounded local evidence reference; not raw private content",
     )
     relation_trust.set_defaults(func=cmd_relation_trust)
+
+    subject_supersede = sub.add_parser(
+        "subject-supersede",
+        help="replace one local Subject hypothesis while preserving its lineage",
+    )
+    subject_supersede.add_argument(
+        "subject",
+        help="active observer-local subj_ reference",
+    )
+    subject_supersede.add_argument(
+        "--confidence",
+        type=int,
+        required=True,
+        help="0-100 confidence in this hypothesis revision",
+    )
+    subject_supersede.add_argument(
+        "--evidence",
+        required=True,
+        help="bounded local evidence reference; not raw private content",
+    )
+    subject_supersede.add_argument(
+        "--label",
+        action="append",
+        default=[],
+        help="label added to the replacement hypothesis; may be repeated",
+    )
+    subject_supersede.set_defaults(func=cmd_subject_supersede)
+
+    subject_merge = sub.add_parser(
+        "subject-merge",
+        help="replace multiple local Subject hypotheses with one hypothesis",
+    )
+    subject_merge.add_argument(
+        "subjects",
+        nargs="+",
+        help="two or more active observer-local subj_ references",
+    )
+    subject_merge.add_argument(
+        "--confidence",
+        type=int,
+        required=True,
+        help="0-100 confidence in this hypothesis revision",
+    )
+    subject_merge.add_argument(
+        "--evidence",
+        required=True,
+        help="bounded local evidence reference; not raw private content",
+    )
+    subject_merge.add_argument(
+        "--inherit",
+        default="",
+        help=(
+            "explicit source Subject whose relationship may be inherited; "
+            "otherwise the replacement starts as known"
+        ),
+    )
+    subject_merge.add_argument(
+        "--label",
+        action="append",
+        default=[],
+        help="label added to the replacement hypothesis; may be repeated",
+    )
+    subject_merge.set_defaults(func=cmd_subject_merge)
+
+    subject_split = sub.add_parser(
+        "subject-split",
+        help="replace one local Subject hypothesis with an exact Actor partition",
+    )
+    subject_split.add_argument(
+        "subject",
+        help="active observer-local subj_ reference",
+    )
+    subject_split.add_argument(
+        "--group",
+        action="append",
+        required=True,
+        help="comma-separated Actor Node IDs; repeat for every partition group",
+    )
+    subject_split.add_argument(
+        "--confidence",
+        type=int,
+        required=True,
+        help="0-100 confidence in this hypothesis revision",
+    )
+    subject_split.add_argument(
+        "--evidence",
+        required=True,
+        help="bounded local evidence reference; not raw private content",
+    )
+    subject_split.add_argument(
+        "--inherit-group",
+        type=int,
+        help=(
+            "1-based group allowed to inherit the source relationship; "
+            "all other groups start as known"
+        ),
+    )
+    subject_split.add_argument(
+        "--label",
+        action="append",
+        default=[],
+        help="label added to each replacement hypothesis; may be repeated",
+    )
+    subject_split.set_defaults(func=cmd_subject_split)
 
     prekey_generate = sub.add_parser(
         "prekey-generate",
