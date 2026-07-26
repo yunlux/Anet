@@ -189,8 +189,8 @@ Content-free interaction evidence
 Subject transition lineage
 ```
 
-`relation-list --model` adds an eighth, derived `interaction_stats` projection;
-the redundant counters are not persisted.
+`relation-list --model` adds derived `interaction_stats` and
+`relationship_suggestions` projections; neither is persisted.
 
 The loader accepts version 1 through version 4 books. It projects v1
 one-Actor/one-Subject records into the current model, treats a v2 book as
@@ -280,6 +280,34 @@ anet --home <HOME> subject-split <SUBJECT_REF> \
 These commands mutate observer-local social state. They do not mutate PeerBook
 trust or create task, tool, file, payment, guardian, or delegation capability.
 
+## Explainable relationship suggestions
+
+`relation-suggest` evaluates the current private model without mutating it:
+
+```text
+anet --home <HOME> relation-suggest
+anet --home <HOME> relation-suggest --subject <SUBJECT_REF>
+```
+
+Every deterministic suggestion contains a basis hash, confidence, structured
+metrics, rationale codes, evidence tags, and a separate CLI argument list that
+would explicitly apply it. The Agent may inspect that output and make its own
+decision; merely generating a suggestion changes nothing.
+
+The default advisor has only two narrow policies:
+
+- a `known` Subject may be reviewed for `collab` after repeated task submission
+  and completion evidence exists in both directions;
+- at least three incoming completed/failed task results may produce a
+  Bayesian-shrunk review candidate for `task.delivery` contextual trust.
+
+It never suggests `friend`, `close`, `family`, Subject linking, Actor identity,
+PeerBook trust, capabilities, or authorization. Message traffic, Discord
+reputation, reactions, account age and social labels cannot satisfy either
+policy. A relationship suggestion is not persisted and cannot apply itself.
+The separate `relation-circle` or `relation-trust` command remains the explicit
+mutation seam.
+
 ## Discord Actor projection
 
 The Discord Adapter persists source events first, then idempotently projects
@@ -346,7 +374,7 @@ not inspect, calculate, or project the relationship.
 Relations v1 does not yet standardize:
 
 - mutual claim replacement, withdrawal, or jointly acknowledged ending;
-- policy suggestions derived from relationship changes;
+- accepted/rejected suggestion decision history or custom advisor policies;
 - encrypted projection streams for human observers;
 - cross-node portable relation bundles;
 - Web3 attestations or public reputation.

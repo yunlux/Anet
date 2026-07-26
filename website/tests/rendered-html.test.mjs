@@ -71,7 +71,9 @@ test("renders the relationship demo with explicit fact and inference boundaries"
   assert.match(html, /扫码添加好友/);
   assert.match(html, /导入本地模型/);
   assert.match(html, /Actor-to-Actor relationship claim/);
-  assert.match(html, /social-og\.png/);
+  assert.match(html, /RELATIONSHIP SUGGESTIONS/);
+  assert.match(html, /只读候选/);
+  assert.match(html, /social-og-suggestions\.png/);
 });
 
 test("removes the standalone install route", async () => {

@@ -428,6 +428,24 @@
 .metricGrid span,
 .metricGrid small { display: block; color: #8a8c84; font: 7px var(--font-mono); }
 .metricGrid strong { display: block; margin: 8px 0 3px; font: 600 22px var(--font-mono); }
+.suggestionList { padding: 0 19px 9px; }
+.suggestionList article {
+  min-height: 58px;
+  padding: 11px 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  border: 1px solid rgba(255,92,53,.38);
+  border-left: 3px solid #ff5c35;
+  background: rgba(255,92,53,.055);
+}
+.suggestionList article + article { margin-top: 7px; }
+.suggestionList strong,
+.suggestionList small { display: block; }
+.suggestionList strong { font-size: 10px; }
+.suggestionList small { margin-top: 5px; color: #777970; font: 8px/1.45 var(--font-mono); }
+.suggestionList b { color: #ff5c35; white-space: nowrap; font: 600 11px var(--font-mono); }
 .sectionTitle {
   padding: 17px 19px 9px;
   display: flex;

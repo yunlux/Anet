@@ -61,6 +61,7 @@ from .pairing import PairOffer, PairResponse
 from .packet import inspect_packet
 from .peers import PeerBook
 from .prekeys import PreKeyBundle, generate_prekey_bundle, import_prekey_bundle
+from .relation_advisor import RelationshipAdvisor, RelationshipSuggestion
 from .relationship_claims import (
     MutualRelationshipClaim,
     RelationshipClaimBook,
@@ -468,9 +469,75 @@ def cmd_relation_list(args: argparse.Namespace) -> int:
         own_actor_id=identity.node_id,
     )
     if args.model:
-        _print_json(relationships.snapshot())
+        model = relationships.snapshot()
+        model["relationship_suggestions"] = [
+            item.to_dict() for item in RelationshipAdvisor.advise(model)
+        ]
+        _print_json(model)
     else:
         _print_json([record.to_dict() for record in relationships.all()])
+    return 0
+
+
+def _suggestion_command(item: RelationshipSuggestion) -> list[str]:
+    evidence = f"suggestion:{item.suggestion_id}"
+    if item.suggestion_type == "circle.advance":
+        command = [
+            "relation-circle",
+            item.subject_ref,
+            item.proposed_circle,
+            "--confidence",
+            str(item.confidence),
+            "--evidence",
+            evidence,
+        ]
+        for label in item.evidence_tags:
+            command.extend(("--label", label))
+        return command
+    if (
+        item.suggestion_type == "context-trust.review"
+        and item.proposed_estimate is not None
+    ):
+        return [
+            "relation-trust",
+            item.subject_ref,
+            item.context,
+            "--estimate",
+            str(item.proposed_estimate),
+            "--confidence",
+            str(item.confidence),
+            "--evidence",
+            evidence,
+        ]
+    raise ValueError("unsupported relationship suggestion")
+
+
+def cmd_relation_suggest(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    relationships = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=identity.node_id,
+    )
+    suggestions = RelationshipAdvisor.advise(
+        relationships.snapshot(),
+        subject_ref=args.subject or "",
+    )
+    _print_json(
+        {
+            "suggestions": [
+                {
+                    **item.to_dict(),
+                    "explicit_command": _suggestion_command(item),
+                }
+                for item in suggestions
+            ],
+            "note": (
+                "Suggestions do not change relationships, Subject hypotheses, "
+                "trust, PeerBook entries, capabilities, or authorization"
+            ),
+        }
+    )
     return 0
 
 
@@ -2424,6 +2491,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="include Actor facts, competing Subject hypotheses, and events",
     )
     relation_list.set_defaults(func=cmd_relation_list)
+
+    relation_suggest = sub.add_parser(
+        "relation-suggest",
+        help="derive explainable relationship suggestions without applying them",
+    )
+    relation_suggest.add_argument(
+        "--subject",
+        help="limit suggestions to one active observer-local subj_ reference",
+    )
+    relation_suggest.set_defaults(func=cmd_relation_suggest)
 
     relation_link = sub.add_parser(
         "relation-link",

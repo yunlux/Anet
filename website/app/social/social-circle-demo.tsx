@@ -58,6 +58,18 @@ type RelationSnapshot = {
     replacement_subject_refs: string[];
     confidence: number;
   }[];
+  relationship_suggestions?: {
+    suggestion_id: string;
+    suggestion_type: "circle.advance" | "context-trust.review";
+    subject_ref: string;
+    confidence: number;
+    proposed_circle: string;
+    context: string;
+    proposed_estimate: number | null;
+    metrics: Record<string, number>;
+    requires_explicit_action: boolean;
+    authorization_effect: string;
+  }[];
 };
 
 type SubjectModel = {
@@ -75,6 +87,7 @@ type SubjectModel = {
   trust: { label: string; value: number }[];
   activity?: { label: string; count: number; detail: string }[];
   lineage?: { label: string; detail: string; confidence: number }[];
+  suggestions?: { title: string; detail: string; confidence: number }[];
   position: { left: string; top: string };
 };
 
@@ -139,6 +152,9 @@ function projectSnapshot(value: unknown): {
     : [];
   const transitions = Array.isArray(snapshot.subject_transitions)
     ? snapshot.subject_transitions
+    : [];
+  const suggestions = Array.isArray(snapshot.relationship_suggestions)
+    ? snapshot.relationship_suggestions
     : [];
   const projected = snapshot.subjects
     .filter((subject) => subject.state === "active")
@@ -213,6 +229,25 @@ function projectSnapshot(value: unknown): {
             .join(" + "),
           confidence: Number(item.confidence ?? 0),
         })),
+      suggestions: suggestions
+        .filter((item) => item.subject_ref === subject.subject_ref)
+        .map((item) => {
+          if (item.suggestion_type === "circle.advance") {
+            const circle = isCircle(item.proposed_circle)
+              ? circleMeta[item.proposed_circle].label
+              : item.proposed_circle;
+            return {
+              title: `建议进入${circle}圈`,
+              detail: `${Number(item.metrics.balanced_task_events ?? 0)} 组平衡任务事件 · 需明确采纳`,
+              confidence: Number(item.confidence ?? 0),
+            };
+          }
+          return {
+            title: `复核 ${item.context} 信任`,
+            detail: `候选 ${Number(item.proposed_estimate ?? 0)} · 样本 ${Number(item.metrics.sample_size ?? 0)} · 不自动应用`,
+            confidence: Number(item.confidence ?? 0),
+          };
+        }),
       position: importPositions[index % importPositions.length],
     } satisfies SubjectModel;
     });
@@ -298,16 +333,23 @@ const baseSubjects: SubjectModel[] = [
     mark: "D",
     accent: "#b38cff",
     kind: "推测：AI 服务",
-    circle: "collab",
+    circle: "known",
     rel: 48,
     confidence: 81,
-    summary: "完成过三次格式转换，关系局限在文件处理领域。",
-    labels: ["文件协作", "窄领域"],
+    summary: "完成过三次格式转换。系统建议进入协作圈，但 A 尚未明确采纳。",
+    labels: ["文件协作候选", "窄领域"],
     actors: [{ name: "D · an1…aa4", proof: "Node 签名", confidence: 100 }],
     trust: [
       { label: "格式转换", value: 88 },
       { label: "私密文件", value: 42 },
       { label: "开放工具", value: 25 },
+    ],
+    suggestions: [
+      {
+        title: "建议进入协作圈",
+        detail: "重复任务提交与完成 · 双向事件 · 不涉及授权",
+        confidence: 58,
+      },
     ],
     position: { left: "80%", top: "72%" },
   },
@@ -400,7 +442,7 @@ function proofLabel(scope: string | undefined) {
 }
 
 export function SocialCircleDemo() {
-  const [selectedId, setSelectedId] = useState("b");
+  const [selectedId, setSelectedId] = useState("d");
   const [viewMode, setViewMode] = useState<ViewMode>("subjects");
   const [step, setStep] = useState(5);
   const [qrOpen, setQrOpen] = useState(false);
@@ -483,7 +525,7 @@ export function SocialCircleDemo() {
   function resetModel() {
     setImportedSubjects(null);
     setImportedObserver("");
-    setSelectedId("b");
+    setSelectedId("d");
     setImportError("");
   }
 
@@ -706,6 +748,26 @@ export function SocialCircleDemo() {
             <div><span>CIRCLE</span><strong>{circleMeta[selected.id === "b" ? demoCircle : selected.circle].index}</strong><small>{circleMeta[selected.id === "b" ? demoCircle : selected.circle].label}</small></div>
             <div><span>ACTORS</span><strong>{selected.actors.length}</strong><small>关联来源</small></div>
           </div>
+
+          {selected.suggestions && selected.suggestions.length > 0 && (
+            <>
+              <div className={styles.sectionTitle}>
+                <span>RELATIONSHIP SUGGESTIONS</span>
+                <small>只读候选 · 需明确采纳</small>
+              </div>
+              <div className={styles.suggestionList}>
+                {selected.suggestions.map((item) => (
+                  <article key={`${item.title}:${item.detail}`}>
+                    <div>
+                      <strong>{item.title}</strong>
+                      <small>{item.detail}</small>
+                    </div>
+                    <b>{item.confidence}%</b>
+                  </article>
+                ))}
+              </div>
+            </>
+          )}
 
           {selected.activity && selected.activity.length > 0 && (
             <>

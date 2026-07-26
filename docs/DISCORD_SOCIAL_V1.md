@@ -57,6 +57,12 @@ relationship file receives event references and coarse facets only; raw
 Discord snowflakes, pseudonym keys, message content, Guild/channel keys and
 scores remain outside it.
 
+The relationship advisor deliberately ignores Discord reputation, account age,
+message volume, reactions and platform labels. Discord-only activity therefore
+cannot produce a `collab` or contextual-trust suggestion. A later verified Anet
+task exchange with the same Subject hypothesis may independently satisfy the
+narrow task-evidence policy.
+
 ## Discord permissions and content access
 
 Create a dedicated Discord application/bot with only the permissions needed on

@@ -12,9 +12,9 @@ export const metadata: Metadata = {
       "Local subject hypotheses. Verifiable actors. Explainable relationships.",
     images: [
       {
-        url: "/social-og.png",
-        width: 1734,
-        height: 907,
+        url: "/social-og-suggestions.png",
+        width: 1723,
+        height: 913,
         alt: "Anet Relations social circle demo",
       },
     ],
@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     title: "Anet Relations — A Small Social World",
     description:
       "Local subject hypotheses. Verifiable actors. Explainable relationships.",
-    images: ["/social-og.png"],
+    images: ["/social-og-suggestions.png"],
   },
 };
 

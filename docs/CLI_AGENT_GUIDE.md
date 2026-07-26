@@ -218,6 +218,20 @@ anet --home <HOME> discord-social-project --limit 1000
 This command is idempotent and projects only pseudonymous, content-free
 metadata. It does not create PeerBook trust or authorization.
 
+Before making an observer-local relationship estimate, request the derived
+advice instead of inventing a global score:
+
+```text
+anet --home <HOME> relation-suggest
+anet --home <HOME> relation-suggest --subject <SUBJECT_REF>
+```
+
+The command is read-only. Each result includes a separate `explicit_command`
+argument list. Execute that command only when the evidence and local policy
+justify the proposed circle or narrow trust context. The default advisor can
+suggest only `known -> collab` and `task.delivery` review. It cannot infer
+friendship, intimacy, family, Subject sameness, PeerBook trust, or capability.
+
 When Actor-to-Subject explanations change, preserve lineage instead of editing
 or deleting a `subj_` record:
 

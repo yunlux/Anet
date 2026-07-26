@@ -76,6 +76,14 @@ Actor as `known`; it cannot silently create collaboration, friendship,
 intimacy, family, guardianship, or authority.
 _Avoid_: Automatic trust engine, global reputation
 
+**Relationship suggestion**:
+A deterministic, observer-local proposal derived from bounded interaction
+evidence. It may recommend one explicit circle or contextual-trust review and
+must explain its evidence and uncertainty. A suggestion is not a relationship
+change, Subject fact, reputation score, or authorization; accepting it is a
+separate action.
+_Avoid_: Automatic relationship, trust decision, social credit
+
 **Mutual relationship claim**:
 A portable statement signed by two verified Actors that they both accepted the
 same circle and public relationship labels. Each observer attributes the claim
