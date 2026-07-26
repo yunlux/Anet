@@ -370,6 +370,8 @@ class DiscordSocialStore:
             return value
         value = secrets.token_bytes(32)
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_BINARY"):
+            flags |= os.O_BINARY
         descriptor = os.open(self.key_path, flags, 0o600)
         try:
             os.write(descriptor, value)

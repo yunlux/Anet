@@ -253,6 +253,23 @@ relationship. Both are immutable observer-local history with
 `authorization_effect: none`. Use a bounded rationale code or content-free
 reference, never raw conversation, task output, filenames, or secrets.
 
+For a human-visible or Agent-consumed replay of the local social model, read
+the privacy-bounded activity feed:
+
+```text
+anet --home <HOME> relation-activity --limit 100
+anet --home <HOME> relation-activity --after <NEXT_CURSOR> --wait 30
+```
+
+Always resume from the returned `next_cursor`; do not sort by `occurred_ms` or
+invent a cursor. Append order is authoritative for incremental reading, while
+`occurred_ms` describes when the source interaction reportedly happened. A
+cursor is valid only for the same observer-owned node home. The feed contains
+no raw evidence references or payloads and grants no authority. For frequent
+polling by a long-lived Agent, prefer the capability-gated
+`anet_relation_activity` MCP tool; keep it disabled when the Agent does not
+need private relationship visibility.
+
 When Actor-to-Subject explanations change, preserve lineage instead of editing
 or deleting a `subj_` record:
 

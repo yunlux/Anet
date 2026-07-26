@@ -176,7 +176,7 @@ human-device grants, or application-specific approval.
 
 ## Persistent model
 
-`relationships.json` version 6 is private node-local state with eight persisted
+`relationships.json` version 7 is private node-local state with eight persisted
 sections:
 
 ```text
@@ -190,16 +190,19 @@ Subject transition lineage
 Immutable relationship-suggestion decisions
 ```
 
-`relation-list --model` adds derived `interaction_stats` and
-`relationship_suggestions` projections; neither is persisted.
+`relation-list --model` adds derived `interaction_stats`,
+`relationship_suggestions`, and `relationship_activity` projections; none is
+persisted.
 
-The loader accepts version 1 through version 5 books. It projects v1
+The loader accepts version 1 through version 6 books. It projects v1
 one-Actor/one-Subject records into the current model, treats a v2 book as
 having no interaction evidence, treats a v3 book as having no Subject
 transitions, and assigns legacy Node Actors a migrated cryptographic Peer Card
 proof. Version 5 has no suggestion-decision history. The next mutation writes
-version 6. Migration does not increase Subject confidence, invent interaction
-evidence, transitions, decisions, or events.
+version 7. Version 6 events have no structured historical details; they remain
+valid and project with an empty detail object. Migration does not increase
+Subject confidence or invent interaction evidence, transitions, decisions,
+events, or event details.
 
 Interaction statistics are derived from evidence and are deliberately not
 trust scores. Repeated traffic can increase a count but cannot raise
@@ -207,6 +210,40 @@ contextual trust or grant a capability.
 
 One runtime owns one relationship book. Books must not be copied between node
 homes to make two observers appear to share a worldview.
+
+## Observer-local activity feed
+
+The activity feed is a derived, content-free chronological view over the
+relationship book's immutable event spine. Read the first page and continue
+with its opaque cursor:
+
+```text
+anet --home <HOME> relation-activity --limit 100
+anet --home <HOME> relation-activity --after <RAC_CURSOR> --limit 100
+anet --home <HOME> relation-activity --after <RAC_CURSOR> --wait 30
+anet --home <HOME> relation-activity --subject <SUBJECT_REF>
+```
+
+`--wait` performs one bounded long poll and returns as soon as a matching
+activity appears or the timeout expires. It does not start another node,
+listener, Ahub, or background process.
+
+The cursor is bound to the observer Actor and exact event position. A cursor
+from another node home fails instead of reading a different worldview. Pages
+preserve durable append order rather than sorting by occurrence time: a delayed
+Discord or task observation can carry an older `occurred_ms` while still
+appearing after the cursor position at which it was persisted.
+
+Each activity identifies its fact level (`verified`, `inference`, `estimate`,
+or `decision`) and contains only bounded structural details. Evidence
+references and decision rationale are replaced by digests; message text, task
+objectives/results, filenames, credentials, Subject labels, and Actor labels
+are not projected. Every page and item reports `authorization_effect: none`.
+The feed is a replay/read model, not a shared timeline or authority ledger.
+
+For repeated Agent polling, the optional MCP tool
+`anet_relation_activity` exposes the same projection only when
+`ANET_MCP_ALLOW_RELATION_ACTIVITY=1`. It is disabled by default.
 
 ## CLI interface
 
@@ -409,7 +446,7 @@ Relations v1 does not yet standardize:
 
 - mutual claim replacement, withdrawal, or jointly acknowledged ending;
 - custom advisor policies and decision supersession;
-- encrypted projection streams for human observers;
+- encrypted cross-node projection streams for remote human observers;
 - cross-node portable relation bundles;
 - Web3 attestations or public reputation.
 

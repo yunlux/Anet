@@ -18,6 +18,7 @@ from anet.mcp_server import (
     anet_inbox,
     anet_lifespan,
     anet_peers,
+    anet_relation_activity,
     anet_send,
     anet_settle,
     anet_status,
@@ -30,6 +31,7 @@ from anet.mcp_server import (
 )
 from anet.packet import OpenedMessage
 from anet.peers import PeerBook
+from anet.relations import RelationshipBook
 from anet.store import PacketStore
 
 
@@ -50,6 +52,55 @@ def test_mcp_approval_execution_tools_are_disabled_by_default(
                 "13" * 16,
                 "executed",
             )
+
+    asyncio.run(scenario())
+
+
+def test_mcp_relationship_activity_is_disabled_by_default(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("ANET_MCP_ALLOW_RELATION_ACTIVITY", raising=False)
+
+    async def scenario() -> None:
+        with pytest.raises(PermissionError, match="outside"):
+            await anet_relation_activity()
+
+    asyncio.run(scenario())
+
+
+def test_mcp_relationship_activity_reads_scoped_local_feed(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config = initialize_node(
+        tmp_path / "node",
+        label="node",
+        listen_port=45100,
+    )
+    identity = Identity.load(config.identity_path)
+    peer = Identity.generate("peer")
+    relationships = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=identity.node_id,
+    )
+    subject = relationships.observe_actor(
+        peer.card(),
+        evidence_ref="packet:mcp-private-ref",
+        now=1_800_000_000_001,
+    )
+    monkeypatch.setenv("ANET_HOME", str(config.home))
+    monkeypatch.setenv("ANET_MCP_ALLOW_RELATION_ACTIVITY", "1")
+
+    async def scenario() -> None:
+        async with anet_lifespan(server):
+            page = json.loads(
+                await anet_relation_activity(
+                    subject_ref=subject.subject_ref,
+                )
+            )
+            assert page["activities"][0]["activity_type"] == "actor.observed"
+            assert "mcp-private-ref" not in json.dumps(page)
+            assert page["authorization_effect"] == "none"
 
     asyncio.run(scenario())
 

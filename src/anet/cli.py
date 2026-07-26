@@ -61,6 +61,7 @@ from .pairing import PairOffer, PairResponse
 from .packet import inspect_packet
 from .peers import PeerBook
 from .prekeys import PreKeyBundle, generate_prekey_bundle, import_prekey_bundle
+from .relation_activity import RelationshipActivityFeed
 from .relation_advisor import RelationshipAdvisor, RelationshipSuggestion
 from .relation_decisions import RelationshipDecisionManager
 from .relationship_claims import (
@@ -474,6 +475,11 @@ def cmd_relation_list(args: argparse.Namespace) -> int:
         model["relationship_suggestions"] = [
             item.to_dict() for item in RelationshipAdvisor.advise(model)
         ]
+        model["relationship_activity"] = RelationshipActivityFeed.read(
+            model,
+            limit=500,
+            tail=True,
+        ).to_dict()
         _print_json(model)
     else:
         _print_json([record.to_dict() for record in relationships.all()])
@@ -555,6 +561,31 @@ def cmd_relation_suggest(args: argparse.Namespace) -> int:
         }
     )
     return 0
+
+
+def cmd_relation_activity(args: argparse.Namespace) -> int:
+    wait_seconds = float(args.wait)
+    if not 0 <= wait_seconds <= 30:
+        raise ValueError("relationship activity wait must be 0-30 seconds")
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    relationships = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=identity.node_id,
+    )
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        relationships.reload()
+        page = RelationshipActivityFeed.read(
+            relationships.snapshot(),
+            after=args.after or "",
+            limit=args.limit,
+            subject_ref=args.subject or "",
+        )
+        if page.activities or time.monotonic() >= deadline:
+            _print_json(page.to_dict())
+            return 0
+        time.sleep(min(0.25, max(0.0, deadline - time.monotonic())))
 
 
 def cmd_relation_decide(args: argparse.Namespace) -> int:
@@ -2552,6 +2583,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="limit suggestions to one active observer-local subj_ reference",
     )
     relation_suggest.set_defaults(func=cmd_relation_suggest)
+
+    relation_activity = sub.add_parser(
+        "relation-activity",
+        help="read the observer-local relationship activity feed",
+    )
+    relation_activity.add_argument(
+        "--after",
+        help="opaque rac_ cursor returned by an earlier page",
+    )
+    relation_activity.add_argument(
+        "--limit",
+        type=int,
+        default=100,
+        help="maximum activities to return (1-500; default: 100)",
+    )
+    relation_activity.add_argument(
+        "--subject",
+        help="limit activities to one observer-local subj_ reference",
+    )
+    relation_activity.add_argument(
+        "--wait",
+        type=float,
+        default=0,
+        help="wait up to 30 seconds for a new matching activity",
+    )
+    relation_activity.set_defaults(func=cmd_relation_activity)
 
     relation_decide = sub.add_parser(
         "relation-decide",

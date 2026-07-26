@@ -20,6 +20,8 @@ from .config import NodeConfig
 from .encoding import b64e
 from .node import AnetNode
 from .packet import inspect_packet
+from .relation_activity import RelationshipActivityFeed
+from .relations import RelationshipBook
 
 
 _node: AnetNode | None = None
@@ -141,6 +143,13 @@ def _require_approval_execution_enabled() -> None:
         )
 
 
+def _require_relation_activity_enabled() -> None:
+    if not _enabled("ANET_MCP_ALLOW_RELATION_ACTIVITY", default=False):
+        raise PermissionError(
+            "relationship activity is outside the MCP process capability"
+        )
+
+
 def _queue_result(
     node: AnetNode,
     packet_id: str,
@@ -208,6 +217,35 @@ async def anet_peers() -> str:
 )
 async def anet_card() -> str:
     return _dump(_require_node().local_card.to_dict())
+
+
+@server.tool(
+    name="anet_relation_activity",
+    description=(
+        "Read one incremental page of this node's observer-local, content-free "
+        "relationship activity. Disabled unless "
+        "ANET_MCP_ALLOW_RELATION_ACTIVITY=1; never changes trust or authorization."
+    ),
+)
+async def anet_relation_activity(
+    after: str = "",
+    limit: int = 100,
+    subject_ref: str = "",
+) -> str:
+    _require_relation_activity_enabled()
+    node = _require_node()
+    book = RelationshipBook(
+        node.config.relationships_path,
+        own_actor_id=node.identity.node_id,
+    )
+    return _dump(
+        RelationshipActivityFeed.read(
+            book.snapshot(),
+            after=after,
+            limit=limit,
+            subject_ref=subject_ref,
+        ).to_dict()
+    )
 
 
 @server.tool(

@@ -6,14 +6,14 @@ import secrets
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
 from .actors import is_actor_id, normalize_actor_kind, validate_actor_id
 from .encoding import atomic_json
 from .identity import PeerCard
 
 
-RELATION_BOOK_VERSION = 6
+RELATION_BOOK_VERSION = 7
 RELATION_CIRCLES = (
     "public",
     "known",
@@ -54,6 +54,17 @@ ACTOR_PROOF_SCOPES = frozenset(
     }
 )
 SUGGESTION_DECISIONS = frozenset({"accepted", "rejected"})
+RELATION_EVENT_DETAIL_FIELDS = {
+    "actor.observed": frozenset({"actor_kind", "proof_scope"}),
+    "actor.observation-refreshed": frozenset(
+        {"actor_kind", "proof_scope"}
+    ),
+    "subject.actor-linked": frozenset({"confidence"}),
+    "relationship.circle-set": frozenset({"circle", "confidence"}),
+    "relationship.context-trust-set": frozenset(
+        {"context", "estimate", "confidence"}
+    ),
+}
 
 
 def _now_ms(now: int | None) -> int:
@@ -431,6 +442,7 @@ class RelationshipEvent:
     subject_ref: str
     evidence_ref: str
     observed_ms: int
+    details: tuple[tuple[str, str | int], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.event_id.startswith("revt_"):
@@ -451,6 +463,45 @@ class RelationshipEvent:
         )
         if self.observed_ms <= 0:
             raise ValueError("invalid relationship event time")
+        allowed = RELATION_EVENT_DETAIL_FIELDS.get(
+            self.event_type,
+            frozenset(),
+        )
+        keys = [key for key, _value in self.details]
+        if (
+            len(keys) != len(set(keys))
+            or set(keys) - allowed
+            or any(
+                type(value) not in {str, int}
+                for _key, value in self.details
+            )
+        ):
+            raise ValueError("invalid relationship event details")
+        detail_map = dict(self.details)
+        if "confidence" in detail_map:
+            _confidence(
+                int(detail_map["confidence"]),
+                label="relationship event confidence",
+            )
+        if "estimate" in detail_map:
+            _confidence(
+                int(detail_map["estimate"]),
+                label="relationship event estimate",
+            )
+        if "circle" in detail_map and detail_map["circle"] not in RELATION_CIRCLES:
+            raise ValueError("invalid relationship event circle")
+        if "context" in detail_map:
+            _bounded_text(
+                str(detail_map["context"]),
+                label="relationship event context",
+                maximum=MAX_CONTEXT_LENGTH,
+            )
+        if "actor_kind" in detail_map:
+            normalize_actor_kind(str(detail_map["actor_kind"]))
+        if "proof_scope" in detail_map and detail_map["proof_scope"] not in (
+            ACTOR_PROOF_SCOPES
+        ):
+            raise ValueError("invalid relationship event proof scope")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -460,10 +511,16 @@ class RelationshipEvent:
             "subject_ref": self.subject_ref,
             "evidence_ref": self.evidence_ref,
             "observed_ms": self.observed_ms,
+            "details": dict(self.details),
         }
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> "RelationshipEvent":
+        raw_details = value.get("details", {})
+        if not isinstance(raw_details, Mapping):
+            raise ValueError("invalid relationship event details")
+        if any(type(item) not in {str, int} for item in raw_details.values()):
+            raise ValueError("invalid relationship event details")
         return cls(
             event_id=str(value["event_id"]),
             event_type=str(value["event_type"]),
@@ -471,6 +528,15 @@ class RelationshipEvent:
             subject_ref=str(value.get("subject_ref", "")),
             evidence_ref=str(value["evidence_ref"]),
             observed_ms=int(value["observed_ms"]),
+            details=tuple(
+                sorted(
+                    (
+                        str(key),
+                        int(item) if isinstance(item, int) else str(item),
+                    )
+                    for key, item in raw_details.items()
+                )
+            ),
         )
 
 
@@ -553,6 +619,9 @@ class SuggestionDecision:
 
     @classmethod
     def from_dict(cls, value: dict[str, Any]) -> "SuggestionDecision":
+        applied = value.get("applied")
+        if not isinstance(applied, bool):
+            raise ValueError("invalid suggestion decision application")
         return cls(
             decision_id=str(value["decision_id"]),
             suggestion_id=str(value["suggestion_id"]),
@@ -569,7 +638,7 @@ class SuggestionDecision:
                 if value.get("proposed_estimate") is None
                 else int(value["proposed_estimate"])
             ),
-            applied=bool(value["applied"]),
+            applied=applied,
             decided_ms=int(value["decided_ms"]),
         )
 
@@ -823,7 +892,7 @@ class RelationshipBook:
         if version == 1:
             self._load_v1(value)
             return
-        if version not in {2, 3, 4, 5, RELATION_BOOK_VERSION}:
+        if version not in {2, 3, 4, 5, 6, RELATION_BOOK_VERSION}:
             raise ValueError("unsupported relationship book version")
         actors = {
             item.actor_id: item
@@ -1146,6 +1215,7 @@ class RelationshipBook:
         actor_id: str = "",
         subject_ref: str = "",
         now: int,
+        details: Mapping[str, str | int] | None = None,
     ) -> RelationshipEvent:
         event = RelationshipEvent(
             event_id=f"revt_{secrets.token_hex(12)}",
@@ -1154,6 +1224,7 @@ class RelationshipBook:
             subject_ref=subject_ref,
             evidence_ref=evidence_ref,
             observed_ms=now,
+            details=tuple(sorted((details or {}).items())),
         )
         self._events.append(event)
         return event
@@ -1272,6 +1343,10 @@ class RelationshipBook:
                 subject_ref=subject_ref,
                 evidence_ref=evidence,
                 now=current,
+                details={
+                    "actor_kind": observation.actor_kind,
+                    "proof_scope": observation.proof.scope,
+                },
             )
             self.save()
             return subject
@@ -1320,6 +1395,10 @@ class RelationshipBook:
             subject_ref=subject.subject_ref,
             evidence_ref=evidence,
             now=current,
+            details={
+                "actor_kind": observation.actor_kind,
+                "proof_scope": observation.proof.scope,
+            },
         )
         self.save()
         return subject
@@ -1818,6 +1897,7 @@ class RelationshipBook:
             subject_ref=subject_key,
             evidence_ref=evidence,
             now=current,
+            details={"confidence": link_confidence},
         )
         self.save()
         return updated
@@ -1876,6 +1956,10 @@ class RelationshipBook:
             subject_ref=subject_key,
             evidence_ref=evidence,
             now=current,
+            details={
+                "circle": circle,
+                "confidence": relationship_confidence,
+            },
         )
         self.save()
         return updated
@@ -1951,6 +2035,11 @@ class RelationshipBook:
             subject_ref=subject_key,
             evidence_ref=evidence,
             now=current,
+            details={
+                "context": context_name,
+                "estimate": contexts[context_name].estimate,
+                "confidence": contexts[context_name].confidence,
+            },
         )
         self.save()
         return updated
@@ -2073,6 +2162,10 @@ class RelationshipBook:
                     subject_ref=subject_ref,
                     evidence_ref=evidence,
                     now=current,
+                    details={
+                        "circle": proposed_circle,
+                        "confidence": confidence,
+                    },
                 )
             else:
                 contexts = {
@@ -2116,6 +2209,11 @@ class RelationshipBook:
                     subject_ref=subject_ref,
                     evidence_ref=evidence,
                     now=current,
+                    details={
+                        "context": context,
+                        "estimate": proposed_estimate,
+                        "confidence": confidence,
+                    },
                 )
 
         decision_id = "rsd_" + hashlib.blake2s(

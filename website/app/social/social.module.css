@@ -544,6 +544,15 @@
 .storyControls button:hover:not(:disabled) { background: #d9ff43; }
 .storyControls button:disabled { color: #aaa; cursor: default; }
 .storyControls span { padding: 0 12px; color: #777970; font: 9px var(--font-mono); }
+.activityBoundary {
+  margin: 24px 0 0;
+  padding: 11px 13px;
+  color: #74766e;
+  border: 1px solid #c9c9c1;
+  background: rgba(255,255,255,.24);
+  font: 8px/1.55 var(--font-mono);
+}
+.activityBoundary b { margin-right: 12px; color: #ff5c35; }
 
 .timeline {
   margin-top: 40px;

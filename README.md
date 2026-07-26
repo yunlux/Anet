@@ -244,7 +244,9 @@ anet mcp
 Start from [mcp-stdio.example.json](mcp-stdio.example.json). Production
 profiles should bind an agent ID, consumer-group prefix, kind prefix, allowed
 peers, task senders, and exact task capabilities through process-level
-environment settings. Do not expose the complete MCP surface by default.
+environment settings. Keep private relationship activity disabled unless that
+Agent needs it (`ANET_MCP_ALLOW_RELATION_ACTIVITY=0` by default). Do not expose
+the complete MCP surface by default.
 
 ### Typed tasks
 

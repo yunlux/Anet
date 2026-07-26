@@ -92,6 +92,14 @@ relationship. A decision records the evidence basis and rationale but grants
 no authority and says nothing about the latent Subject as a fact.
 _Avoid_: Consent, authorization, global verdict, Subject truth
 
+**Relationship activity**:
+A privacy-bounded, chronological projection of one observer's immutable social
+records for incremental reading and replay. It preserves local append order and
+exposes only structured facts, inferences, and decisions; it is not a shared
+timeline, raw conversation history, authorization audit, or proof that another
+observer saw the same world.
+_Avoid_: Global event log, conversation transcript, authorization ledger
+
 **Mutual relationship claim**:
 A portable statement signed by two verified Actors that they both accepted the
 same circle and public relationship labels. Each observer attributes the claim

@@ -232,3 +232,20 @@ def test_discord_social_project_replays_without_creating_trust(
     ).snapshot()
     assert model["actors"][0]["actor_kind"] == "account.discord"
     assert model["relationships"][0]["context_trust"] == []
+
+
+def test_discord_social_key_is_written_as_binary_on_windows(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    key = b"\n" + (b"k" * 31)
+    monkeypatch.setattr("anet.discord_social.secrets.token_bytes", lambda _: key)
+    database_path = tmp_path / "discord-social.sqlite3"
+    key_path = tmp_path / "discord-social.key"
+
+    store = DiscordSocialStore(database_path, key_path)
+    store.close()
+
+    assert key_path.read_bytes() == key
+    reopened = DiscordSocialStore(database_path, key_path)
+    reopened.close()

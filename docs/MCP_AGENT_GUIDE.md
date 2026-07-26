@@ -69,7 +69,8 @@ capabilities merely to make startup succeed.
         "ANET_MCP_ALLOWED_PEERS": "<COMPLETE_PINNED_NODE_ID>",
         "ANET_MCP_TASK_ALLOWED_SENDERS": "<COMPLETE_PINNED_NODE_ID>",
         "ANET_MCP_TASK_CAPABILITIES": "<EXACT_CAPABILITY_OR_NAMESPACE.*>",
-        "ANET_MCP_ALLOW_RAW_INBOX": "0"
+        "ANET_MCP_ALLOW_RAW_INBOX": "0",
+        "ANET_MCP_ALLOW_RELATION_ACTIVITY": "0"
       }
     }
   }
@@ -111,6 +112,7 @@ Tool arguments can narrow these values but cannot expand them:
 | `ANET_MCP_ALLOW_UNTRUSTED=1` | Opts into untrusted consumer input. Default: disabled. |
 | `ANET_MCP_ALLOW_TRANSIENT=1` | Opts into transient consumer input. Default: disabled. |
 | `ANET_MCP_ALLOW_APPROVAL_EXECUTION=1` | Enables high-risk Companion approval ledger tools. Default: disabled. |
+| `ANET_MCP_ALLOW_RELATION_ACTIVITY=1` | Enables the private observer-local social activity feed. Default: disabled. |
 
 Use complete Node IDs. `*` is supported only for deliberately unrestricted
 deployments and should not be an Agent-selected default.
@@ -147,6 +149,19 @@ recipient processed the message.
 | `anet_settle` | ACK durable completion or NACK for retry. |
 | `anet_claim_renew` | Extend a valid lease during long work. |
 | `anet_consumer_status` | Inspect available, leased, retry, and ACK counts. |
+
+### Observer-local social activity
+
+| Tool | Purpose |
+| --- | --- |
+| `anet_relation_activity` | Read one cursor-based page of content-free Actor, Subject, interaction, relationship, and suggestion-decision activity. |
+
+This read-only tool is unavailable unless
+`ANET_MCP_ALLOW_RELATION_ACTIVITY=1`. Its opaque cursor is bound to the
+selected node's observer identity; never reuse it with another `ANET_HOME`.
+Poll with the returned `next_cursor` for repeated Agent use. The feed preserves
+local append order, hashes evidence references and decision rationale, excludes
+raw payloads, and always reports `authorization_effect: none`.
 
 ### Typed task execution
 

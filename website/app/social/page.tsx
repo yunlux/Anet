@@ -5,14 +5,14 @@ import { SocialCircleDemo } from "./social-circle-demo";
 export const metadata: Metadata = {
   title: "Social Circle Demo",
   description:
-    "An interactive Anet demo showing how an agent estimates subjects, relationships, trust, and social circles.",
+    "An interactive Anet demo for replaying how an agent observes actors, revises subject hypotheses, and explicitly decides relationship changes.",
   openGraph: {
     title: "Anet Relations — A Small Social World",
     description:
-      "Local subject hypotheses. Verifiable actors. Explainable relationships.",
+      "Verifiable actors. Local subject hypotheses. Replayable relationship decisions.",
     images: [
       {
-        url: "/social-og-decisions.png",
+        url: "/social-og-activity.png",
         width: 1706,
         height: 922,
         alt: "Anet Relations social circle demo",
@@ -23,8 +23,8 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Anet Relations — A Small Social World",
     description:
-      "Local subject hypotheses. Verifiable actors. Explainable relationships.",
-    images: ["/social-og-decisions.png"],
+      "Verifiable actors. Local subject hypotheses. Replayable relationship decisions.",
+    images: ["/social-og-activity.png"],
   },
 };
 

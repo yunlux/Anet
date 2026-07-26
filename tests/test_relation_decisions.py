@@ -289,6 +289,6 @@ def test_relation_decide_cli_applies_and_lists_history(
 
     assert main(["--home", str(home), "relation-list", "--model"]) == 0
     model = json.loads(capsys.readouterr().out)
-    assert model["version"] == 6
+    assert model["version"] == 7
     assert model["relationship_suggestions"] == []
     assert model["suggestion_decisions"] == history

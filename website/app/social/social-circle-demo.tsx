@@ -83,6 +83,24 @@ type RelationSnapshot = {
     applied: boolean;
     authorization_effect: string;
   }[];
+  relationship_activity?: {
+    activities: {
+      activity_id: string;
+      activity_type: string;
+      category: "actor" | "subject" | "interaction" | "relationship" | "decision";
+      fact_level: "verified" | "inference" | "estimate" | "decision";
+      actor_id: string;
+      subject_ref: string;
+      occurred_ms: number;
+      details: Record<string, unknown>;
+      privacy: string;
+      authorization_effect: string;
+    }[];
+    next_cursor: string;
+    has_more: boolean;
+    ordering: string;
+    privacy: string;
+  };
 };
 
 type SubjectModel = {
@@ -113,6 +131,13 @@ type SubjectModel = {
     rationale: string;
   }[];
   position: { left: string; top: string };
+};
+
+type TimelineEvent = {
+  id: string;
+  title: string;
+  detail: string;
+  tag: string;
 };
 
 const circleMeta: Record<Circle, { label: string; index: string }> = {
@@ -151,18 +176,19 @@ function isCircle(value: string): value is Circle {
 function projectSnapshot(value: unknown): {
   observer: string;
   subjects: SubjectModel[];
+  activities: TimelineEvent[];
 } {
   if (!value || typeof value !== "object") {
     throw new Error("模型必须是 JSON 对象");
   }
   const snapshot = value as RelationSnapshot;
   if (
-    ![2, 3, 4, 5, 6].includes(snapshot.version) ||
+    ![2, 3, 4, 5, 6, 7].includes(snapshot.version) ||
     !Array.isArray(snapshot.actors) ||
     !Array.isArray(snapshot.subjects) ||
     !Array.isArray(snapshot.relationships)
   ) {
-    throw new Error("仅支持 relation-list --model 输出的 v2-v6 模型");
+    throw new Error("仅支持 relation-list --model 输出的 v2-v7 模型");
   }
   const actors = new Map(snapshot.actors.map((actor) => [actor.actor_id, actor]));
   const relationships = new Map(
@@ -303,6 +329,11 @@ function projectSnapshot(value: unknown): {
   return {
     observer: String(snapshot.observer_actor_id || "local observer"),
     subjects: projected,
+    activities: Array.isArray(snapshot.relationship_activity?.activities)
+      ? snapshot.relationship_activity.activities
+          .slice(-12)
+          .map(projectActivity)
+      : [],
   };
 }
 
@@ -441,38 +472,132 @@ const scannedFriend: SubjectModel = {
   position: { left: "38%", top: "27%" },
 };
 
-const formationEvents = [
+const formationEvents: TimelineEvent[] = [
   {
+    id: "formation-actor",
     title: "发现可验证 Actor",
     detail: "A 收到来自 an1…7f2 的签名 Peer Card。",
     tag: "FACT",
   },
   {
+    id: "formation-subject",
     title: "形成 Subject 假设",
     detail: "语言、活动时间与 Discord 声明支持“它们可能是同一主体”。置信度 62%。",
     tag: "INFERENCE",
   },
   {
+    id: "formation-trust",
     title: "完成双向信任",
     detail: "A 与 B 分别固定对方 Peer Card。共同关系仍未自动升级。",
     tag: "SIGNED",
   },
   {
+    id: "formation-skill",
     title: "交换技能清单",
     detail: "B 分享 protocol.review 与 evidence.trace；A 仅开放讨论能力。",
     tag: "EXCHANGE",
   },
   {
+    id: "formation-task",
     title: "完成协作与文件交换",
     detail: "任务验收成功；report.md 摘要一致，目标节点已经持久保存。",
     tag: "EVIDENCE",
   },
   {
+    id: "formation-friend",
     title: "双方确认成为朋友",
     detail: "A 与 B 签署同一份 Actor-to-Actor relationship claim；A 仍保留“文件执行”领域的较低信任。",
     tag: "MILESTONE",
   },
 ];
+
+function projectActivity(
+  item: NonNullable<
+    RelationSnapshot["relationship_activity"]
+  >["activities"][number],
+): TimelineEvent {
+  const details = item.details ?? {};
+  const subject = item.subject_ref
+    ? `${item.subject_ref.slice(0, 13)}…`
+    : "—";
+  const tags = {
+    verified: "FACT",
+    inference: "INFERENCE",
+    estimate: "ESTIMATE",
+    decision: "DECISION",
+  };
+  if (item.activity_type === "actor.observed") {
+    return {
+      id: item.activity_id,
+      title: "观察到可验证 Actor",
+      detail: `${String(details.actor_kind || "actor")} · ${String(
+        item.actor_id,
+      ).slice(0, 14)}… · 归入 ${subject}`,
+      tag: tags[item.fact_level],
+    };
+  }
+  if (item.activity_type === "interaction.observed") {
+    const facets = Array.isArray(details.facets)
+      ? details.facets.join(" + ")
+      : "interaction";
+    return {
+      id: item.activity_id,
+      title: `${String(details.direction || "local")} ${facets}`,
+      detail: `${String(details.context || "context")} · ${String(
+        details.outcome || "observed",
+      )} · ${subject}`,
+      tag: tags[item.fact_level],
+    };
+  }
+  if (item.activity_type === "relationship.circle-set") {
+    return {
+      id: item.activity_id,
+      title: `圈层设为 ${String(details.circle || "unknown")}`,
+      detail: `关系置信度 ${Number(details.confidence ?? 0)}% · ${subject} · 不改变授权`,
+      tag: tags[item.fact_level],
+    };
+  }
+  if (item.activity_type === "relationship.context-trust-set") {
+    return {
+      id: item.activity_id,
+      title: `复核 ${String(details.context || "context")}`,
+      detail: `估计 ${Number(details.estimate ?? 0)} · 置信度 ${Number(
+        details.confidence ?? 0,
+      )}% · 仅限该上下文`,
+      tag: tags[item.fact_level],
+    };
+  }
+  if (item.activity_type.startsWith("relationship.suggestion-")) {
+    return {
+      id: item.activity_id,
+      title:
+        String(details.decision) === "accepted"
+          ? "采纳关系建议"
+          : "拒绝关系建议",
+      detail: `${String(details.suggestion_type || "suggestion")} · ${
+        details.applied ? "已应用提议" : "关系未改变"
+      } · 权限影响为零`,
+      tag: tags[item.fact_level],
+    };
+  }
+  if (item.activity_type.startsWith("subject.")) {
+    return {
+      id: item.activity_id,
+      title:
+        item.activity_type === "subject.actor-linked"
+          ? "修订 Actor–Subject 链接"
+          : `Subject ${String(details.transition_type || "revision")}`,
+      detail: `${subject} · 推测修订，不是身份事实`,
+      tag: tags[item.fact_level],
+    };
+  }
+  return {
+    id: item.activity_id,
+    title: item.activity_type,
+    detail: `${subject} · observer-local activity`,
+    tag: tags[item.fact_level],
+  };
+}
 
 function scoreColor(value: number) {
   if (value >= 80) return "#83c95f";
@@ -498,6 +623,7 @@ export function SocialCircleDemo() {
   const [qrImage, setQrImage] = useState("");
   const [importedSubjects, setImportedSubjects] = useState<SubjectModel[] | null>(null);
   const [importedObserver, setImportedObserver] = useState("");
+  const [importedActivity, setImportedActivity] = useState<TimelineEvent[]>([]);
   const [importError, setImportError] = useState("");
   const [demoDecisions, setDemoDecisions] = useState<
     Record<string, "accepted" | "rejected">
@@ -589,7 +715,9 @@ export function SocialCircleDemo() {
       const projected = projectSnapshot(JSON.parse(await file.text()));
       setImportedSubjects(projected.subjects);
       setImportedObserver(projected.observer);
+      setImportedActivity(projected.activities);
       setSelectedId(projected.subjects[0].id);
+      setStep(Math.max(0, projected.activities.length - 1));
       setFriendAdded(false);
       setImportError("");
     } catch (error) {
@@ -600,7 +728,9 @@ export function SocialCircleDemo() {
   function resetModel() {
     setImportedSubjects(null);
     setImportedObserver("");
+    setImportedActivity([]);
     setSelectedId("d");
+    setStep(formationEvents.length - 1);
     setImportError("");
     setDemoDecisions({});
   }
@@ -613,7 +743,52 @@ export function SocialCircleDemo() {
       ...current,
       [suggestionId]: decision,
     }));
+    setStep(formationEvents.length + (decision === "accepted" ? 1 : 0));
   }
+
+  const timelineEvents = useMemo(() => {
+    if (importedSubjects) {
+      return importedActivity.length
+        ? importedActivity
+        : [
+            {
+              id: "legacy-model-no-activity",
+              title: "模型未包含活动投影",
+              detail:
+                "请使用当前版本的 relation-list --model 重新导出，即可回放本地追加历史。",
+              tag: "NOTICE",
+            },
+          ];
+    }
+    const decision = demoDecisions.rsg_demo_d_collab;
+    if (!decision) {
+      return formationEvents;
+    }
+    const changes: TimelineEvent[] =
+      decision === "accepted"
+        ? [
+            {
+              id: "demo-circle-applied",
+              title: "D 进入协作圈",
+              detail: "关系建议被显式采纳；只改变本地圈层，权限影响为零。",
+              tag: "ESTIMATE",
+            },
+          ]
+        : [];
+    return [
+      ...formationEvents,
+      ...changes,
+      {
+        id: `demo-decision-${decision}`,
+        title: decision === "accepted" ? "采纳 D 的建议" : "拒绝 D 的建议",
+        detail:
+          decision === "accepted"
+            ? "决定与圈层变更写入同一次本地保存，可回放、不可反转。"
+            : "拒绝决定已记录，D 仍留在新认识圈，未发生关系变更。",
+        tag: "DECISION",
+      },
+    ];
+  }, [demoDecisions, importedActivity, importedSubjects]);
 
   const actorCount = new Set(
     subjects.flatMap((subject) => subject.actors.map((actor) => actor.name)),
@@ -967,19 +1142,29 @@ export function SocialCircleDemo() {
         <div className={styles.storyHeading}>
           <div>
             <p className={styles.kicker}>RELATIONSHIP FORMATION</p>
-            <h2>A 与 B 是怎样成为朋友的？</h2>
+            <h2>
+              {importedSubjects
+                ? "这个本地关系模型经历了什么？"
+                : "A 的小社会是怎样形成的？"}
+            </h2>
           </div>
           <div className={styles.storyControls}>
             <button type="button" onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0}>← 上一步</button>
-            <span>{step + 1} / {formationEvents.length}</span>
-            <button type="button" onClick={() => setStep(Math.min(formationEvents.length - 1, step + 1))} disabled={step === formationEvents.length - 1}>下一步 →</button>
+            <span>{Math.min(step + 1, timelineEvents.length)} / {timelineEvents.length}</span>
+            <button type="button" onClick={() => setStep(Math.min(timelineEvents.length - 1, step + 1))} disabled={step >= timelineEvents.length - 1}>下一步 →</button>
           </div>
         </div>
 
+        <p className={styles.activityBoundary}>
+          <b>APPEND ORDER</b>
+          时间线按本地持久化顺序回放；occurred_ms 只表示来源声称的发生时间。
+          导入 v7 模型时，证据引用、正文与决定理由不会进入浏览器投影。
+        </p>
+
         <div className={styles.timeline}>
-          {formationEvents.map((event, index) => (
+          {timelineEvents.map((event, index) => (
             <article
-              key={event.title}
+              key={event.id}
               className={index <= step ? styles.eventActive : styles.eventFuture}
               onClick={() => setStep(index)}
             >
