@@ -12,8 +12,14 @@ type RelationSnapshot = {
   observer_actor_id: string;
   actors: {
     actor_id: string;
+    actor_kind?: string;
     actor_label: string;
     state: string;
+    proofs?: {
+      proof_type: string;
+      scope: string;
+      issuer_actor_id: string;
+    }[];
   }[];
   subjects: {
     subject_ref: string;
@@ -114,12 +120,12 @@ function projectSnapshot(value: unknown): {
   }
   const snapshot = value as RelationSnapshot;
   if (
-    ![2, 3, 4].includes(snapshot.version) ||
+    ![2, 3, 4, 5].includes(snapshot.version) ||
     !Array.isArray(snapshot.actors) ||
     !Array.isArray(snapshot.subjects) ||
     !Array.isArray(snapshot.relationships)
   ) {
-    throw new Error("仅支持 relation-list --model 输出的 v2/v3/v4 模型");
+    throw new Error("仅支持 relation-list --model 输出的 v2/v3/v4/v5 模型");
   }
   const actors = new Map(snapshot.actors.map((actor) => [actor.actor_id, actor]));
   const relationships = new Map(
@@ -169,7 +175,12 @@ function projectSnapshot(value: unknown): {
           name: actor?.actor_label
             ? `${actor.actor_label} · ${link.actor_id.slice(0, 11)}…`
             : `${link.actor_id.slice(0, 14)}…`,
-          proof: actor?.state === "revoked" ? "Actor 已撤销" : "Node 签名",
+          proof:
+            actor?.state === "revoked"
+              ? "Actor 已撤销"
+              : Array.isArray(actor?.proofs)
+                ? proofLabel(actor.proofs[0]?.scope)
+                : "Node 签名",
           confidence: Number(link.confidence ?? 0),
         };
       }),
@@ -378,6 +389,14 @@ function scoreColor(value: number) {
   if (value >= 80) return "#83c95f";
   if (value >= 50) return "#e0b34d";
   return "#ff6b4a";
+}
+
+function proofLabel(scope: string | undefined) {
+  if (scope === "cryptographic") return "密码学签名";
+  if (scope === "platform-observed") return "平台 Adapter 观察";
+  if (scope === "bridge-attested") return "桥接 Node 证明";
+  if (scope === "operator-attested") return "本地操作方声明";
+  return "来源已记录";
 }
 
 export function SocialCircleDemo() {

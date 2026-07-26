@@ -8,11 +8,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
+from .actors import is_actor_id, normalize_actor_kind, validate_actor_id
 from .encoding import atomic_json
 from .identity import PeerCard
 
 
-RELATION_BOOK_VERSION = 4
+RELATION_BOOK_VERSION = 5
 RELATION_CIRCLES = (
     "public",
     "known",
@@ -44,6 +45,14 @@ INTERACTION_OUTCOMES = frozenset(
     }
 )
 SUBJECT_TRANSITION_TYPES = frozenset({"split", "merge", "supersede"})
+ACTOR_PROOF_SCOPES = frozenset(
+    {
+        "cryptographic",
+        "platform-observed",
+        "bridge-attested",
+        "operator-attested",
+    }
+)
 
 
 def _now_ms(now: int | None) -> int:
@@ -74,29 +83,110 @@ def _unique_text(values: Iterable[str], *, label: str, maximum: int) -> tuple[st
 
 
 @dataclass(frozen=True)
+class ActorProof:
+    proof_type: str
+    scope: str
+    issuer_actor_id: str
+    evidence_ref: str
+    observed_ms: int
+
+    def __post_init__(self) -> None:
+        _bounded_text(
+            self.proof_type,
+            label="Actor proof type",
+            maximum=MAX_CONTEXT_LENGTH,
+        )
+        if self.scope not in ACTOR_PROOF_SCOPES:
+            raise ValueError("invalid Actor proof scope")
+        validate_actor_id(self.issuer_actor_id)
+        _bounded_text(
+            self.evidence_ref,
+            label="Actor proof evidence reference",
+            maximum=MAX_EVIDENCE_LENGTH,
+        )
+        if self.observed_ms <= 0:
+            raise ValueError("invalid Actor proof time")
+
+    @property
+    def key(self) -> tuple[str, str, str]:
+        return (
+            self.proof_type,
+            self.scope,
+            self.issuer_actor_id,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "proof_type": self.proof_type,
+            "scope": self.scope,
+            "issuer_actor_id": self.issuer_actor_id,
+            "evidence_ref": self.evidence_ref,
+            "observed_ms": self.observed_ms,
+        }
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "ActorProof":
+        return cls(
+            proof_type=str(value["proof_type"]),
+            scope=str(value["scope"]),
+            issuer_actor_id=str(value["issuer_actor_id"]),
+            evidence_ref=str(value["evidence_ref"]),
+            observed_ms=int(value["observed_ms"]),
+        )
+
+
+@dataclass(frozen=True)
+class ActorObservation:
+    actor_id: str
+    actor_kind: str
+    actor_label: str
+    proof: ActorProof
+
+    def __post_init__(self) -> None:
+        validate_actor_id(self.actor_id)
+        kind = normalize_actor_kind(self.actor_kind)
+        if (self.actor_id.startswith("an1")) != (kind == "anet.node"):
+            raise ValueError("Actor ID and kind use incompatible identity domains")
+        if len(self.actor_label) > MAX_LABEL_LENGTH:
+            raise ValueError("invalid Actor label")
+
+
+@dataclass(frozen=True)
 class ActorRecord:
     actor_id: str
+    actor_kind: str
     actor_label: str
     state: str
+    proofs: tuple[ActorProof, ...]
     evidence_refs: tuple[str, ...]
     first_seen_ms: int
     updated_ms: int
 
     def __post_init__(self) -> None:
-        if not self.actor_id.startswith("an1"):
-            raise ValueError("relationship actor must be an Anet Node ID")
+        validate_actor_id(self.actor_id)
+        kind = normalize_actor_kind(self.actor_kind)
+        if (self.actor_id.startswith("an1")) != (kind == "anet.node"):
+            raise ValueError("Actor ID and kind use incompatible identity domains")
         if len(self.actor_label) > MAX_LABEL_LENGTH:
             raise ValueError("invalid Actor label")
         if self.state not in ACTOR_STATES:
             raise ValueError("invalid Actor state")
+        proof_keys = [proof.key for proof in self.proofs]
+        if not self.proofs or len(proof_keys) != len(set(proof_keys)):
+            raise ValueError("Actor must contain unique proof records")
         if self.first_seen_ms <= 0 or self.updated_ms < self.first_seen_ms:
             raise ValueError("invalid Actor observation time")
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "actor_id": self.actor_id,
+            "actor_kind": self.actor_kind,
             "actor_label": self.actor_label,
             "state": self.state,
+            "proofs": [
+                item.to_dict()
+                for item in sorted(self.proofs, key=lambda item: item.key)
+            ],
             "evidence_refs": list(self.evidence_refs),
             "first_seen_ms": self.first_seen_ms,
             "updated_ms": self.updated_ms,
@@ -106,8 +196,13 @@ class ActorRecord:
     def from_dict(cls, value: dict[str, Any]) -> "ActorRecord":
         return cls(
             actor_id=str(value["actor_id"]),
+            actor_kind=str(value["actor_kind"]),
             actor_label=str(value.get("actor_label", "")),
             state=str(value.get("state", "active")),
+            proofs=tuple(
+                ActorProof.from_dict(dict(item))
+                for item in value.get("proofs", ())
+            ),
             evidence_refs=_unique_text(
                 value.get("evidence_refs", ()),
                 label="Actor evidence reference",
@@ -126,8 +221,7 @@ class SubjectActorLink:
     updated_ms: int
 
     def __post_init__(self) -> None:
-        if not self.actor_id.startswith("an1"):
-            raise ValueError("Subject link Actor must be an Anet Node ID")
+        validate_actor_id(self.actor_id)
         _confidence(self.confidence, label="Subject link confidence")
         if self.updated_ms <= 0:
             raise ValueError("invalid Subject link update time")
@@ -345,7 +439,7 @@ class RelationshipEvent:
             label="relationship event type",
             maximum=MAX_CONTEXT_LENGTH,
         )
-        if self.actor_id and not self.actor_id.startswith("an1"):
+        if self.actor_id and not is_actor_id(self.actor_id):
             raise ValueError("invalid relationship event Actor")
         if self.subject_ref and not self.subject_ref.startswith("subj_"):
             raise ValueError("invalid relationship event Subject")
@@ -396,8 +490,7 @@ class InteractionEvidence:
     def __post_init__(self) -> None:
         if not self.interaction_id.startswith("iev_"):
             raise ValueError("invalid interaction evidence ID")
-        if not self.actor_id.startswith("an1"):
-            raise ValueError("invalid interaction Actor")
+        validate_actor_id(self.actor_id)
         if not self.subject_ref.startswith("subj_"):
             raise ValueError("invalid interaction Subject")
         if self.direction not in INTERACTION_DIRECTIONS:
@@ -571,7 +664,9 @@ class RelationshipRecord:
 
     subject_ref: str
     actor_id: str
+    actor_kind: str
     actor_label: str
+    proof_scopes: tuple[str, ...]
     circle: str
     state: str
     relationship_labels: tuple[str, ...]
@@ -584,7 +679,9 @@ class RelationshipRecord:
         return {
             "subject_ref": self.subject_ref,
             "actor_id": self.actor_id,
+            "actor_kind": self.actor_kind,
             "actor_label": self.actor_label,
+            "proof_scopes": list(self.proof_scopes),
             "circle": self.circle,
             "state": self.state,
             "relationship_labels": list(self.relationship_labels),
@@ -600,7 +697,7 @@ class RelationshipBook:
 
     def __init__(self, path: Path, *, own_actor_id: str) -> None:
         self.path = Path(path)
-        self.own_actor_id = str(own_actor_id)
+        self.own_actor_id = validate_actor_id(own_actor_id)
         self._actors: dict[str, ActorRecord] = {}
         self._subjects: dict[str, SubjectHypothesis] = {}
         self._relationships: dict[str, RelationshipEstimate] = {}
@@ -623,12 +720,13 @@ class RelationshipBook:
         if version == 1:
             self._load_v1(value)
             return
-        if version not in {2, 3, RELATION_BOOK_VERSION}:
+        if version not in {2, 3, 4, RELATION_BOOK_VERSION}:
             raise ValueError("unsupported relationship book version")
         actors = {
             item.actor_id: item
             for item in (
-                ActorRecord.from_dict(dict(value)) for value in value.get("actors", ())
+                self._actor_from_dict(dict(item), version=version)
+                for item in value.get("actors", ())
             )
         }
         subjects = {
@@ -674,6 +772,39 @@ class RelationshipBook:
         self._interactions = interactions
         self._transitions = transitions
 
+    @staticmethod
+    def _actor_from_dict(value: dict[str, Any], *, version: int) -> ActorRecord:
+        if version >= 5:
+            return ActorRecord.from_dict(value)
+        actor_id = str(value["actor_id"])
+        first_seen_ms = int(value["first_seen_ms"])
+        evidence_refs = _unique_text(
+            value.get("evidence_refs", ()),
+            label="Actor evidence reference",
+            maximum=MAX_EVIDENCE_LENGTH,
+        )
+        migration_evidence = (
+            evidence_refs[0] if evidence_refs else f"migration:relations-v{version}"
+        )
+        return ActorRecord(
+            actor_id=actor_id,
+            actor_kind="anet.node",
+            actor_label=str(value.get("actor_label", "")),
+            state=str(value.get("state", "active")),
+            proofs=(
+                ActorProof(
+                    proof_type="anet.peer-card",
+                    scope="cryptographic",
+                    issuer_actor_id=actor_id,
+                    evidence_ref=migration_evidence,
+                    observed_ms=first_seen_ms,
+                ),
+            ),
+            evidence_refs=evidence_refs or (migration_evidence,),
+            first_seen_ms=first_seen_ms,
+            updated_ms=int(value["updated_ms"]),
+        )
+
     def _load_v1(self, value: dict[str, Any]) -> None:
         actors: dict[str, ActorRecord] = {}
         subjects: dict[str, SubjectHypothesis] = {}
@@ -689,13 +820,27 @@ class RelationshipBook:
             subject_ref = str(raw["subject_ref"])
             actors[actor_id] = ActorRecord(
                 actor_id=actor_id,
+                actor_kind="anet.node",
                 actor_label=str(raw.get("actor_label", ""))[:MAX_LABEL_LENGTH],
                 state=(
                     "revoked"
                     if str(raw.get("state", "active")) == "revoked"
                     else "active"
                 ),
-                evidence_refs=evidence_refs,
+                proofs=(
+                    ActorProof(
+                        proof_type="anet.peer-card",
+                        scope="cryptographic",
+                        issuer_actor_id=actor_id,
+                        evidence_ref=(
+                            evidence_refs[0]
+                            if evidence_refs
+                            else "migration:relations-v1"
+                        ),
+                        observed_ms=updated_ms,
+                    ),
+                ),
+                evidence_refs=evidence_refs or ("migration:relations-v1",),
                 first_seen_ms=updated_ms,
                 updated_ms=updated_ms,
             )
@@ -751,6 +896,14 @@ class RelationshipBook:
     ) -> None:
         if self.own_actor_id in actors:
             raise ValueError("relationship book contains the local Actor")
+        for actor in actors.values():
+            for proof in actor.proofs:
+                if (
+                    proof.issuer_actor_id != self.own_actor_id
+                    and proof.issuer_actor_id != actor.actor_id
+                    and proof.issuer_actor_id not in actors
+                ):
+                    raise ValueError("Actor proof references an unknown issuer")
         linked_actors: set[str] = set()
         for subject in subjects.values():
             for link in subject.actor_links:
@@ -897,17 +1050,66 @@ class RelationshipBook:
             label="initial Subject confidence",
         )
         current = _now_ms(now)
-        actor = self._actors.get(card.node_id)
+        return self.observe_typed_actor(
+            ActorObservation(
+                actor_id=card.node_id,
+                actor_kind="anet.node",
+                actor_label=card.label[:MAX_LABEL_LENGTH],
+                proof=ActorProof(
+                    proof_type="anet.peer-card",
+                    scope="cryptographic",
+                    issuer_actor_id=card.node_id,
+                    evidence_ref=evidence,
+                    observed_ms=current,
+                ),
+            ),
+            subject_confidence=confidence,
+            now=current,
+        )
+
+    def observe_typed_actor(
+        self,
+        observation: ActorObservation,
+        *,
+        subject_confidence: int = 50,
+        now: int | None = None,
+    ) -> SubjectHypothesis:
+        """Record an attributed action source without asserting a real Subject.
+
+        Adapters must supply a scoped proof. This Module stores only the opaque
+        Actor reference and evidence metadata; it neither verifies platform
+        credentials itself nor transfers trust from the proof issuer.
+        """
+
+        if observation.actor_id == self.own_actor_id:
+            raise ValueError("cannot observe the local Actor as a peer")
+        if (
+            observation.proof.issuer_actor_id != self.own_actor_id
+            and observation.proof.issuer_actor_id != observation.actor_id
+            and observation.proof.issuer_actor_id not in self._actors
+        ):
+            raise ValueError("Actor proof issuer is not known to this observer")
+        evidence = observation.proof.evidence_ref
+        confidence = _confidence(
+            subject_confidence,
+            label="initial Subject confidence",
+        )
+        current = _now_ms(now)
+        if observation.proof.observed_ms > current:
+            raise ValueError("Actor proof occurs after the observation")
+        actor = self._actors.get(observation.actor_id)
         if actor is None:
             actor = ActorRecord(
-                actor_id=card.node_id,
-                actor_label=card.label[:MAX_LABEL_LENGTH],
+                actor_id=observation.actor_id,
+                actor_kind=observation.actor_kind,
+                actor_label=observation.actor_label,
                 state="active",
+                proofs=(observation.proof,),
                 evidence_refs=(evidence,),
                 first_seen_ms=current,
                 updated_ms=current,
             )
-            self._actors[card.node_id] = actor
+            self._actors[observation.actor_id] = actor
             subject_ref = f"subj_{secrets.token_hex(8)}"
             subject = SubjectHypothesis(
                 subject_ref=subject_ref,
@@ -915,7 +1117,7 @@ class RelationshipBook:
                 labels=(),
                 actor_links=(
                     SubjectActorLink(
-                        actor_id=card.node_id,
+                        actor_id=observation.actor_id,
                         confidence=confidence,
                         evidence_refs=(evidence,),
                         updated_ms=current,
@@ -937,7 +1139,7 @@ class RelationshipBook:
             )
             self._append_event(
                 "actor.observed",
-                actor_id=card.node_id,
+                actor_id=observation.actor_id,
                 subject_ref=subject_ref,
                 evidence_ref=evidence,
                 now=current,
@@ -945,24 +1147,47 @@ class RelationshipBook:
             self.save()
             return subject
 
-        self._actors[card.node_id] = ActorRecord(
+        if actor.actor_kind != observation.actor_kind:
+            raise ValueError("Actor observation changes the Actor kind")
+        proofs = {proof.key: proof for proof in actor.proofs}
+        proof_is_new = observation.proof.key not in proofs
+        proofs.setdefault(observation.proof.key, observation.proof)
+        label = observation.actor_label or actor.actor_label
+        if (
+            not proof_is_new
+            and label == actor.actor_label
+        ):
+            subject = self.primary_subject(observation.actor_id)
+            if subject is None:
+                raise ValueError("observed Actor has no Subject hypothesis")
+            return subject
+        self._actors[observation.actor_id] = ActorRecord(
             actor_id=actor.actor_id,
-            actor_label=card.label[:MAX_LABEL_LENGTH],
+            actor_kind=actor.actor_kind,
+            actor_label=label,
             state=actor.state,
+            proofs=tuple(proofs.values()),
             evidence_refs=_unique_text(
-                (*actor.evidence_refs, evidence),
+                (
+                    *actor.evidence_refs,
+                    *(
+                        (evidence,)
+                        if proof_is_new or label != actor.actor_label
+                        else ()
+                    ),
+                ),
                 label="Actor evidence reference",
                 maximum=MAX_EVIDENCE_LENGTH,
             ),
             first_seen_ms=actor.first_seen_ms,
             updated_ms=current,
         )
-        subject = self.primary_subject(card.node_id)
+        subject = self.primary_subject(observation.actor_id)
         if subject is None:
             raise ValueError("observed Actor has no Subject hypothesis")
         self._append_event(
             "actor.observation-refreshed",
-            actor_id=card.node_id,
+            actor_id=observation.actor_id,
             subject_ref=subject.subject_ref,
             evidence_ref=evidence,
             now=current,
@@ -1702,8 +1927,10 @@ class RelationshipBook:
         current = _now_ms(now)
         self._actors[actor_key] = ActorRecord(
             actor_id=actor.actor_id,
+            actor_kind=actor.actor_kind,
             actor_label=actor.actor_label,
             state="revoked",
+            proofs=actor.proofs,
             evidence_refs=_unique_text(
                 (*actor.evidence_refs, evidence),
                 label="Actor evidence reference",
@@ -1823,7 +2050,11 @@ class RelationshipBook:
         return RelationshipRecord(
             subject_ref=subject.subject_ref,
             actor_id=actor.actor_id,
+            actor_kind=actor.actor_kind,
             actor_label=actor.actor_label,
+            proof_scopes=tuple(
+                sorted({proof.scope for proof in actor.proofs})
+            ),
             circle=relationship.circle,
             state=relationship.state,
             relationship_labels=relationship.relationship_labels,

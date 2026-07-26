@@ -84,8 +84,8 @@ def classify_interaction(
 
     facets = {"message"}
     context = "communication"
-    if normalized.startswith("discord."):
-        context = "social"
+    if normalized.startswith(("discord.", "social.discord.")):
+        context = "social.discord"
     if normalized.startswith("skill."):
         facets.add("skill")
         context = "skill"

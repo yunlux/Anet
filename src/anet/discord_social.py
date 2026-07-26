@@ -818,6 +818,24 @@ class DiscordSocialStore:
             "reply_message_id": str(row["reply_message_id"]),
         }
 
+    def events(self, *, limit: int = 1000) -> list[dict[str, Any]]:
+        limit = _exact_int(limit, "Discord social event limit")
+        if not 1 <= limit <= 10_000:
+            raise ValueError("Discord social event limit must be 1 to 10000")
+        rows = self._conn.execute(
+            """
+            SELECT event_key FROM discord_social_events
+            ORDER BY created_ms, event_key LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            event = self.event(str(row["event_key"]))
+            if event is not None:
+                result.append(event)
+        return result
+
     def mark_routed(self, event_key: str, packet_id: str) -> None:
         event_key = _event_key(event_key)
         packet_id = str(packet_id).strip().lower()
@@ -974,16 +992,18 @@ class DiscordSocialBridge:
     def poll_once(
         self,
         queue_signal: Callable[[str, str, dict[str, Any]], str] | None = None,
+        project_event: Callable[[Mapping[str, Any]], Any] | None = None,
     ) -> dict[str, Any]:
         self._polling.set()
         try:
-            return self._poll_once(queue_signal)
+            return self._poll_once(queue_signal, project_event)
         finally:
             self._polling.clear()
 
     def _poll_once(
         self,
         queue_signal: Callable[[str, str, dict[str, Any]], str] | None = None,
+        project_event: Callable[[Mapping[str, Any]], Any] | None = None,
     ) -> dict[str, Any]:
         if not self.config.enabled:
             return {"enabled": False, "seen": 0, "ingested": 0, "routed": 0}
@@ -1034,6 +1054,15 @@ class DiscordSocialBridge:
                     continue
                 if event.get("new", False):
                     ingested += 1
+                    if project_event is not None:
+                        try:
+                            project_event(event)
+                        except Exception:
+                            LOGGER.warning(
+                                "Discord event persisted but relationship "
+                                "projection failed",
+                                exc_info=True,
+                            )
                 action = str(event["evaluation"]["action"])
                 decisions[action] = decisions.get(action, 0) + 1
                 if (
@@ -1149,6 +1178,7 @@ class DiscordSocialBridge:
         self,
         stop: asyncio.Event,
         queue_signal: Callable[[str, str, dict[str, Any]], str],
+        project_event: Callable[[Mapping[str, Any]], Any] | None = None,
     ) -> None:
         while not stop.is_set():
             delay = self.config.poll_interval_seconds
@@ -1156,6 +1186,7 @@ class DiscordSocialBridge:
                 result = await asyncio.to_thread(
                     self.poll_once,
                     queue_signal,
+                    project_event,
                 )
                 if result["ingested"] or result["routed"]:
                     LOGGER.info(

@@ -32,6 +32,7 @@ from .discord_social import (
     DiscordSocialConfig,
     discord_social_config_path,
 )
+from .discord_relation_projection import DiscordRelationshipProjector
 from .encoding import canonical_pack
 from .identity import Identity, PeerCard
 from .locator import usable_locators
@@ -113,6 +114,9 @@ class AnetNode:
         self._prekey_response_last_ms: dict[str, int] = {}
         self._discord_bridge: DiscordSocialBridge | None = None
         self._relationship_projector: RelationshipProjector | None = None
+        self._discord_relationship_projector: (
+            DiscordRelationshipProjector | None
+        ) = None
         self._loop_schedule = AdaptiveSchedule(
             config.sync_interval,
             config.sync_jitter,
@@ -183,6 +187,7 @@ class AnetNode:
                     self._discord_bridge.run(
                         self._stop,
                         self._queue_discord_signal,
+                        self._project_discord_event,
                     ),
                     name=f"anet-discord-social-{self.node_id[:12]}",
                 )
@@ -2199,14 +2204,8 @@ class AnetNode:
         """Best-effort social projection; it never controls packet acceptance."""
 
         try:
-            if self._relationship_projector is None:
-                self._relationship_projector = RelationshipProjector(
-                    RelationshipBook(
-                        self.config.relationships_path,
-                        own_actor_id=self.node_id,
-                    )
-                )
-            self._relationship_projector.project_packet(
+            relationship_projector = self._ensure_relationship_projectors()
+            relationship_projector.project_packet(
                 card,
                 packet_id=packet_id,
                 kind=kind,
@@ -2214,12 +2213,36 @@ class AnetNode:
                 direction=direction,
                 occurred_ms=occurred_ms,
             )
+            if kind == DISCORD_SIGNAL_KIND and direction == "incoming":
+                if self._discord_relationship_projector is None:
+                    raise RuntimeError("Discord relationship projector is missing")
+                self._discord_relationship_projector.project_signal(card, body)
         except Exception:
             LOGGER.warning(
                 "packet %s succeeded but relationship evidence was not projected",
                 packet_id,
                 exc_info=True,
             )
+
+    def _ensure_relationship_projectors(self) -> RelationshipProjector:
+        if self._relationship_projector is None:
+            self._relationship_projector = RelationshipProjector(
+                RelationshipBook(
+                    self.config.relationships_path,
+                    own_actor_id=self.node_id,
+                )
+            )
+        if self._discord_relationship_projector is None:
+            self._discord_relationship_projector = DiscordRelationshipProjector(
+                self._relationship_projector.book
+            )
+        return self._relationship_projector
+
+    def _project_discord_event(self, event: dict[str, Any]) -> None:
+        self._ensure_relationship_projectors()
+        if self._discord_relationship_projector is None:
+            raise RuntimeError("Discord relationship projector is missing")
+        self._discord_relationship_projector.project_local_event(event)
 
     def process_local_spool(self) -> int:
         processed = 0

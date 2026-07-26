@@ -37,6 +37,26 @@ The bridge never:
 `connect_candidate` means only “consider an out-of-band identity proof and
 explicit pairing.” It is not a trust result.
 
+## Actor and Subject projection
+
+After the source event is durable, the running Node also projects the event
+into its private `relationships.json` model:
+
+- the existing HMAC `actor_key` is combined with the observing Node namespace
+  to derive an opaque `act_discord_<digest>` Actor ID;
+- the Actor kind is `account.discord`;
+- a local REST observation receives `platform-observed` proof scope;
+- a recipient of `social.discord.signal` records only `bridge-attested`, with
+  the signed sending Node as issuer;
+- every new Actor begins with a separate, revisable Subject hypothesis.
+
+A mention or reply may move the fresh hypothesis from `public` to `known`.
+Nothing in Discord score, labels, volume, or bridge trust creates a closer
+circle, contextual trust, PeerBook entry, capability, or authorization. The
+relationship file receives event references and coarse facets only; raw
+Discord snowflakes, pseudonym keys, message content, Guild/channel keys and
+scores remain outside it.
+
 ## Discord permissions and content access
 
 Create a dedicated Discord application/bot with only the permissions needed on
@@ -164,6 +184,15 @@ anet --home "$ANET_HOME" discord-social-status
 
 The status omits Guild IDs, Channel IDs, user IDs, event content and the token.
 
+If relationship projection was unavailable after the Discord event had already
+been persisted, stop the owning runtime and replay the durable metadata:
+
+```bash
+anet --home "$ANET_HOME" discord-social-project --limit 1000
+```
+
+The replay is idempotent and cannot create Anet peer trust or authorization.
+
 ## Labels, review and replies
 
 Signals delivered to the destination include a pseudonymous `actor_key` and
@@ -194,6 +223,9 @@ the same event is rejected.
 
 - The Discord cursor advances only after the local event is persisted and any
   required Anet signal is queued.
+- Relationship projection is best-effort after durable ingest. A projection
+  failure cannot discard the Discord event or reject an otherwise valid Anet
+  Packet; the replay command can recover it.
 - If Anet queueing fails, the cursor remains behind; the next poll reuses the
   existing event without incrementing reputation twice.
 - A crash after Anet queueing but before local route settlement can create a

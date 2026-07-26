@@ -203,6 +203,21 @@ contextual trust estimate, and never grants a capability. `relation-link`,
 model. They never grant Anet trust or execution capability. Do not place raw
 private content in their `--evidence` references.
 
+Actors are typed action sources, not presumed people or Agents. Node Actors use
+their complete `an1...` ID and cryptographic proof. Platform Adapters may
+create opaque account, device, or session Actor IDs with a scoped
+`platform-observed`, `bridge-attested`, or operator proof. A bridge-attested
+Actor never inherits the bridge Node's relationship, trust, or capabilities.
+For a stopped Discord-enabled runtime, replay any already durable source events
+after relationship-state repair with:
+
+```text
+anet --home <HOME> discord-social-project --limit 1000
+```
+
+This command is idempotent and projects only pseudonymous, content-free
+metadata. It does not create PeerBook trust or authorization.
+
 When Actor-to-Subject explanations change, preserve lineage instead of editing
 or deleting a `subj_` record:
 

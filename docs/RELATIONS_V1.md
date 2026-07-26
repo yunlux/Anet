@@ -12,19 +12,37 @@ the concrete human, AI, team, or hybrid entity behind an Actor is known.
 
 ### Actor
 
-An Actor is a currently verifiable source of action. Relations v1 accepts
-complete Anet Node IDs as Actor IDs because their signed Peer Cards and
-Packets can be verified locally.
+An Actor is a currently verifiable or explicitly attributed source of action.
+Anet Nodes retain their complete `an1...` Node ID as the Actor ID. Platform
+Adapters derive opaque, observer-safe `act_<platform>_<digest>` Actor IDs from
+an Adapter-owned pseudonym and the attesting Node namespace. Raw account IDs,
+usernames, channel IDs and session tokens are not Actor IDs.
 
 An Actor fact can establish:
 
 - which Node key signed an object;
 - which Node ID participated in a challenge-bound pairing;
+- which local Adapter observed an opaque platform account pseudonym;
+- which signed bridge Node attested to a platform observation;
 - which key was pinned or revoked locally;
 - which evidence reference caused a model update.
 
 It cannot establish whether the controller is a human, AI, team, hybrid,
 shared account, or delegated runtime.
+
+Each Actor carries one or more typed proofs:
+
+- `cryptographic`: locally verified Node key/card evidence;
+- `platform-observed`: a local Adapter directly observed the account source;
+- `bridge-attested`: a signed Anet peer reported its Adapter observation;
+- `operator-attested`: an explicit local operator assertion.
+
+The scopes are descriptive, not a numeric strength ladder. A
+`bridge-attested` Discord Actor is distinct from the bridge Node Actor. It does
+not inherit that Node's circle, contextual trust, PeerBook trust, capabilities
+or authorization. The attesting Node namespace is included in the derived
+Actor ID, so two unrelated bridges cannot accidentally collapse their local
+pseudonyms into one Actor.
 
 ### Subject hypothesis
 
@@ -158,12 +176,12 @@ human-device grants, or application-specific approval.
 
 ## Persistent model
 
-`relationships.json` version 4 is private node-local state with seven persisted
+`relationships.json` version 5 is private node-local state with seven persisted
 sections:
 
 ```text
 observer Actor
-Actors
+typed Actors and scoped proof records
 Subject hypotheses and Actor links
 Relationship estimates
 Relationship events
@@ -174,10 +192,11 @@ Subject transition lineage
 `relation-list --model` adds an eighth, derived `interaction_stats` projection;
 the redundant counters are not persisted.
 
-The loader accepts version 1, version 2, and version 3 books. It projects v1
-one-Actor/one-Subject records into the current model and treats a v2 book as
-having no interaction evidence and a v3 book as having no Subject transitions.
-The next mutation writes version 4. Migration does not increase Subject
+The loader accepts version 1 through version 4 books. It projects v1
+one-Actor/one-Subject records into the current model, treats a v2 book as
+having no interaction evidence, treats a v3 book as having no Subject
+transitions, and assigns legacy Node Actors a migrated cryptographic Peer Card
+proof. The next mutation writes version 5. Migration does not increase Subject
 confidence, invent interaction evidence, transitions, or events.
 
 Interaction statistics are derived from evidence and are deliberately not
@@ -211,10 +230,10 @@ anet --home <HOME> relation-list --model > relation-model.json
 Choose **导入本地模型** on the demo page. The file is parsed in the browser and
 is not uploaded by the static demo.
 
-Add a competing Actor-to-Subject link:
+Add a competing Actor-to-Subject link (Node or typed opaque Actor ID):
 
 ```text
-anet --home <HOME> relation-link <ACTOR_NODE_ID> <SUBJECT_REF> \
+anet --home <HOME> relation-link <ACTOR_ID> <SUBJECT_REF> \
   --confidence 82 --evidence "claim:same-controller"
 ```
 
@@ -260,6 +279,36 @@ anet --home <HOME> subject-split <SUBJECT_REF> \
 
 These commands mutate observer-local social state. They do not mutate PeerBook
 trust or create task, tool, file, payment, guardian, or delegation capability.
+
+## Discord Actor projection
+
+The Discord Adapter persists source events first, then idempotently projects
+content-free metadata into the same relationship book:
+
+```text
+Discord HMAC actor pseudonym
+  -> namespace-bound act_discord_<digest>
+  -> account.discord Actor + scoped proof
+  -> fresh local Subject hypothesis
+  -> content-free social.discord Interaction evidence
+```
+
+A generic channel observation starts in `public`. A direct mention or reply
+may recognize the Subject as `known` with low confidence. Scores, reactions,
+operator labels, and the bridge Node's relationship never create contextual
+trust or a closer circle.
+
+Normal `anet serve` operation projects newly persisted events automatically.
+After repairing or upgrading a relationship book, a stopped runtime can replay
+the durable ledger safely:
+
+```text
+anet --home <HOME> discord-social-project --limit 1000
+```
+
+Replay uses stable event references and is idempotent. Output contains derived
+Actor IDs and counts, not raw Discord account, Guild, channel, message content,
+or token data.
 
 ## Revocation semantics
 

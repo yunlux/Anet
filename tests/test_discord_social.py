@@ -341,6 +341,28 @@ def test_poll_rejects_channel_outside_configured_guild(
     assert store.status()["events"] == 0
 
 
+def test_relationship_projection_failure_keeps_durable_event_and_cursor(
+    store: DiscordSocialStore,
+) -> None:
+    config = DiscordSocialConfig(
+        guild_id=GUILD_ID,
+        channel_ids=(CHANNEL_ID,),
+    )
+    bridge = DiscordSocialBridge(
+        config,
+        store,
+        FakeDiscordClient([_message()]),
+    )
+
+    def broken_projection(_event: dict[str, Any]) -> None:
+        raise RuntimeError("simulated relationship repair window")
+
+    result = bridge.poll_once(project_event=broken_projection)
+    assert result["ingested"] == 1
+    assert store.status()["events"] == 1
+    assert store.cursor(CHANNEL_ID) == MESSAGE_ID
+
+
 def test_operator_vouch_enables_one_idempotent_reply(
     store: DiscordSocialStore,
 ) -> None:

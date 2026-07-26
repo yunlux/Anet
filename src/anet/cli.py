@@ -43,6 +43,7 @@ from .discord_social import (
     discord_social_database_path,
     discord_social_key_path,
 )
+from .discord_relation_projection import DiscordRelationshipProjector
 from .encoding import b64e
 from .experiments import monitor_probes, run_probe_series
 from .friendship import (
@@ -2232,6 +2233,39 @@ def cmd_discord_social_label(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_discord_social_project(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    store = _load_discord_social_store(args.home)
+    try:
+        projector = DiscordRelationshipProjector(
+            RelationshipBook(
+                config.relationships_path,
+                own_actor_id=identity.node_id,
+            )
+        )
+        projections = [
+            projector.project_local_event(event)
+            for event in store.events(limit=args.limit)
+        ]
+    finally:
+        store.close()
+    _print_json(
+        {
+            "events_examined": len(projections),
+            "interactions_recorded": sum(
+                1 for item in projections if item.recorded
+            ),
+            "actors": sorted({item.actor_id for item in projections}),
+            "note": (
+                "Discord evidence created no Anet peer trust, capability, "
+                "context trust, or authorization"
+            ),
+        }
+    )
+    return 0
+
+
 def cmd_discord_social_reply(args: argparse.Namespace) -> int:
     selected = int(args.text is not None) + int(bool(args.stdin))
     if selected != 1:
@@ -2395,7 +2429,10 @@ def build_parser() -> argparse.ArgumentParser:
         "relation-link",
         help="link an observed Actor to a local Subject hypothesis",
     )
-    relation_link.add_argument("actor", help="verified Actor Node ID")
+    relation_link.add_argument(
+        "actor",
+        help="observed Node or typed opaque Actor ID",
+    )
     relation_link.add_argument("subject", help="observer-local subj_ reference")
     relation_link.add_argument(
         "--confidence",
@@ -2571,7 +2608,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--group",
         action="append",
         required=True,
-        help="comma-separated Actor Node IDs; repeat for every partition group",
+        help="comma-separated Actor IDs; repeat for every partition group",
     )
     subject_split.add_argument(
         "--confidence",
@@ -3056,6 +3093,15 @@ def build_parser() -> argparse.ArgumentParser:
     discord_label.add_argument("--remove", action="append", default=[])
     discord_label.add_argument("--source", default="operator")
     discord_label.set_defaults(func=cmd_discord_social_label)
+
+    discord_project = sub.add_parser(
+        "discord-social-project",
+        help=(
+            "replay durable Discord metadata into the local Actor/Subject model"
+        ),
+    )
+    discord_project.add_argument("--limit", type=int, default=1000)
+    discord_project.set_defaults(func=cmd_discord_social_project)
 
     discord_reply = sub.add_parser(
         "discord-social-reply",

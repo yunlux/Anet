@@ -23,6 +23,14 @@ account, or session. Actor identity proves control of that source, not the
 human, AI, team, or hybrid entity behind it.
 _Avoid_: Subject, person, Agent identity
 
+**Actor proof**:
+Observer-local evidence explaining how an Actor reference was attributed.
+Proof scope stays explicit: a Node signature is `cryptographic`, a direct
+platform Adapter observation is `platform-observed`, and a signed report from
+another Node is only `bridge-attested`. Proofs are not globally comparable
+scores and do not transfer the issuer's relationship, trust, or authority.
+_Avoid_: Identity score, verified person, inherited trust
+
 **Subject hypothesis**:
 One observer's revisable estimate of the latent entity behind one or more
 Actors. It is local, probabilistic, and may be split, merged, or superseded as
