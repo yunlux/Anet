@@ -154,9 +154,7 @@ def test_qr_friend_cli_pins_both_peers_and_creates_local_circle_records(
 
         book = RelationshipBook(
             home / "relationships.json",
-            own_actor_id=(
-                a_init["node_id"] if home == a_home else b_init["node_id"]
-            ),
+            own_actor_id=(a_init["node_id"] if home == a_home else b_init["node_id"]),
         )
         assert book.get(expected_actor) is not None
 
@@ -176,5 +174,12 @@ def test_qr_friend_cli_pins_both_peers_and_creates_local_circle_records(
         == 0
     )
     revoked = json.loads(capsys.readouterr().out)
-    assert revoked["relationship"]["state"] == "revoked"
-    assert revoked["relationship"]["circle"] == "public"
+    assert revoked["relationship"]["state"] == "active"
+    assert revoked["relationship"]["circle"] == "friend"
+
+    assert main(["--home", str(a_home), "relation-list", "--model"]) == 0
+    model = json.loads(capsys.readouterr().out)
+    assert model["version"] == 2
+    assert model["actors"][0]["state"] == "revoked"
+    assert model["relationships"][0]["circle"] == "friend"
+    assert model["events"][-1]["event_type"] == "actor.revoked"

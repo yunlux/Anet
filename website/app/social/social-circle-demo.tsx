@@ -7,6 +7,38 @@ import styles from "./social.module.css";
 type Circle = "family" | "close" | "friend" | "collab" | "known";
 type ViewMode = "subjects" | "actors";
 
+type RelationSnapshot = {
+  version: number;
+  observer_actor_id: string;
+  actors: {
+    actor_id: string;
+    actor_label: string;
+    state: string;
+  }[];
+  subjects: {
+    subject_ref: string;
+    state: string;
+    labels: string[];
+    confidence: number;
+    actor_links: {
+      actor_id: string;
+      confidence: number;
+    }[];
+  }[];
+  relationships: {
+    subject_ref: string;
+    circle: string;
+    state: string;
+    relationship_labels: string[];
+    relationship_confidence: number;
+    context_trust: {
+      context: string;
+      estimate: number;
+      confidence: number;
+    }[];
+  }[];
+};
+
 type SubjectModel = {
   id: string;
   name: string;
@@ -30,6 +62,109 @@ const circleMeta: Record<Circle, { label: string; index: string }> = {
   collab: { label: "协作", index: "04" },
   known: { label: "新认识", index: "05" },
 };
+
+const importPositions = [
+  { left: "54%", top: "18%" },
+  { left: "66%", top: "49%" },
+  { left: "27%", top: "54%" },
+  { left: "80%", top: "72%" },
+  { left: "17%", top: "79%" },
+  { left: "38%", top: "27%" },
+  { left: "73%", top: "27%" },
+  { left: "32%", top: "73%" },
+];
+const importAccents = [
+  "#d9ff43",
+  "#ff5c35",
+  "#7cc7ff",
+  "#b38cff",
+  "#58d7ba",
+  "#f1c85b",
+  "#f28fbc",
+  "#8d9188",
+];
+
+function isCircle(value: string): value is Circle {
+  return value in circleMeta;
+}
+
+function projectSnapshot(value: unknown): {
+  observer: string;
+  subjects: SubjectModel[];
+} {
+  if (!value || typeof value !== "object") {
+    throw new Error("模型必须是 JSON 对象");
+  }
+  const snapshot = value as RelationSnapshot;
+  if (
+    snapshot.version !== 2 ||
+    !Array.isArray(snapshot.actors) ||
+    !Array.isArray(snapshot.subjects) ||
+    !Array.isArray(snapshot.relationships)
+  ) {
+    throw new Error("仅支持 relation-list --model 输出的 v2 模型");
+  }
+  const actors = new Map(snapshot.actors.map((actor) => [actor.actor_id, actor]));
+  const relationships = new Map(
+    snapshot.relationships.map((relationship) => [
+      relationship.subject_ref,
+      relationship,
+    ]),
+  );
+  const projected = snapshot.subjects.map((subject, index) => {
+    const relationship = relationships.get(subject.subject_ref);
+    const circle =
+      relationship && isCircle(relationship.circle)
+        ? relationship.circle
+        : "known";
+    const links = Array.isArray(subject.actor_links) ? subject.actor_links : [];
+    const labels = [
+      ...(Array.isArray(subject.labels) ? subject.labels : []),
+      ...(Array.isArray(relationship?.relationship_labels)
+        ? relationship.relationship_labels
+        : []),
+    ];
+    return {
+      id: subject.subject_ref,
+      name: String(index + 1).padStart(2, "0"),
+      mark: String(index + 1),
+      accent: importAccents[index % importAccents.length],
+      kind:
+        subject.state === "superseded"
+          ? "已被新证据取代的假设"
+          : "本地 Subject 假设",
+      circle,
+      rel: Number(relationship?.relationship_confidence ?? 0),
+      confidence: Number(subject.confidence ?? 0),
+      summary: `${links.length} 个 Actor 链接到这个推测主体。该归并只在当前观察者的本地模型中成立。`,
+      labels: labels.length ? [...new Set(labels)] : ["主体待观察"],
+      actors: links.map((link) => {
+        const actor = actors.get(link.actor_id);
+        return {
+          name: actor?.actor_label
+            ? `${actor.actor_label} · ${link.actor_id.slice(0, 11)}…`
+            : `${link.actor_id.slice(0, 14)}…`,
+          proof: actor?.state === "revoked" ? "Actor 已撤销" : "Node 签名",
+          confidence: Number(link.confidence ?? 0),
+        };
+      }),
+      trust: Array.isArray(relationship?.context_trust)
+        ? relationship.context_trust.map((item) => ({
+            label: item.context,
+            value: Number(item.estimate ?? 0),
+          }))
+        : [],
+      position: importPositions[index % importPositions.length],
+    } satisfies SubjectModel;
+  });
+  if (!projected.length) {
+    throw new Error("模型中还没有 Subject 假设");
+  }
+  return {
+    observer: String(snapshot.observer_actor_id || "local observer"),
+    subjects: projected,
+  };
+}
 
 const baseSubjects: SubjectModel[] = [
   {
@@ -205,14 +340,21 @@ export function SocialCircleDemo() {
   const [qrStep, setQrStep] = useState(0);
   const [friendAdded, setFriendAdded] = useState(false);
   const [qrImage, setQrImage] = useState("");
+  const [importedSubjects, setImportedSubjects] = useState<SubjectModel[] | null>(null);
+  const [importedObserver, setImportedObserver] = useState("");
+  const [importError, setImportError] = useState("");
 
   const subjects = useMemo(
-    () => (friendAdded ? [...baseSubjects, scannedFriend] : baseSubjects),
-    [friendAdded],
+    () =>
+      importedSubjects ??
+      (friendAdded ? [...baseSubjects, scannedFriend] : baseSubjects),
+    [friendAdded, importedSubjects],
   );
 
-  const selected = subjects.find((subject) => subject.id === selectedId) ?? subjects[1];
-  const activeEvents = formationEvents.slice(0, step + 1);
+  const selected =
+    subjects.find((subject) => subject.id === selectedId) ??
+    subjects[1] ??
+    subjects[0];
   const demoCircle: Circle =
     step < 1 ? "known" : step < 3 ? "collab" : step < 5 ? "friend" : "close";
 
@@ -255,6 +397,33 @@ export function SocialCircleDemo() {
     setSelectedId("f");
   }
 
+  async function importModel(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+    try {
+      const projected = projectSnapshot(JSON.parse(await file.text()));
+      setImportedSubjects(projected.subjects);
+      setImportedObserver(projected.observer);
+      setSelectedId(projected.subjects[0].id);
+      setFriendAdded(false);
+      setImportError("");
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : "无法读取关系模型");
+    }
+  }
+
+  function resetModel() {
+    setImportedSubjects(null);
+    setImportedObserver("");
+    setSelectedId("b");
+    setImportError("");
+  }
+
+  const actorCount = new Set(
+    subjects.flatMap((subject) => subject.actors.map((actor) => actor.name)),
+  ).size;
+
   return (
     <div className={styles.demo}>
       <section className={styles.intro}>
@@ -268,12 +437,14 @@ export function SocialCircleDemo() {
         </div>
         <div className={styles.identityCard}>
           <span>当前观察者</span>
-          <strong>AGENT A</strong>
+          <strong>{importedSubjects ? "LOCAL MODEL" : "AGENT A"}</strong>
           <div>
             <i />
-            本地模型 · revision 18
+            {importedSubjects
+              ? `${importedObserver.slice(0, 18)}…`
+              : "本地模型 · revision 18"}
           </div>
-          <small>5 个主体假设 · 7 个可验证 Actor</small>
+          <small>{subjects.length} 个主体假设 · {actorCount} 个 Actor 链接</small>
         </div>
       </section>
 
@@ -303,10 +474,25 @@ export function SocialCircleDemo() {
           <span><i className={styles.factDot} /> 可验证</span>
           <span><i className={styles.guessDot} /> 推测</span>
         </div>
+        <label className={styles.importButton}>
+          <span>↥</span> 导入本地模型
+          <input
+            type="file"
+            accept="application/json,.json"
+            onChange={(event) => void importModel(event.target.files?.[0])}
+          />
+        </label>
+        {importedSubjects && (
+          <button className={styles.resetButton} type="button" onClick={resetModel}>
+            返回示例
+          </button>
+        )}
         <button className={styles.scanButton} type="button" onClick={openFriendScan}>
           <span>⌗</span> {friendAdded ? "查看扫码好友" : "扫码添加好友"}
         </button>
       </section>
+
+      {importError && <p className={styles.importError}>{importError}</p>}
 
       {qrOpen && (
         <div className={styles.qrBackdrop} role="presentation">

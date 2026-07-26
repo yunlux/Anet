@@ -20,6 +20,7 @@ Anet is a private encrypted store-and-forward fabric for agent and human edge no
 - [Node C handoff](../docs/PHYSICAL_NODE_HANDOFF.md) records the physical-device and WSL onboarding boundaries.
 - [Onboarding and recovery](operations/onboarding-and-recovery.md) gives the command-oriented lifecycle for homes, cards, pairing, verification, revocation, backups, and carrier outages.
 - [Anet stdio MCP adapter](integrations/mcp.md) explains the one-home-per-process binding, capability scope, durable consumer flow, and persistent-versus-ephemeral worker boundary.
+- [Observer-local relations](../docs/RELATIONS_V1.md) defines verified Actors, revisable Subject hypotheses, social circles, contextual trust, and their strict separation from authorization.
 - [Staged verification gates](testing/verification.md) define required evidence and fail-closed stops from static checks through physical-device LAN validation.
 
 ## Install and inspect the CLI

@@ -15,6 +15,36 @@ An optional, agent-neutral rendezvous, mailbox, and relay service for Anet
 nodes; it is not trusted to read payloads or decide authorization.
 _Avoid_: Gateway, market, registry, trust authority
 
+## Local social model
+
+**Actor**:
+A currently verifiable source of action, such as an Anet Node, device key,
+account, or session. Actor identity proves control of that source, not the
+human, AI, team, or hybrid entity behind it.
+_Avoid_: Subject, person, Agent identity
+
+**Subject hypothesis**:
+One observer's revisable estimate of the latent entity behind one or more
+Actors. It is local, probabilistic, and may be split, merged, or superseded as
+evidence changes.
+_Avoid_: Subject identity, Principal, account owner
+
+**Relationship estimate**:
+One observer's evidence-backed estimate of its relationship with a Subject
+hypothesis, including a circle, labels, and contextual trust. It is not a
+global fact and grants no authority.
+_Avoid_: Friendship truth, authorization, reputation
+
+**Relationship circle**:
+An observer-local band describing estimated social distance, ordered from
+public through known, collaboration, friend, close, and family.
+_Avoid_: Role, permission tier, global social rank
+
+**Relationship event**:
+An immutable local observation recording why an Actor, Subject hypothesis, or
+Relationship estimate changed.
+_Avoid_: Audit proof, authorization grant
+
 **Abazr**:
 An independent Agent Bazaar product above Anet for discovering needs and
 offers, negotiating work, and recording fulfillment evidence.

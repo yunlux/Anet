@@ -60,7 +60,7 @@ from .pairing import PairOffer, PairResponse
 from .packet import inspect_packet
 from .peers import PeerBook
 from .prekeys import PreKeyBundle, generate_prekey_bundle, import_prekey_bundle
-from .relations import RelationshipBook
+from .relations import RELATION_CIRCLES, RelationshipBook
 from .scheduling import AdaptiveSchedule
 from .social import SocialPolicy, SocialThreshold
 from .store import PacketStore
@@ -461,7 +461,63 @@ def cmd_relation_list(args: argparse.Namespace) -> int:
         config.relationships_path,
         own_actor_id=identity.node_id,
     )
-    _print_json([record.to_dict() for record in relationships.all()])
+    if args.model:
+        _print_json(relationships.snapshot())
+    else:
+        _print_json([record.to_dict() for record in relationships.all()])
+    return 0
+
+
+def cmd_relation_link(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    relationships = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=identity.node_id,
+    )
+    subject = relationships.link_actor(
+        args.actor,
+        args.subject,
+        confidence=args.confidence,
+        evidence_ref=args.evidence,
+    )
+    _print_json(subject.to_dict())
+    return 0
+
+
+def cmd_relation_circle(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    relationships = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=identity.node_id,
+    )
+    relationship = relationships.set_circle(
+        args.subject,
+        args.circle,
+        confidence=args.confidence,
+        evidence_ref=args.evidence,
+        labels=args.label,
+    )
+    _print_json(relationship.to_dict())
+    return 0
+
+
+def cmd_relation_trust(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    relationships = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=identity.node_id,
+    )
+    relationship = relationships.set_context_trust(
+        args.subject,
+        args.context,
+        estimate=args.estimate,
+        confidence=args.confidence,
+        evidence_ref=args.evidence,
+    )
+    _print_json(relationship.to_dict())
     return 0
 
 
@@ -2137,7 +2193,71 @@ def build_parser() -> argparse.ArgumentParser:
         "relation-list",
         help="list local subject hypotheses and relationship circles",
     )
+    relation_list.add_argument(
+        "--model",
+        action="store_true",
+        help="include Actor facts, competing Subject hypotheses, and events",
+    )
     relation_list.set_defaults(func=cmd_relation_list)
+
+    relation_link = sub.add_parser(
+        "relation-link",
+        help="link an observed Actor to a local Subject hypothesis",
+    )
+    relation_link.add_argument("actor", help="verified Actor Node ID")
+    relation_link.add_argument("subject", help="observer-local subj_ reference")
+    relation_link.add_argument(
+        "--confidence",
+        type=int,
+        required=True,
+        help="0-100 confidence that the Actor belongs to this Subject",
+    )
+    relation_link.add_argument(
+        "--evidence",
+        required=True,
+        help="bounded local evidence reference; not raw private content",
+    )
+    relation_link.set_defaults(func=cmd_relation_link)
+
+    relation_circle = sub.add_parser(
+        "relation-circle",
+        help="set the observer-local circle for one Subject hypothesis",
+    )
+    relation_circle.add_argument("subject", help="observer-local subj_ reference")
+    relation_circle.add_argument("circle", choices=RELATION_CIRCLES)
+    relation_circle.add_argument(
+        "--confidence",
+        type=int,
+        required=True,
+        help="0-100 confidence in this relationship estimate",
+    )
+    relation_circle.add_argument(
+        "--evidence",
+        required=True,
+        help="bounded local evidence reference; not raw private content",
+    )
+    relation_circle.add_argument(
+        "--label",
+        action="append",
+        default=[],
+        help="local relationship label; may be repeated",
+    )
+    relation_circle.set_defaults(func=cmd_relation_circle)
+
+    relation_trust = sub.add_parser(
+        "relation-trust",
+        help="set contextual trust for one Subject hypothesis",
+    )
+    relation_trust.add_argument("subject", help="observer-local subj_ reference")
+    relation_trust.add_argument("context", help="narrow trust context")
+    relation_trust.add_argument("--estimate", type=int, required=True)
+    relation_trust.add_argument("--confidence", type=int, required=True)
+    relation_trust.add_argument(
+        "--evidence",
+        required=True,
+        help="bounded local evidence reference; not raw private content",
+    )
+    relation_trust.set_defaults(func=cmd_relation_trust)
 
     prekey_generate = sub.add_parser(
         "prekey-generate",

@@ -69,6 +69,7 @@ test("renders the relationship demo with explicit fact and inference boundaries"
   assert.match(html, /关系推测/);
   assert.match(html, /不是平台确认的真实个体/);
   assert.match(html, /扫码添加好友/);
+  assert.match(html, /导入本地模型/);
   assert.match(html, /social-og\.png/);
 });
 

@@ -79,7 +79,7 @@
   min-height: 62px;
   padding: 0 max(24px, calc((100% - 1280px) / 2));
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto minmax(120px, 1fr) auto auto auto auto;
   gap: 25px;
   align-items: center;
   color: #daddd4;
@@ -112,6 +112,41 @@
 .legend i { width: 7px; height: 7px; border-radius: 50%; }
 .factDot { background: #72c956; }
 .guessDot { border: 1px dashed #ff704b; }
+.importButton,
+.resetButton {
+  min-height: 38px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #daddd4;
+  border: 1px solid #4b4e47;
+  background: transparent;
+  cursor: pointer;
+  font: 650 9px var(--font-mono);
+  white-space: nowrap;
+}
+.importButton:hover,
+.resetButton:hover { color: #151613; background: #d9ff43; }
+.importButton input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+.importButton span { margin-right: 6px; color: #d9ff43; font-size: 13px; }
+.importButton:hover span { color: #151613; }
+.importError {
+  width: min(1280px, calc(100% - 48px));
+  margin: 12px auto 0;
+  padding: 10px 13px;
+  color: #7c2d19;
+  border: 1px solid rgba(255,92,53,.45);
+  background: rgba(255,92,53,.08);
+  font: 9px var(--font-mono);
+}
 .scanButton {
   min-height: 38px;
   padding: 0 14px;
@@ -497,6 +532,9 @@
 .factBoundary strong { color: #b8bbb2; font-size: 11px; font-weight: 450; line-height: 1.5; }
 
 @media (max-width: 1050px) {
+  .controlBar { grid-template-columns: auto 1fr auto auto; }
+  .controlBar p,
+  .legend { display: none; }
   .workspace { grid-template-columns: 1fr 330px; }
   .orbitMap { height: 600px; }
   .orbit5 { width: 550px; height: 550px; }
@@ -509,8 +547,7 @@
 @media (max-width: 820px) {
   .intro { width: calc(100% - 32px); grid-template-columns: 1fr; gap: 28px; }
   .identityCard { max-width: 420px; }
-  .controlBar { padding: 0 16px; grid-template-columns: 1fr auto auto; }
-  .controlBar p { display: none; }
+  .controlBar { padding: 0 16px; grid-template-columns: 1fr auto auto auto; }
   .workspace { width: calc(100% - 32px); grid-template-columns: 1fr; }
   .mapPanel { border-right: 0; border-bottom: 1px solid #babbb3; }
   .orbitMap { height: 580px; }
@@ -527,7 +564,9 @@
   .controlBar { padding: 0; grid-template-columns: 1fr; }
   .modeSwitch button { flex: 1; min-height: 48px; }
   .legend { display: none; }
-  .scanButton { min-height: 45px; }
+  .scanButton,
+  .importButton,
+  .resetButton { min-height: 45px; }
   .panelTop { align-items: flex-start; flex-direction: column; gap: 12px; }
   .circleCounts { justify-content: flex-start; }
   .orbitMap { height: 510px; }

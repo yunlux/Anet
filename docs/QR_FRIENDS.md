@@ -2,6 +2,10 @@
 
 Status: experimental relationship-circle slice.
 
+The general Actor, Subject hypothesis, relationship, event, and revocation
+contract is defined in [`RELATIONS_V1.md`](RELATIONS_V1.md). This document
+specifies only the signed QR friendship adapter.
+
 Anet QR friend pairing reuses the existing signed, expiring pairing challenge.
 It adds a signed `friend` intent, a compact `anet://friend/v1/...` payload, an
 image/text adapter, and one local relationship-circle record after each side
@@ -43,17 +47,42 @@ by the local Node before pinning the responder.
 ## Relationship circle
 
 Each successful local acceptance writes `relationships.json` under that Node's
-private home. `relation-list` returns the observer-local view:
+private home. The default `relation-list` is a compact Actor-through-Subject
+projection. `--model` returns the complete observer-local model:
 
 ```text
 anet --home <HOME> relation-list
+anet --home <HOME> relation-list --model
 ```
 
-The verified `an1...` Node ID is recorded as an Actor. An opaque local
-`subj_...` reference represents the observer's initial hypothesis about the
-unknown human, AI, team, or hybrid Subject behind that Actor. A cryptographic
-Actor match is not proof of a concrete Subject, so the first subject confidence
-is deliberately limited.
+The complete model separates:
+
+- verified Actor records;
+- revisable Subject hypotheses;
+- confidence-bearing Actor-to-Subject links;
+- observer-local relationship estimates and contextual trust;
+- immutable local relationship events.
+
+The verified `an1...` Node ID is an Actor fact. An opaque `subj_...` reference
+is only this observer's hypothesis about the unknown human, AI, team, or hybrid
+Subject behind one or more Actors. Multiple competing Subject hypotheses may
+reference the same Actor.
+
+After gathering local evidence, an operator or Agent can add a competing link,
+set a circle, and record contextual trust:
+
+```text
+anet --home <HOME> relation-link <ACTOR_NODE_ID> <SUBJECT_REF> \
+  --confidence 82 --evidence "claim:same-controller"
+anet --home <HOME> relation-circle <SUBJECT_REF> close \
+  --confidence 74 --evidence "relationship:confirmed" \
+  --label research-partner
+anet --home <HOME> relation-trust <SUBJECT_REF> code.review \
+  --estimate 88 --confidence 76 --evidence "task:review-42"
+```
+
+Evidence arguments are bounded references, not a place for raw conversations,
+private files, credentials, or sensor data.
 
 The signed QR exchange confirms a `friend` relationship between the two Actor
 identities. It does not:
@@ -66,6 +95,9 @@ identities. It does not:
 
 Relationship labels and circle placement remain local social state. Operational
 authorization continues to use explicit Anet trust and narrowly scoped grants.
+Revoking one Node Actor stops trust in that cryptographic Actor but does not
+rewrite the estimated social relationship with the latent Subject. The revoked
+Actor and the relationship event remain visible in the local model.
 
 ## Dependencies
 
