@@ -625,6 +625,7 @@ export function SocialCircleDemo() {
   const [importedObserver, setImportedObserver] = useState("");
   const [importedActivity, setImportedActivity] = useState<TimelineEvent[]>([]);
   const [importError, setImportError] = useState("");
+  const [disclosureSent, setDisclosureSent] = useState(false);
   const [demoDecisions, setDemoDecisions] = useState<
     Record<string, "accepted" | "rejected">
   >({});
@@ -733,6 +734,7 @@ export function SocialCircleDemo() {
     setStep(formationEvents.length - 1);
     setImportError("");
     setDemoDecisions({});
+    setDisclosureSent(false);
   }
 
   function decideDemoSuggestion(
@@ -1175,6 +1177,61 @@ export function SocialCircleDemo() {
             </article>
           ))}
         </div>
+
+        <section className={styles.disclosureLab}>
+          <div className={styles.disclosureHeading}>
+            <div>
+              <p className={styles.kicker}>REMOTE OBSERVER / RELATIONSHIP DISCLOSURE</p>
+              <h3>把 A 的视角给 G 看，不把 A 的判断变成 G 的判断。</h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDisclosureSent((current) => !current)}
+            >
+              {disclosureSent ? "撤下本页演示" : "加密披露当前页 →"}
+            </button>
+          </div>
+
+          <div className={styles.disclosureFlow}>
+            <article>
+              <small>01 · OBSERVER A</small>
+              <strong>A 的本地关系活动</strong>
+              <p>
+                {Math.min(timelineEvents.length, 100)} 条结构化活动 ·
+                append order · evidence digest
+              </p>
+              <b>LOCAL WORLDVIEW</b>
+            </article>
+            <i aria-hidden="true">→</i>
+            <article className={disclosureSent ? styles.packetSent : ""}>
+              <small>02 · ENCRYPTED PACKET</small>
+              <strong>只绑定观察者 G</strong>
+              <p>
+                social.relationship.disclosure · content-free ·
+                audience-private
+              </p>
+              <b>{disclosureSent ? "DELIVERED" : "NOT SENT"}</b>
+            </article>
+            <i aria-hidden="true">→</i>
+            <article className={disclosureSent ? styles.observerReceived : ""}>
+              <small>03 · OBSERVER G</small>
+              <strong>
+                {disclosureSent ? "看见 A 报告的世界" : "尚未收到远端视图"}
+              </strong>
+              <p>
+                G 自己的 Subject / 圈层 / contextual trust：
+                <em> 0 项改变</em>
+              </p>
+              <b>AUTHORIZATION EFFECT: NONE</b>
+            </article>
+          </div>
+
+          <p className={styles.disclosureBoundary}>
+            <b>SEPARATE LEDGER</b>
+            G 收到的是“A 如何看待关系”的披露，不是共同事实，也不是同步后的
+            社交图。人类与 Agent 都可以处于 A 或 G 的位置，角色对调不改变协议。
+          </p>
+        </section>
 
         <div className={styles.factBoundary}>
           <div>

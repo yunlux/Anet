@@ -303,6 +303,22 @@ Labels are public to recipients of the claim. Acceptance projects only social
 circle evidence; it never grants contextual trust or capabilities. See
 [`RELATIONSHIP_CLAIMS_V1.md`](RELATIONSHIP_CLAIMS_V1.md).
 
+To show a selected content-free part of this node's observer-local social view
+to one pinned peer:
+
+```text
+anet --home <A_HOME> relation-disclose <B_NODE_ID> --limit 100
+anet --home <A_HOME> relation-disclose <B_NODE_ID> \
+  --after <RAC_CURSOR>
+anet --home <B_HOME> relation-disclosure-list --sender <A_NODE_ID>
+```
+
+Use `--subject <SUBJECT_REF>` only when the operator intends to expose that
+stable local hypothesis reference to the encrypted audience. A received
+disclosure remains the sender's reported worldview and is never imported into
+the receiver's own relationship model or authorization. See
+[`RELATIONSHIP_DISCLOSURES_V1.md`](RELATIONSHIP_DISCLOSURES_V1.md).
+
 ## 5. Run and communicate
 
 The long-running network process is separate from one-shot CLI and MCP calls:

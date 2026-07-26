@@ -709,6 +709,10 @@ class NodeConfig:
         return self.home / "relationship-claims.json"
 
     @property
+    def relationship_disclosures_path(self) -> Path:
+        return self.home / "relationship-disclosures.json"
+
+    @property
     def database_path(self) -> Path:
         current = self.home / "anet.sqlite3"
         legacy = self.home / "ainet.sqlite3"

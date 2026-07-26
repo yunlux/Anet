@@ -45,6 +45,12 @@ from .prekeys import (
     load_local_prekey_bundle,
 )
 from .relation_projection import RelationshipProjector
+from .relationship_disclosures import (
+    RELATIONSHIP_DISCLOSURE_KIND,
+    RelationshipDisclosure,
+    RelationshipDisclosureBook,
+    validate_relationship_disclosure,
+)
 from .relations import RelationshipBook
 from .routing import AdaptiveRouter
 from .scheduling import AdaptiveSchedule
@@ -114,6 +120,9 @@ class AnetNode:
         self._prekey_response_last_ms: dict[str, int] = {}
         self._discord_bridge: DiscordSocialBridge | None = None
         self._relationship_projector: RelationshipProjector | None = None
+        self._relationship_disclosure_book: (
+            RelationshipDisclosureBook | None
+        ) = None
         self._discord_relationship_projector: (
             DiscordRelationshipProjector | None
         ) = None
@@ -287,6 +296,12 @@ class AnetNode:
                 self.store.register_companion_approval_request(body)
         elif normalized_kind == DISCORD_SIGNAL_KIND:
             body = validate_discord_signal(body)
+        elif normalized_kind == RELATIONSHIP_DISCLOSURE_KIND:
+            body = validate_relationship_disclosure(
+                body,
+                sender_node_id=self.node_id,
+                destination_node_id=destination_id,
+            )
         recipient = self.peers.require(destination_id)
         prekey_v2 = "one-time-prekeys-v2" in recipient.capabilities
         prekey_capable = prekey_v2 or "one-time-prekeys-v1" in recipient.capabilities
@@ -2128,6 +2143,15 @@ class AnetNode:
                 message,
                 body=validate_discord_signal(message.body),
             )
+        elif message.kind == RELATIONSHIP_DISCLOSURE_KIND:
+            message = replace(
+                message,
+                body=validate_relationship_disclosure(
+                    message.body,
+                    sender_node_id=message.sender_id,
+                    destination_node_id=self.node_id,
+                ),
+            )
         if (
             info.key_mode == "opk"
             and material is not None
@@ -2146,6 +2170,12 @@ class AnetNode:
             # crashes afterward, redelivery is safe because bundle import is
             # idempotent; the reverse ordering could lose replenishment forever.
             self._handle_prekey_bundle(message)
+        if trusted and message.kind == RELATIONSHIP_DISCLOSURE_KIND:
+            # Persist the idempotent observer projection before committing the
+            # Inbox record. A crash between the two steps can then replay
+            # safely; the reverse ordering could hide a delivered disclosure
+            # from its dedicated observer view forever.
+            self._store_relationship_disclosure(message)
         created = self.store.commit_local_message(
             message,
             trusted=trusted,
@@ -2190,6 +2220,23 @@ class AnetNode:
                 message.packet_id,
                 exc_info=True,
             )
+
+    def _store_relationship_disclosure(self, message: Any) -> None:
+        """Persist a trusted disclosure outside the local relation model."""
+
+        if self._relationship_disclosure_book is None:
+            self._relationship_disclosure_book = (
+                RelationshipDisclosureBook(
+                    self.config.relationship_disclosures_path,
+                    own_actor_id=self.node_id,
+                )
+            )
+        self._relationship_disclosure_book.add(
+            RelationshipDisclosure.from_dict(message.body),
+            packet_id=message.packet_id,
+            sender_actor_id=message.sender_id,
+            received_ms=now_ms(),
+        )
 
     def _project_interaction(
         self,

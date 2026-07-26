@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- 新增受众绑定的 `social.relationship.disclosure` 加密对象、
+  `relation-disclose` / `relation-disclosure-list` CLI，以及默认关闭的
+  `anet_relation_disclose` / `anet_relation_disclosures` MCP 工具。披露只接受
+  关系活动的无正文字段，重复绑定 Packet 发送者和唯一接收者；可信接收结果进入
+  独立观察账本，绝不折叠进接收方自己的 Actor、Subject、圈层、上下文信任、
+  PeerBook trust 或 authorization。
 - 关系书升级为 v7；圈层与上下文信任事件开始保存当时的最小结构化值，
   旧 v1–v6 关系书继续加载且不臆造历史。新增 observer-bound `rac_` 游标和
   `relation-activity` 增量/长轮询读取，将 Actor 事实、Subject 推测、互动、

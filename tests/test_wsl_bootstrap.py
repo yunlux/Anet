@@ -128,6 +128,7 @@ def test_generated_mcp_config_is_profile_scoped_and_fail_closed(
     assert config["env"]["ANET_MCP_TASK_CAPABILITIES"] == ""
     assert config["env"]["ANET_MCP_ALLOW_RAW_INBOX"] == "0"
     assert config["env"]["ANET_MCP_ALLOW_RELATION_ACTIVITY"] == "0"
+    assert config["env"]["ANET_MCP_ALLOW_RELATION_DISCLOSURE"] == "0"
 
 
 def test_user_units_use_current_runtime_and_local_state(tmp_path: Path) -> None:

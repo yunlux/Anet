@@ -11,7 +11,13 @@ from .relations import (
 )
 
 
-_NON_SOCIAL_KINDS = frozenset({"receipt", "network.probe"})
+_NON_SOCIAL_KINDS = frozenset(
+    {
+        "receipt",
+        "network.probe",
+        "social.relationship.disclosure",
+    }
+)
 _ARTIFACT_KEYS = frozenset(
     {
         "artifact",

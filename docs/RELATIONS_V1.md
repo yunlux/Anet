@@ -245,6 +245,33 @@ For repeated Agent polling, the optional MCP tool
 `anet_relation_activity` exposes the same projection only when
 `ANET_MCP_ALLOW_RELATION_ACTIVITY=1`. It is disabled by default.
 
+## Audience-bound remote observation
+
+An observer may explicitly send one selected activity page to a pinned peer:
+
+```text
+anet --home <A_HOME> relation-disclose <B_NODE_ID> --limit 100
+anet --home <A_HOME> relation-disclose <B_NODE_ID> \
+  --after <RAC_CURSOR>
+anet --home <A_HOME> relation-disclose <B_NODE_ID> \
+  --subject <SUBJECT_REF>
+```
+
+The resulting `social.relationship.disclosure` Packet is authenticated,
+destination-bound and end-to-end encrypted. Its body repeats the observer and
+audience Actor IDs and accepts only the content-free activity allowlist.
+
+The receiver reads the sender's worldview separately:
+
+```text
+anet --home <B_HOME> relation-disclosure-list --sender <A_NODE_ID>
+```
+
+Received disclosures are stored in `relationship-disclosures.json`, not folded
+into `relationships.json`. They cannot create a local Actor, Subject, circle,
+contextual trust estimate, PeerBook trust, capability, or authorization.
+See [`RELATIONSHIP_DISCLOSURES_V1.md`](RELATIONSHIP_DISCLOSURES_V1.md).
+
 ## CLI interface
 
 Compact projection:
@@ -446,8 +473,9 @@ Relations v1 does not yet standardize:
 
 - mutual claim replacement, withdrawal, or jointly acknowledged ending;
 - custom advisor policies and decision supersession;
-- encrypted cross-node projection streams for remote human observers;
-- cross-node portable relation bundles;
+- standing subscriptions, withdrawal, or remote deletion for relationship
+  disclosures;
+- multi-audience or offline-portable relationship disclosure bundles;
 - Web3 attestations or public reputation.
 
 These omissions preserve the Actor/Subject and inference/authorization

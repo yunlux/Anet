@@ -84,7 +84,8 @@ The generated MCP config binds:
   outbound and task-sender peers;
 - no task capabilities by default;
 - `ANET_MCP_ALLOW_RAW_INBOX=0`;
-- `ANET_MCP_ALLOW_RELATION_ACTIVITY=0`.
+- `ANET_MCP_ALLOW_RELATION_ACTIVITY=0`;
+- `ANET_MCP_ALLOW_RELATION_DISCLOSURE=0`.
 
 The bootstrap writes a runtime-neutral MCP JSON file. The invoking Agent may
 register that file through its own native MCP configuration mechanism, but

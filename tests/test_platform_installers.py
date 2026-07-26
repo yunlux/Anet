@@ -88,5 +88,11 @@ def test_generic_mcp_example_is_valid_and_fail_closed() -> None:
     assert config["args"] == ["-m", "anet", "mcp"]
     environment = config["env"]
     assert environment["ANET_MCP_ALLOW_RAW_INBOX"] == "0"
+    assert environment["ANET_MCP_ALLOW_RELATION_DISCLOSURE"] == "0"
     assert environment["ANET_MCP_ALLOWED_PEERS"] != "*"
     assert environment["ANET_MCP_TASK_ALLOWED_SENDERS"] != "*"
+
+
+def test_release_gates_protect_received_relationship_disclosures() -> None:
+    for name in ("wsl_release_gate.py", "windows_release_gate.ps1"):
+        assert "relationship-disclosures.json" in source(name), name

@@ -70,7 +70,8 @@ capabilities merely to make startup succeed.
         "ANET_MCP_TASK_ALLOWED_SENDERS": "<COMPLETE_PINNED_NODE_ID>",
         "ANET_MCP_TASK_CAPABILITIES": "<EXACT_CAPABILITY_OR_NAMESPACE.*>",
         "ANET_MCP_ALLOW_RAW_INBOX": "0",
-        "ANET_MCP_ALLOW_RELATION_ACTIVITY": "0"
+        "ANET_MCP_ALLOW_RELATION_ACTIVITY": "0",
+        "ANET_MCP_ALLOW_RELATION_DISCLOSURE": "0"
       }
     }
   }
@@ -113,6 +114,7 @@ Tool arguments can narrow these values but cannot expand them:
 | `ANET_MCP_ALLOW_TRANSIENT=1` | Opts into transient consumer input. Default: disabled. |
 | `ANET_MCP_ALLOW_APPROVAL_EXECUTION=1` | Enables high-risk Companion approval ledger tools. Default: disabled. |
 | `ANET_MCP_ALLOW_RELATION_ACTIVITY=1` | Enables the private observer-local social activity feed. Default: disabled. |
+| `ANET_MCP_ALLOW_RELATION_DISCLOSURE=1` | Enables sending and reading audience-bound relationship disclosures. Default: disabled. |
 
 Use complete Node IDs. `*` is supported only for deliberately unrestricted
 deployments and should not be an Agent-selected default.
@@ -162,6 +164,23 @@ selected node's observer identity; never reuse it with another `ANET_HOME`.
 Poll with the returned `next_cursor` for repeated Agent use. The feed preserves
 local append order, hashes evidence references and decision rationale, excludes
 raw payloads, and always reports `authorization_effect: none`.
+
+### Audience-bound relationship disclosures
+
+| Tool | Purpose |
+| --- | --- |
+| `anet_relation_disclose` | Queue one selected content-free activity page to an allowed pinned peer. |
+| `anet_relation_disclosures` | Read trusted disclosures received by this node without importing them into local relations. |
+
+Both tools are unavailable unless
+`ANET_MCP_ALLOW_RELATION_DISCLOSURE=1`. Sending is additionally restricted by
+`ANET_MCP_ALLOWED_PEERS`. The body is bound to the Packet sender and
+destination, encrypted by the normal Anet transport, and reports
+`visibility: audience-private` and `authorization_effect: none`.
+
+Enabling these tools does not enable `anet_relation_activity` or raw Inbox
+access. Received disclosures remain in the separate observation book described
+by [`RELATIONSHIP_DISCLOSURES_V1.md`](RELATIONSHIP_DISCLOSURES_V1.md).
 
 ### Typed task execution
 

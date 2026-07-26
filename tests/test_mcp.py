@@ -19,6 +19,8 @@ from anet.mcp_server import (
     anet_lifespan,
     anet_peers,
     anet_relation_activity,
+    anet_relation_disclose,
+    anet_relation_disclosures,
     anet_send,
     anet_settle,
     anet_status,
@@ -68,6 +70,23 @@ def test_mcp_relationship_activity_is_disabled_by_default(
     asyncio.run(scenario())
 
 
+def test_mcp_relationship_disclosure_is_disabled_by_default(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv(
+        "ANET_MCP_ALLOW_RELATION_DISCLOSURE",
+        raising=False,
+    )
+
+    async def scenario() -> None:
+        with pytest.raises(PermissionError, match="outside"):
+            await anet_relation_disclose("an1" + ("a" * 32))
+        with pytest.raises(PermissionError, match="outside"):
+            await anet_relation_disclosures()
+
+    asyncio.run(scenario())
+
+
 def test_mcp_relationship_activity_reads_scoped_local_feed(
     tmp_path,
     monkeypatch,
@@ -101,6 +120,54 @@ def test_mcp_relationship_activity_reads_scoped_local_feed(
             assert page["activities"][0]["activity_type"] == "actor.observed"
             assert "mcp-private-ref" not in json.dumps(page)
             assert page["authorization_effect"] == "none"
+
+    asyncio.run(scenario())
+
+
+def test_mcp_queues_audience_bound_relationship_disclosure(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config = initialize_node(
+        tmp_path / "node",
+        label="node",
+        listen_port=45120,
+    )
+    identity = Identity.load(config.identity_path)
+    audience = Identity.generate("audience")
+    observed = Identity.generate("observed")
+    PeerBook(
+        config.peers_path,
+        own_node_id=identity.node_id,
+    ).add(audience.card())
+    relationships = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=identity.node_id,
+    )
+    relationships.observe_actor(
+        observed.card(),
+        evidence_ref="packet:mcp-disclosure-private-ref",
+        now=1_800_000_000_001,
+    )
+    monkeypatch.setenv("ANET_HOME", str(config.home))
+    monkeypatch.setenv("ANET_MCP_ALLOW_RELATION_DISCLOSURE", "1")
+    monkeypatch.setenv("ANET_MCP_ALLOWED_PEERS", audience.node_id)
+
+    async def scenario() -> None:
+        async with anet_lifespan(server):
+            result = json.loads(
+                await anet_relation_disclose(
+                    audience.node_id,
+                    limit=1,
+                )
+            )
+            assert result["kind"] == "social.relationship.disclosure"
+            assert result["activities"] == 1
+            assert result["visibility"] == "audience-private"
+            assert result["authorization_effect"] == "none"
+            received = json.loads(await anet_relation_disclosures())
+            assert received["received"] == []
+            assert received["projection_into_local_relations"] is False
 
     asyncio.run(scenario())
 

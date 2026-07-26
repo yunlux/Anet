@@ -64,6 +64,11 @@ from .prekeys import PreKeyBundle, generate_prekey_bundle, import_prekey_bundle
 from .relation_activity import RelationshipActivityFeed
 from .relation_advisor import RelationshipAdvisor, RelationshipSuggestion
 from .relation_decisions import RelationshipDecisionManager
+from .relationship_disclosures import (
+    RELATIONSHIP_DISCLOSURE_KIND,
+    RelationshipDisclosure,
+    RelationshipDisclosureBook,
+)
 from .relationship_claims import (
     MutualRelationshipClaim,
     RelationshipClaimBook,
@@ -586,6 +591,79 @@ def cmd_relation_activity(args: argparse.Namespace) -> int:
             _print_json(page.to_dict())
             return 0
         time.sleep(min(0.25, max(0.0, deadline - time.monotonic())))
+
+
+def cmd_relation_disclose(args: argparse.Namespace) -> int:
+    if not 1 <= int(args.limit) <= 100:
+        raise ValueError("relationship disclosure limit must be 1-100")
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    relationships = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=identity.node_id,
+    )
+    page = RelationshipActivityFeed.read(
+        relationships.snapshot(),
+        after=args.after or "",
+        limit=args.limit,
+        subject_ref=args.subject or "",
+    )
+    if not page.activities:
+        raise ValueError("no new relationship activity to disclose")
+    disclosure = RelationshipDisclosure.create(
+        page,
+        audience_actor_id=args.destination,
+    )
+    node = AnetNode(config)
+    try:
+        packet_id = node.queue(
+            args.destination,
+            kind=RELATIONSHIP_DISCLOSURE_KIND,
+            body=disclosure.to_dict(),
+            ttl_seconds=args.ttl,
+            qos="normal",
+        )
+    finally:
+        node.close()
+    _print_json(
+        {
+            "queued": packet_id,
+            "destination": args.destination,
+            "kind": RELATIONSHIP_DISCLOSURE_KIND,
+            "disclosure_id": disclosure.disclosure_id,
+            "activities": len(disclosure.activities),
+            "next_cursor": disclosure.next_cursor,
+            "has_more": disclosure.has_more,
+            "privacy": "content-free",
+            "visibility": "audience-private",
+            "authorization_effect": "none",
+        }
+    )
+    return 0
+
+
+def cmd_relation_disclosure_list(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    book = RelationshipDisclosureBook(
+        config.relationship_disclosures_path,
+        own_actor_id=identity.node_id,
+    )
+    _print_json(
+        {
+            "observer_actor_id": identity.node_id,
+            "received": [
+                item.to_dict()
+                for item in book.all(
+                    sender_actor_id=args.sender or "",
+                    limit=args.limit,
+                )
+            ],
+            "projection_into_local_relations": False,
+            "authorization_effect": "none",
+        }
+    )
+    return 0
 
 
 def cmd_relation_decide(args: argparse.Namespace) -> int:
@@ -2609,6 +2687,54 @@ def build_parser() -> argparse.ArgumentParser:
         help="wait up to 30 seconds for a new matching activity",
     )
     relation_activity.set_defaults(func=cmd_relation_activity)
+
+    relation_disclose = sub.add_parser(
+        "relation-disclose",
+        help=(
+            "queue an audience-bound, content-free relationship activity "
+            "disclosure"
+        ),
+    )
+    relation_disclose.add_argument("destination")
+    relation_disclose.add_argument(
+        "--after",
+        help="opaque rac_ cursor returned by the previous disclosure",
+    )
+    relation_disclose.add_argument(
+        "--limit",
+        type=int,
+        default=100,
+        help="maximum activities to disclose (1-100; default: 100)",
+    )
+    relation_disclose.add_argument(
+        "--subject",
+        help="disclose activity for one observer-local subj_ reference",
+    )
+    relation_disclose.add_argument(
+        "--ttl",
+        type=int,
+        default=7 * 86400,
+        help="encrypted Packet lifetime in seconds (default: 7 days)",
+    )
+    relation_disclose.set_defaults(func=cmd_relation_disclose)
+
+    relation_disclosure_list = sub.add_parser(
+        "relation-disclosure-list",
+        help="list trusted relationship disclosures received by this Actor",
+    )
+    relation_disclosure_list.add_argument(
+        "--sender",
+        help="limit results to one complete sender Actor ID",
+    )
+    relation_disclosure_list.add_argument(
+        "--limit",
+        type=int,
+        default=100,
+        help="maximum disclosures to return (1-500; default: 100)",
+    )
+    relation_disclosure_list.set_defaults(
+        func=cmd_relation_disclosure_list
+    )
 
     relation_decide = sub.add_parser(
         "relation-decide",

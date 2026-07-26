@@ -100,6 +100,13 @@ timeline, raw conversation history, authorization audit, or proof that another
 observer saw the same world.
 _Avoid_: Global event log, conversation transcript, authorization ledger
 
+**Relationship disclosure**:
+An audience-bound, encrypted sharing of selected content-free Relationship
+activity from one observer to another Actor. The receiver stores it as the
+sender's reported worldview, separately from its own Subject hypotheses,
+Relationship estimates, trust, and authorization.
+_Avoid_: Relationship synchronization, shared social graph, delegated trust
+
 **Mutual relationship claim**:
 A portable statement signed by two verified Actors that they both accepted the
 same circle and public relationship labels. Each observer attributes the claim

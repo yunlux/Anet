@@ -21,6 +21,11 @@ from .encoding import b64e
 from .node import AnetNode
 from .packet import inspect_packet
 from .relation_activity import RelationshipActivityFeed
+from .relationship_disclosures import (
+    RELATIONSHIP_DISCLOSURE_KIND,
+    RelationshipDisclosure,
+    RelationshipDisclosureBook,
+)
 from .relations import RelationshipBook
 
 
@@ -150,6 +155,13 @@ def _require_relation_activity_enabled() -> None:
         )
 
 
+def _require_relation_disclosure_enabled() -> None:
+    if not _enabled("ANET_MCP_ALLOW_RELATION_DISCLOSURE", default=False):
+        raise PermissionError(
+            "relationship disclosure is outside the MCP process capability"
+        )
+
+
 def _queue_result(
     node: AnetNode,
     packet_id: str,
@@ -245,6 +257,103 @@ async def anet_relation_activity(
             limit=limit,
             subject_ref=subject_ref,
         ).to_dict()
+    )
+
+
+@server.tool(
+    name="anet_relation_disclose",
+    description=(
+        "Queue an audience-bound encrypted disclosure of this node's "
+        "content-free relationship activity. Disabled unless "
+        "ANET_MCP_ALLOW_RELATION_DISCLOSURE=1; never changes trust or "
+        "authorization."
+    ),
+)
+async def anet_relation_disclose(
+    to_node: str,
+    after: str = "",
+    limit: int = 100,
+    subject_ref: str = "",
+    ttl_seconds: int = 7 * 86400,
+) -> str:
+    _require_relation_disclosure_enabled()
+    if not 1 <= int(limit) <= 100:
+        raise ValueError("relationship disclosure limit must be 1-100")
+    node = _require_node()
+    destination = _scoped_peer(to_node)
+    book = RelationshipBook(
+        node.config.relationships_path,
+        own_actor_id=node.identity.node_id,
+    )
+    page = RelationshipActivityFeed.read(
+        book.snapshot(),
+        after=after,
+        limit=limit,
+        subject_ref=subject_ref,
+    )
+    if not page.activities:
+        raise ValueError("no new relationship activity to disclose")
+    disclosure = RelationshipDisclosure.create(
+        page,
+        audience_actor_id=destination,
+    )
+    packet_id = node.queue(
+        destination,
+        kind=RELATIONSHIP_DISCLOSURE_KIND,
+        body=disclosure.to_dict(),
+        ttl_seconds=ttl_seconds,
+        qos="normal",
+    )
+    return _queue_result(
+        node,
+        packet_id,
+        to_node=destination,
+        kind=RELATIONSHIP_DISCLOSURE_KIND,
+        qos="normal",
+        extra={
+            "disclosure_id": disclosure.disclosure_id,
+            "activities": len(disclosure.activities),
+            "next_cursor": disclosure.next_cursor,
+            "has_more": disclosure.has_more,
+            "privacy": "content-free",
+            "visibility": "audience-private",
+            "authorization_effect": "none",
+        },
+    )
+
+
+@server.tool(
+    name="anet_relation_disclosures",
+    description=(
+        "Read trusted audience-bound relationship disclosures received by "
+        "this node. Disabled unless "
+        "ANET_MCP_ALLOW_RELATION_DISCLOSURE=1; disclosures stay outside "
+        "the local relationship model."
+    ),
+)
+async def anet_relation_disclosures(
+    sender_actor_id: str = "",
+    limit: int = 100,
+) -> str:
+    _require_relation_disclosure_enabled()
+    node = _require_node()
+    book = RelationshipDisclosureBook(
+        node.config.relationship_disclosures_path,
+        own_actor_id=node.identity.node_id,
+    )
+    return _dump(
+        {
+            "observer_actor_id": node.identity.node_id,
+            "received": [
+                item.to_dict()
+                for item in book.all(
+                    sender_actor_id=sender_actor_id,
+                    limit=limit,
+                )
+            ],
+            "projection_into_local_relations": False,
+            "authorization_effect": "none",
+        }
     )
 
 

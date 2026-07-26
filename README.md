@@ -245,8 +245,13 @@ Start from [mcp-stdio.example.json](mcp-stdio.example.json). Production
 profiles should bind an agent ID, consumer-group prefix, kind prefix, allowed
 peers, task senders, and exact task capabilities through process-level
 environment settings. Keep private relationship activity disabled unless that
-Agent needs it (`ANET_MCP_ALLOW_RELATION_ACTIVITY=0` by default). Do not expose
-the complete MCP surface by default.
+Agent needs it (`ANET_MCP_ALLOW_RELATION_ACTIVITY=0` by default).
+Audience-bound relationship disclosure is a separate default-off capability
+(`ANET_MCP_ALLOW_RELATION_DISCLOSURE=0`); it carries only a content-free,
+recipient-bound view and never imports remote circles or trust into the local
+model. See
+[RELATIONSHIP_DISCLOSURES_V1.md](docs/RELATIONSHIP_DISCLOSURES_V1.md). Do not
+expose the complete MCP surface by default.
 
 ### Typed tasks
 
