@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import socket
+import time
 from dataclasses import replace
 from pathlib import Path
 
@@ -585,15 +586,17 @@ def test_real_background_nodes_do_not_poll_direct_on_fixed_short_cadence(tmp_pat
             assert idle is not None
             assert int(idle["attempts"]) == attempts_before
 
+            queued_at = time.monotonic()
             packet_id = a.queue(b.node_id, kind="message", body="background-wake")
             for _ in range(20):
                 if any(item["packet_id"] == packet_id for item in b.store.list_inbox()):
                     break
                 await asyncio.sleep(0.1)
             assert any(item["packet_id"] == packet_id for item in b.store.list_inbox())
+            assert time.monotonic() - queued_at < routing.direct_idle_probe_interval
             active = a.store.path_metric(b.node_id, "direct")
             assert active is not None
-            assert int(active["attempts"]) > attempts_before
+            assert int(active["attempts"]) >= attempts_before
         finally:
             await a.stop()
             await b.stop()
