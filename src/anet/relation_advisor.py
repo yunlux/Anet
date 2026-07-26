@@ -100,6 +100,11 @@ class RelationshipAdvisor:
         if selected and selected not in subjects:
             raise KeyError(f"unknown active Subject hypothesis: {selected}")
 
+        decided = {
+            str(item.get("suggestion_id", ""))
+            for item in model.get("suggestion_decisions", ())
+            if isinstance(item, Mapping)
+        }
         suggestions: list[RelationshipSuggestion] = []
         for key in sorted(subjects):
             if selected and key != selected:
@@ -116,7 +121,11 @@ class RelationshipAdvisor:
                 suggestions.append(trust)
         return tuple(
             sorted(
-                suggestions,
+                (
+                    item
+                    for item in suggestions
+                    if item.suggestion_id not in decided
+                ),
                 key=lambda item: (item.subject_ref, item.suggestion_type),
             )
         )

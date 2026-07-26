@@ -84,6 +84,14 @@ change, Subject fact, reputation score, or authorization; accepting it is a
 separate action.
 _Avoid_: Automatic relationship, trust decision, social credit
 
+**Suggestion decision**:
+An immutable observer-local record that one currently reproducible
+Relationship suggestion was explicitly accepted or rejected. Acceptance may
+apply exactly the proposed relationship change; rejection changes no
+relationship. A decision records the evidence basis and rationale but grants
+no authority and says nothing about the latent Subject as a fact.
+_Avoid_: Consent, authorization, global verdict, Subject truth
+
 **Mutual relationship claim**:
 A portable statement signed by two verified Actors that they both accepted the
 same circle and public relationship labels. Each observer attributes the claim

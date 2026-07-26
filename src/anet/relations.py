@@ -13,7 +13,7 @@ from .encoding import atomic_json
 from .identity import PeerCard
 
 
-RELATION_BOOK_VERSION = 5
+RELATION_BOOK_VERSION = 6
 RELATION_CIRCLES = (
     "public",
     "known",
@@ -53,6 +53,7 @@ ACTOR_PROOF_SCOPES = frozenset(
         "operator-attested",
     }
 )
+SUGGESTION_DECISIONS = frozenset({"accepted", "rejected"})
 
 
 def _now_ms(now: int | None) -> int:
@@ -474,6 +475,106 @@ class RelationshipEvent:
 
 
 @dataclass(frozen=True)
+class SuggestionDecision:
+    decision_id: str
+    suggestion_id: str
+    suggestion_type: str
+    subject_ref: str
+    decision: str
+    rationale: str
+    basis_hash: str
+    suggestion_confidence: int
+    proposed_circle: str
+    context: str
+    proposed_estimate: int | None
+    applied: bool
+    decided_ms: int
+
+    def __post_init__(self) -> None:
+        if not self.decision_id.startswith("rsd_"):
+            raise ValueError("invalid suggestion decision ID")
+        if not self.suggestion_id.startswith("rsg_"):
+            raise ValueError("invalid relationship suggestion ID")
+        _bounded_text(
+            self.suggestion_type,
+            label="relationship suggestion type",
+            maximum=MAX_CONTEXT_LENGTH,
+        )
+        if not self.subject_ref.startswith("subj_"):
+            raise ValueError("invalid suggestion decision Subject")
+        if self.decision not in SUGGESTION_DECISIONS:
+            raise ValueError("invalid suggestion decision")
+        _bounded_text(
+            self.rationale,
+            label="suggestion decision rationale",
+            maximum=MAX_EVIDENCE_LENGTH,
+        )
+        if len(self.basis_hash) != 32:
+            raise ValueError("invalid suggestion decision basis")
+        _confidence(
+            self.suggestion_confidence,
+            label="suggestion decision confidence",
+        )
+        if self.proposed_circle and self.proposed_circle not in RELATION_CIRCLES:
+            raise ValueError("invalid suggestion decision circle")
+        if self.context:
+            _bounded_text(
+                self.context,
+                label="suggestion decision context",
+                maximum=MAX_CONTEXT_LENGTH,
+            )
+        if self.proposed_estimate is not None:
+            _confidence(
+                self.proposed_estimate,
+                label="suggestion decision estimate",
+            )
+        if self.applied != (self.decision == "accepted"):
+            raise ValueError("suggestion decision application mismatch")
+        if self.decided_ms <= 0:
+            raise ValueError("invalid suggestion decision time")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "decision_id": self.decision_id,
+            "suggestion_id": self.suggestion_id,
+            "suggestion_type": self.suggestion_type,
+            "subject_ref": self.subject_ref,
+            "decision": self.decision,
+            "rationale": self.rationale,
+            "basis_hash": self.basis_hash,
+            "suggestion_confidence": self.suggestion_confidence,
+            "proposed_circle": self.proposed_circle,
+            "context": self.context,
+            "proposed_estimate": self.proposed_estimate,
+            "applied": self.applied,
+            "authorization_effect": "none",
+            "decided_ms": self.decided_ms,
+        }
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "SuggestionDecision":
+        return cls(
+            decision_id=str(value["decision_id"]),
+            suggestion_id=str(value["suggestion_id"]),
+            suggestion_type=str(value["suggestion_type"]),
+            subject_ref=str(value["subject_ref"]),
+            decision=str(value["decision"]),
+            rationale=str(value["rationale"]),
+            basis_hash=str(value["basis_hash"]),
+            suggestion_confidence=int(value["suggestion_confidence"]),
+            proposed_circle=str(value.get("proposed_circle", "")),
+            context=str(value.get("context", "")),
+            proposed_estimate=(
+                None
+                if value.get("proposed_estimate") is None
+                else int(value["proposed_estimate"])
+            ),
+            applied=bool(value["applied"]),
+            decided_ms=int(value["decided_ms"]),
+        )
+
+
+@dataclass(frozen=True)
 class InteractionEvidence:
     """Content-free evidence that a verified Actor interaction occurred."""
 
@@ -704,6 +805,7 @@ class RelationshipBook:
         self._events: list[RelationshipEvent] = []
         self._interactions: dict[str, InteractionEvidence] = {}
         self._transitions: list[SubjectTransition] = []
+        self._suggestion_decisions: dict[str, SuggestionDecision] = {}
         self.reload()
 
     def reload(self) -> None:
@@ -714,13 +816,14 @@ class RelationshipBook:
             self._events = []
             self._interactions = {}
             self._transitions = []
+            self._suggestion_decisions = {}
             return
         value = json.loads(self.path.read_text(encoding="utf-8"))
         version = int(value.get("version", 0))
         if version == 1:
             self._load_v1(value)
             return
-        if version not in {2, 3, 4, RELATION_BOOK_VERSION}:
+        if version not in {2, 3, 4, 5, RELATION_BOOK_VERSION}:
             raise ValueError("unsupported relationship book version")
         actors = {
             item.actor_id: item
@@ -757,6 +860,13 @@ class RelationshipBook:
             SubjectTransition.from_dict(dict(item))
             for item in value.get("subject_transitions", ())
         ]
+        suggestion_decisions = {
+            item.suggestion_id: item
+            for item in (
+                SuggestionDecision.from_dict(dict(item))
+                for item in value.get("suggestion_decisions", ())
+            )
+        }
         self._validate_model(
             actors,
             subjects,
@@ -764,6 +874,7 @@ class RelationshipBook:
             events,
             interactions,
             transitions,
+            suggestion_decisions,
         )
         self._actors = actors
         self._subjects = subjects
@@ -771,6 +882,7 @@ class RelationshipBook:
         self._events = events
         self._interactions = interactions
         self._transitions = transitions
+        self._suggestion_decisions = suggestion_decisions
 
     @staticmethod
     def _actor_from_dict(value: dict[str, Any], *, version: int) -> ActorRecord:
@@ -884,6 +996,7 @@ class RelationshipBook:
         self._events = []
         self._interactions = {}
         self._transitions = []
+        self._suggestion_decisions = {}
 
     def _validate_model(
         self,
@@ -893,6 +1006,7 @@ class RelationshipBook:
         events: list[RelationshipEvent],
         interactions: dict[str, InteractionEvidence] | None = None,
         transitions: list[SubjectTransition] | None = None,
+        suggestion_decisions: dict[str, SuggestionDecision] | None = None,
     ) -> None:
         if self.own_actor_id in actors:
             raise ValueError("relationship book contains the local Actor")
@@ -982,6 +1096,17 @@ class RelationshipBook:
 
         for subject_ref in lineage:
             visit(subject_ref)
+        decisions = suggestion_decisions or {}
+        if set(decisions) != {
+            item.suggestion_id for item in decisions.values()
+        }:
+            raise ValueError("suggestion decision key mismatch")
+        decision_ids = [item.decision_id for item in decisions.values()]
+        if len(decision_ids) != len(set(decision_ids)):
+            raise ValueError("relationship book contains a duplicate decision")
+        for decision in decisions.values():
+            if decision.subject_ref not in subjects:
+                raise ValueError("suggestion decision references an unknown Subject")
 
     def save(self) -> None:
         atomic_json(
@@ -1004,6 +1129,10 @@ class RelationshipBook:
                 ],
                 "subject_transitions": [
                     item.to_dict() for item in self._transitions
+                ],
+                "suggestion_decisions": [
+                    self._suggestion_decisions[key].to_dict()
+                    for key in sorted(self._suggestion_decisions)
                 ],
             },
             private=True,
@@ -1826,6 +1955,199 @@ class RelationshipBook:
         self.save()
         return updated
 
+    def suggestion_decision(
+        self,
+        suggestion_id: str,
+    ) -> SuggestionDecision | None:
+        return self._suggestion_decisions.get(str(suggestion_id))
+
+    def suggestion_decisions(
+        self,
+        *,
+        subject_ref: str = "",
+    ) -> tuple[SuggestionDecision, ...]:
+        selected = str(subject_ref).strip()
+        if selected and selected not in self._subjects:
+            raise KeyError(f"unknown Subject hypothesis: {selected}")
+        return tuple(
+            sorted(
+                (
+                    item
+                    for item in self._suggestion_decisions.values()
+                    if not selected or item.subject_ref == selected
+                ),
+                key=lambda item: (item.decided_ms, item.decision_id),
+            )
+        )
+
+    def decide_suggestion(
+        self,
+        suggestion: dict[str, Any],
+        decision: str,
+        *,
+        rationale: str,
+        now: int | None = None,
+    ) -> SuggestionDecision:
+        """Atomically record and, when accepted, apply one current suggestion."""
+
+        outcome = str(decision)
+        if outcome not in SUGGESTION_DECISIONS:
+            raise ValueError("suggestion decision must be accepted or rejected")
+        suggestion_id = _bounded_text(
+            str(suggestion.get("suggestion_id", "")),
+            label="relationship suggestion ID",
+            maximum=64,
+        )
+        if not suggestion_id.startswith("rsg_"):
+            raise ValueError("invalid relationship suggestion ID")
+        existing = self._suggestion_decisions.get(suggestion_id)
+        if existing is not None:
+            if existing.decision != outcome:
+                raise ValueError("relationship suggestion already has another decision")
+            return existing
+
+        suggestion_type = _bounded_text(
+            str(suggestion.get("suggestion_type", "")),
+            label="relationship suggestion type",
+            maximum=MAX_CONTEXT_LENGTH,
+        )
+        subject_ref = _bounded_text(
+            str(suggestion.get("subject_ref", "")),
+            label="Subject reference",
+            maximum=128,
+        )
+        subject = self._subjects.get(subject_ref)
+        if subject is None or subject.state != "active":
+            raise ValueError("relationship suggestion Subject is not active")
+        reason = _bounded_text(
+            rationale,
+            label="suggestion decision rationale",
+            maximum=MAX_EVIDENCE_LENGTH,
+        )
+        basis_hash = str(suggestion.get("basis_hash", ""))
+        confidence = _confidence(
+            int(suggestion.get("confidence", -1)),
+            label="relationship suggestion confidence",
+        )
+        proposed_circle = str(suggestion.get("proposed_circle", ""))
+        context = str(suggestion.get("context", ""))
+        raw_estimate = suggestion.get("proposed_estimate")
+        proposed_estimate = (
+            None if raw_estimate is None else _confidence(
+                int(raw_estimate),
+                label="relationship suggestion estimate",
+            )
+        )
+        if len(basis_hash) != 32:
+            raise ValueError("invalid relationship suggestion basis")
+        if suggestion_type == "circle.advance":
+            if proposed_circle != "collab" or context or proposed_estimate is not None:
+                raise ValueError("unsupported circle suggestion")
+        elif suggestion_type == "context-trust.review":
+            if proposed_circle or context != "task.delivery" or proposed_estimate is None:
+                raise ValueError("unsupported contextual trust suggestion")
+        else:
+            raise ValueError("unsupported relationship suggestion")
+
+        current = _now_ms(now)
+        evidence = f"suggestion:{suggestion_id}"
+        if outcome == "accepted":
+            relationship = self._relationships[subject_ref]
+            if suggestion_type == "circle.advance":
+                self._relationships[subject_ref] = RelationshipEstimate(
+                    subject_ref=subject_ref,
+                    circle=proposed_circle,
+                    state="active",
+                    relationship_labels=relationship.relationship_labels,
+                    relationship_confidence=confidence,
+                    context_trust=relationship.context_trust,
+                    evidence_refs=_unique_text(
+                        (*relationship.evidence_refs, evidence),
+                        label="relationship evidence reference",
+                        maximum=MAX_EVIDENCE_LENGTH,
+                    ),
+                    updated_ms=current,
+                )
+                self._append_event(
+                    "relationship.circle-set",
+                    subject_ref=subject_ref,
+                    evidence_ref=evidence,
+                    now=current,
+                )
+            else:
+                contexts = {
+                    item.context: item for item in relationship.context_trust
+                }
+                previous = contexts.get(context)
+                contexts[context] = ContextTrust(
+                    context=context,
+                    estimate=proposed_estimate,
+                    confidence=confidence,
+                    evidence_refs=_unique_text(
+                        (
+                            *(
+                                previous.evidence_refs
+                                if previous is not None
+                                else ()
+                            ),
+                            evidence,
+                        ),
+                        label="context trust evidence reference",
+                        maximum=MAX_EVIDENCE_LENGTH,
+                    ),
+                    updated_ms=current,
+                )
+                self._relationships[subject_ref] = RelationshipEstimate(
+                    subject_ref=subject_ref,
+                    circle=relationship.circle,
+                    state=relationship.state,
+                    relationship_labels=relationship.relationship_labels,
+                    relationship_confidence=relationship.relationship_confidence,
+                    context_trust=tuple(contexts.values()),
+                    evidence_refs=_unique_text(
+                        (*relationship.evidence_refs, evidence),
+                        label="relationship evidence reference",
+                        maximum=MAX_EVIDENCE_LENGTH,
+                    ),
+                    updated_ms=current,
+                )
+                self._append_event(
+                    "relationship.context-trust-set",
+                    subject_ref=subject_ref,
+                    evidence_ref=evidence,
+                    now=current,
+                )
+
+        decision_id = "rsd_" + hashlib.blake2s(
+            f"{self.own_actor_id}:{suggestion_id}".encode("utf-8"),
+            digest_size=16,
+            person=b"anetrsdi",
+        ).hexdigest()
+        record = SuggestionDecision(
+            decision_id=decision_id,
+            suggestion_id=suggestion_id,
+            suggestion_type=suggestion_type,
+            subject_ref=subject_ref,
+            decision=outcome,
+            rationale=reason,
+            basis_hash=basis_hash,
+            suggestion_confidence=confidence,
+            proposed_circle=proposed_circle,
+            context=context,
+            proposed_estimate=proposed_estimate,
+            applied=outcome == "accepted",
+            decided_ms=current,
+        )
+        self._suggestion_decisions[suggestion_id] = record
+        self._append_event(
+            f"relationship.suggestion-{outcome}",
+            subject_ref=subject_ref,
+            evidence_ref=evidence,
+            now=current,
+        )
+        self.save()
+        return record
+
     def confirm_friend(
         self,
         card: PeerCard,
@@ -1989,6 +2311,10 @@ class RelationshipBook:
             "interaction_stats": self.interaction_stats(),
             "subject_transitions": [
                 item.to_dict() for item in self._transitions
+            ],
+            "suggestion_decisions": [
+                self._suggestion_decisions[key].to_dict()
+                for key in sorted(self._suggestion_decisions)
             ],
         }
 

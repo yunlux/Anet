@@ -62,6 +62,7 @@ from .packet import inspect_packet
 from .peers import PeerBook
 from .prekeys import PreKeyBundle, generate_prekey_bundle, import_prekey_bundle
 from .relation_advisor import RelationshipAdvisor, RelationshipSuggestion
+from .relation_decisions import RelationshipDecisionManager
 from .relationship_claims import (
     MutualRelationshipClaim,
     RelationshipClaimBook,
@@ -491,8 +492,6 @@ def _suggestion_command(item: RelationshipSuggestion) -> list[str]:
             "--evidence",
             evidence,
         ]
-        for label in item.evidence_tags:
-            command.extend(("--label", label))
         return command
     if (
         item.suggestion_type == "context-trust.review"
@@ -528,15 +527,67 @@ def cmd_relation_suggest(args: argparse.Namespace) -> int:
             "suggestions": [
                 {
                     **item.to_dict(),
-                    "explicit_command": _suggestion_command(item),
+                    "decision_commands": {
+                        "accept": [
+                            "relation-decide",
+                            item.suggestion_id,
+                            "accepted",
+                            "--reason",
+                            "<RATIONALE_CODE>",
+                        ],
+                        "reject": [
+                            "relation-decide",
+                            item.suggestion_id,
+                            "rejected",
+                            "--reason",
+                            "<RATIONALE_CODE>",
+                        ],
+                    },
+                    "proposed_mutation": _suggestion_command(item),
                 }
                 for item in suggestions
             ],
             "note": (
-                "Suggestions do not change relationships, Subject hypotheses, "
-                "trust, PeerBook entries, capabilities, or authorization"
+                "Suggestions do not change relationships. Use relation-decide "
+                "for an auditable current-basis decision; neither a suggestion "
+                "nor its decision changes PeerBook trust or authorization"
             ),
         }
+    )
+    return 0
+
+
+def cmd_relation_decide(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    relationships = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=identity.node_id,
+    )
+    record = RelationshipDecisionManager.decide(
+        relationships,
+        args.suggestion,
+        args.decision,
+        rationale=args.reason,
+    )
+    _print_json(record.to_dict())
+    return 0
+
+
+def cmd_relation_decision_list(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    relationships = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=identity.node_id,
+    )
+    _print_json(
+        [
+            item.to_dict()
+            for item in relationships.suggestion_decisions(
+                subject_ref=args.subject or "",
+            )
+        ]
     )
     return 0
 
@@ -2501,6 +2552,36 @@ def build_parser() -> argparse.ArgumentParser:
         help="limit suggestions to one active observer-local subj_ reference",
     )
     relation_suggest.set_defaults(func=cmd_relation_suggest)
+
+    relation_decide = sub.add_parser(
+        "relation-decide",
+        help="accept or reject one current relationship suggestion",
+    )
+    relation_decide.add_argument(
+        "suggestion",
+        help="current rsg_ relationship suggestion ID",
+    )
+    relation_decide.add_argument(
+        "decision",
+        choices=("accepted", "rejected"),
+        help="explicit observer-local decision",
+    )
+    relation_decide.add_argument(
+        "--reason",
+        required=True,
+        help="bounded rationale code or content-free evidence reference",
+    )
+    relation_decide.set_defaults(func=cmd_relation_decide)
+
+    relation_decision_list = sub.add_parser(
+        "relation-decision-list",
+        help="list immutable observer-local suggestion decisions",
+    )
+    relation_decision_list.add_argument(
+        "--subject",
+        help="limit history to one observer-local subj_ reference",
+    )
+    relation_decision_list.set_defaults(func=cmd_relation_decision_list)
 
     relation_link = sub.add_parser(
         "relation-link",

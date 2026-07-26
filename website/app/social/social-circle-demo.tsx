@@ -70,6 +70,19 @@ type RelationSnapshot = {
     requires_explicit_action: boolean;
     authorization_effect: string;
   }[];
+  suggestion_decisions?: {
+    decision_id: string;
+    suggestion_id: string;
+    suggestion_type: "circle.advance" | "context-trust.review";
+    subject_ref: string;
+    decision: "accepted" | "rejected";
+    rationale: string;
+    proposed_circle: string;
+    context: string;
+    proposed_estimate: number | null;
+    applied: boolean;
+    authorization_effect: string;
+  }[];
 };
 
 type SubjectModel = {
@@ -87,7 +100,18 @@ type SubjectModel = {
   trust: { label: string; value: number }[];
   activity?: { label: string; count: number; detail: string }[];
   lineage?: { label: string; detail: string; confidence: number }[];
-  suggestions?: { title: string; detail: string; confidence: number }[];
+  suggestions?: {
+    id: string;
+    title: string;
+    detail: string;
+    confidence: number;
+  }[];
+  decisions?: {
+    id: string;
+    decision: "accepted" | "rejected";
+    title: string;
+    rationale: string;
+  }[];
   position: { left: string; top: string };
 };
 
@@ -133,12 +157,12 @@ function projectSnapshot(value: unknown): {
   }
   const snapshot = value as RelationSnapshot;
   if (
-    ![2, 3, 4, 5].includes(snapshot.version) ||
+    ![2, 3, 4, 5, 6].includes(snapshot.version) ||
     !Array.isArray(snapshot.actors) ||
     !Array.isArray(snapshot.subjects) ||
     !Array.isArray(snapshot.relationships)
   ) {
-    throw new Error("仅支持 relation-list --model 输出的 v2/v3/v4/v5 模型");
+    throw new Error("仅支持 relation-list --model 输出的 v2-v6 模型");
   }
   const actors = new Map(snapshot.actors.map((actor) => [actor.actor_id, actor]));
   const relationships = new Map(
@@ -155,6 +179,9 @@ function projectSnapshot(value: unknown): {
     : [];
   const suggestions = Array.isArray(snapshot.relationship_suggestions)
     ? snapshot.relationship_suggestions
+    : [];
+  const decisions = Array.isArray(snapshot.suggestion_decisions)
+    ? snapshot.suggestion_decisions
     : [];
   const projected = snapshot.subjects
     .filter((subject) => subject.state === "active")
@@ -237,17 +264,36 @@ function projectSnapshot(value: unknown): {
               ? circleMeta[item.proposed_circle].label
               : item.proposed_circle;
             return {
+              id: item.suggestion_id,
               title: `建议进入${circle}圈`,
               detail: `${Number(item.metrics.balanced_task_events ?? 0)} 组平衡任务事件 · 需明确采纳`,
               confidence: Number(item.confidence ?? 0),
             };
           }
           return {
+            id: item.suggestion_id,
             title: `复核 ${item.context} 信任`,
             detail: `候选 ${Number(item.proposed_estimate ?? 0)} · 样本 ${Number(item.metrics.sample_size ?? 0)} · 不自动应用`,
             confidence: Number(item.confidence ?? 0),
           };
         }),
+      decisions: decisions
+        .filter((item) => item.subject_ref === subject.subject_ref)
+        .map((item) => ({
+          id: item.decision_id,
+          decision: item.decision,
+          title:
+            item.suggestion_type === "circle.advance"
+              ? `${item.decision === "accepted" ? "已采纳" : "已拒绝"}进入${
+                  isCircle(item.proposed_circle)
+                    ? circleMeta[item.proposed_circle].label
+                    : item.proposed_circle
+                }圈`
+              : `${item.decision === "accepted" ? "已采纳" : "已拒绝"} ${
+                  item.context
+                } 信任复核`,
+          rationale: item.rationale,
+        })),
       position: importPositions[index % importPositions.length],
     } satisfies SubjectModel;
     });
@@ -346,6 +392,7 @@ const baseSubjects: SubjectModel[] = [
     ],
     suggestions: [
       {
+        id: "rsg_demo_d_collab",
         title: "建议进入协作圈",
         detail: "重复任务提交与完成 · 双向事件 · 不涉及授权",
         confidence: 58,
@@ -452,13 +499,41 @@ export function SocialCircleDemo() {
   const [importedSubjects, setImportedSubjects] = useState<SubjectModel[] | null>(null);
   const [importedObserver, setImportedObserver] = useState("");
   const [importError, setImportError] = useState("");
+  const [demoDecisions, setDemoDecisions] = useState<
+    Record<string, "accepted" | "rejected">
+  >({});
 
-  const subjects = useMemo(
-    () =>
-      importedSubjects ??
-      (friendAdded ? [...baseSubjects, scannedFriend] : baseSubjects),
-    [friendAdded, importedSubjects],
-  );
+  const subjects = useMemo(() => {
+    if (importedSubjects) {
+      return importedSubjects;
+    }
+    const source = friendAdded ? [...baseSubjects, scannedFriend] : baseSubjects;
+    return source.map((subject) => {
+      const decisions = (subject.suggestions ?? [])
+        .filter((item) => demoDecisions[item.id])
+        .map((item) => ({
+          id: `rsd_${item.id}`,
+          decision: demoDecisions[item.id],
+          title: `${
+            demoDecisions[item.id] === "accepted" ? "已采纳" : "已拒绝"
+          }${item.title.replace("建议", "")}`,
+          rationale:
+            demoDecisions[item.id] === "accepted"
+              ? "demo:bounded-collaboration-confirmed"
+              : "demo:insufficient-social-context",
+        }));
+      const accepted = decisions.some((item) => item.decision === "accepted");
+      return {
+        ...subject,
+        circle: accepted && subject.id === "d" ? "collab" : subject.circle,
+        rel: accepted && subject.id === "d" ? 58 : subject.rel,
+        suggestions: (subject.suggestions ?? []).filter(
+          (item) => !demoDecisions[item.id],
+        ),
+        decisions,
+      } satisfies SubjectModel;
+    });
+  }, [demoDecisions, friendAdded, importedSubjects]);
 
   const selected =
     subjects.find((subject) => subject.id === selectedId) ??
@@ -527,6 +602,17 @@ export function SocialCircleDemo() {
     setImportedObserver("");
     setSelectedId("d");
     setImportError("");
+    setDemoDecisions({});
+  }
+
+  function decideDemoSuggestion(
+    suggestionId: string,
+    decision: "accepted" | "rejected",
+  ) {
+    setDemoDecisions((current) => ({
+      ...current,
+      [suggestionId]: decision,
+    }));
   }
 
   const actorCount = new Set(
@@ -763,6 +849,48 @@ export function SocialCircleDemo() {
                       <small>{item.detail}</small>
                     </div>
                     <b>{item.confidence}%</b>
+                    {!importedSubjects && (
+                      <div className={styles.decisionActions}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            decideDemoSuggestion(item.id, "accepted")
+                          }
+                        >
+                          采纳
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            decideDemoSuggestion(item.id, "rejected")
+                          }
+                        >
+                          拒绝
+                        </button>
+                      </div>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </>
+          )}
+
+          {selected.decisions && selected.decisions.length > 0 && (
+            <>
+              <div className={styles.sectionTitle}>
+                <span>SUGGESTION DECISIONS</span>
+                <small>不可变历史 · 权限影响为零</small>
+              </div>
+              <div className={styles.decisionList}>
+                {selected.decisions.map((item) => (
+                  <article key={item.id}>
+                    <b data-decision={item.decision}>
+                      {item.decision === "accepted" ? "ACCEPTED" : "REJECTED"}
+                    </b>
+                    <div>
+                      <strong>{item.title}</strong>
+                      <small>{item.rationale}</small>
+                    </div>
                   </article>
                 ))}
               </div>

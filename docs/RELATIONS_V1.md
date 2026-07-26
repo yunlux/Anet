@@ -176,7 +176,7 @@ human-device grants, or application-specific approval.
 
 ## Persistent model
 
-`relationships.json` version 5 is private node-local state with seven persisted
+`relationships.json` version 6 is private node-local state with eight persisted
 sections:
 
 ```text
@@ -187,17 +187,19 @@ Relationship estimates
 Relationship events
 Content-free interaction evidence
 Subject transition lineage
+Immutable relationship-suggestion decisions
 ```
 
 `relation-list --model` adds derived `interaction_stats` and
 `relationship_suggestions` projections; neither is persisted.
 
-The loader accepts version 1 through version 4 books. It projects v1
+The loader accepts version 1 through version 5 books. It projects v1
 one-Actor/one-Subject records into the current model, treats a v2 book as
 having no interaction evidence, treats a v3 book as having no Subject
 transitions, and assigns legacy Node Actors a migrated cryptographic Peer Card
-proof. The next mutation writes version 5. Migration does not increase Subject
-confidence, invent interaction evidence, transitions, or events.
+proof. Version 5 has no suggestion-decision history. The next mutation writes
+version 6. Migration does not increase Subject confidence, invent interaction
+evidence, transitions, decisions, or events.
 
 Interaction statistics are derived from evidence and are deliberately not
 trust scores. Repeated traffic can increase a count but cannot raise
@@ -290,9 +292,10 @@ anet --home <HOME> relation-suggest --subject <SUBJECT_REF>
 ```
 
 Every deterministic suggestion contains a basis hash, confidence, structured
-metrics, rationale codes, evidence tags, and a separate CLI argument list that
-would explicitly apply it. The Agent may inspect that output and make its own
-decision; merely generating a suggestion changes nothing.
+metrics, rationale codes, evidence tags, explicit accept/reject decision
+commands, and the proposed underlying mutation for inspection. The Agent may
+inspect that output and make its own decision; merely generating a suggestion
+changes nothing.
 
 The default advisor has only two narrow policies:
 
@@ -305,8 +308,39 @@ It never suggests `friend`, `close`, `family`, Subject linking, Actor identity,
 PeerBook trust, capabilities, or authorization. Message traffic, Discord
 reputation, reactions, account age and social labels cannot satisfy either
 policy. A relationship suggestion is not persisted and cannot apply itself.
-The separate `relation-circle` or `relation-trust` command remains the explicit
-mutation seam.
+`relation-decide` is the auditable mutation seam. The lower-level
+`relation-circle` and `relation-trust` commands remain available for direct
+operator-authored estimates that did not originate from an advisor suggestion.
+
+## Suggestion decisions
+
+An observer can accept or reject only a suggestion that the advisor can still
+reproduce from the current evidence:
+
+```text
+anet --home <HOME> relation-decide <SUGGESTION_ID> accepted \
+  --reason "agent:bounded-collaboration-confirmed"
+anet --home <HOME> relation-decide <SUGGESTION_ID> rejected \
+  --reason "agent:insufficient-social-context"
+anet --home <HOME> relation-decision-list
+anet --home <HOME> relation-decision-list --subject <SUBJECT_REF>
+```
+
+Evidence changes produce a new deterministic suggestion ID. An undecided old
+ID is then stale and cannot be accepted or rejected. One suggestion can have
+only one immutable decision; an idempotent retry of the same decision returns
+the existing record, while attempting to reverse it fails.
+
+Acceptance atomically applies exactly the proposed `known -> collab` circle or
+`task.delivery` contextual-trust value, records its evidence basis and
+rationale, and appends decision and relationship events in one save. Rejection
+records the same audit basis without changing the relationship. Neither path
+changes PeerBook trust, Subject links, capabilities, or authorization.
+
+`relation-list --model` includes persisted `suggestion_decisions` and only
+currently active, undecided `relationship_suggestions`. Decision rationale is
+a bounded content-free reference, not a place for conversation text or private
+evidence.
 
 ## Discord Actor projection
 
@@ -374,7 +408,7 @@ not inspect, calculate, or project the relationship.
 Relations v1 does not yet standardize:
 
 - mutual claim replacement, withdrawal, or jointly acknowledged ending;
-- accepted/rejected suggestion decision history or custom advisor policies;
+- custom advisor policies and decision supersession;
 - encrypted projection streams for human observers;
 - cross-node portable relation bundles;
 - Web3 attestations or public reputation.

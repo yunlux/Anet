@@ -226,11 +226,32 @@ anet --home <HOME> relation-suggest
 anet --home <HOME> relation-suggest --subject <SUBJECT_REF>
 ```
 
-The command is read-only. Each result includes a separate `explicit_command`
-argument list. Execute that command only when the evidence and local policy
-justify the proposed circle or narrow trust context. The default advisor can
-suggest only `known -> collab` and `task.delivery` review. It cannot infer
-friendship, intimacy, family, Subject sameness, PeerBook trust, or capability.
+The command is read-only. Each result includes explicit `accept` and `reject`
+decision command arguments plus the transparent `proposed_mutation`. Use the
+decision command when the evidence and local policy justify the proposed circle
+or narrow trust context; do not bypass its audit history by executing the
+mutation directly. The default advisor can suggest only `known -> collab` and
+`task.delivery` review. It cannot infer friendship, intimacy, family, Subject
+sameness, PeerBook trust, or capability.
+
+Prefer the auditable decision seam over directly executing the suggested
+mutation command:
+
+```text
+anet --home <HOME> relation-decide <SUGGESTION_ID> accepted \
+  --reason "agent:bounded-collaboration-confirmed"
+anet --home <HOME> relation-decide <SUGGESTION_ID> rejected \
+  --reason "agent:insufficient-social-context"
+anet --home <HOME> relation-decision-list --subject <SUBJECT_REF>
+```
+
+The runtime recomputes the current suggestions before deciding. If the evidence
+basis changed, the old ID is stale and the Agent must review the newly derived
+suggestion. Do not retry by guessing an ID. Acceptance atomically applies only
+the proposed circle or narrow contextual-trust estimate; rejection changes no
+relationship. Both are immutable observer-local history with
+`authorization_effect: none`. Use a bounded rationale code or content-free
+reference, never raw conversation, task output, filenames, or secrets.
 
 When Actor-to-Subject explanations change, preserve lineage instead of editing
 or deleting a `subj_` record:

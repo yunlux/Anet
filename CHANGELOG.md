@@ -1,5 +1,14 @@
 # Anet Changelog
 
+## Unreleased
+
+- 关系书升级为 v6，新增观察者本地、不可变的建议采纳/拒绝历史。
+  `relation-decide` 只接受当前证据仍可复现的建议 ID；采纳时关系变更、决定记录
+  与事件一次原子保存，拒绝时不改关系。证据变化会使旧建议失效，任何决定均不
+  改变 PeerBook trust、Subject 归并、capability 或 authorization。
+- `/social` Demo 新增建议采纳/拒绝交互、决定审计记录和 v6 本地模型导入，
+  用可见流程区分“互动证据、关系建议、显式决定、关系变化”。
+
 ## 0.12.1 — 2026-07-25
 
 - 新增 Windows、WSL 与 macOS 纯平台安装器。默认安装只建立版本化 Anet runtime，

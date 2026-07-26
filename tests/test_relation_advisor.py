@@ -151,7 +151,7 @@ def test_advisor_never_suggests_friend_close_family_or_subject_link(
     } == {"collab"}
 
 
-def test_relation_suggest_cli_returns_separate_explicit_commands(
+def test_relation_suggest_cli_returns_decision_commands_and_proposed_mutation(
     tmp_path,
     capsys,
 ) -> None:
@@ -202,10 +202,20 @@ def test_relation_suggest_cli_returns_separate_explicit_commands(
     result = json.loads(capsys.readouterr().out)
     assert len(result["suggestions"]) == 1
     suggestion = result["suggestions"][0]
-    assert suggestion["explicit_command"][:3] == [
+    assert suggestion["proposed_mutation"][:3] == [
         "relation-circle",
         subject.subject_ref,
         "collab",
+    ]
+    assert suggestion["decision_commands"]["accept"][:3] == [
+        "relation-decide",
+        suggestion["suggestion_id"],
+        "accepted",
+    ]
+    assert suggestion["decision_commands"]["reject"][:3] == [
+        "relation-decide",
+        suggestion["suggestion_id"],
+        "rejected",
     ]
     assert suggestion["authorization_effect"] == "none"
 
