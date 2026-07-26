@@ -69,6 +69,9 @@ from .relationship_disclosures import (
     RelationshipDisclosure,
     RelationshipDisclosureBook,
 )
+from .relationship_disclosure_schedules import (
+    RelationshipDisclosureScheduleBook,
+)
 from .relationship_claims import (
     MutualRelationshipClaim,
     RelationshipClaimBook,
@@ -661,6 +664,131 @@ def cmd_relation_disclosure_list(args: argparse.Namespace) -> int:
             ],
             "projection_into_local_relations": False,
             "authorization_effect": "none",
+        }
+    )
+    return 0
+
+
+def cmd_relation_disclosure_schedule_add(
+    args: argparse.Namespace,
+) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    PeerBook(
+        config.peers_path,
+        own_node_id=identity.node_id,
+    ).require(args.destination)
+    relationships = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=identity.node_id,
+    )
+    model = relationships.snapshot()
+    subject_ref = args.subject or ""
+    if subject_ref:
+        # Validate that this is an active observer-local Subject reference.
+        RelationshipActivityFeed.read(
+            model,
+            subject_ref=subject_ref,
+            limit=1,
+        )
+    cursor = ""
+    if not args.include_history:
+        cursor = RelationshipActivityFeed.read(
+            model,
+            limit=1,
+            tail=True,
+        ).next_cursor
+    book = RelationshipDisclosureScheduleBook(
+        config.relationship_disclosure_schedules_path,
+        own_actor_id=identity.node_id,
+    )
+    item = book.create(
+        args.destination,
+        cursor=cursor,
+        subject_ref=subject_ref,
+        interval_seconds=args.interval,
+        batch_limit=args.limit,
+        packet_ttl_seconds=args.packet_ttl,
+        lifetime_seconds=args.lifetime,
+    )
+    _print_json(
+        {
+            **item.to_dict(),
+            "state": item.state(),
+            "history_mode": (
+                "explicit-replay" if args.include_history else "start-now"
+            ),
+            "note": (
+                "This observer-local instruction permits only bounded "
+                "relationship disclosure. The audience cannot pull or "
+                "expand its scope."
+            ),
+        }
+    )
+    return 0
+
+
+def cmd_relation_disclosure_schedule_list(
+    args: argparse.Namespace,
+) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    book = RelationshipDisclosureScheduleBook(
+        config.relationship_disclosure_schedules_path,
+        own_actor_id=identity.node_id,
+    )
+    _print_json(
+        {
+            "observer_actor_id": identity.node_id,
+            "schedules": [
+                {**item.to_dict(), "state": item.state()}
+                for item in book.all()
+            ],
+            "audience_pull": False,
+            "authorization_effect": "disclosure-only",
+        }
+    )
+    return 0
+
+
+def cmd_relation_disclosure_schedule_revoke(
+    args: argparse.Namespace,
+) -> int:
+    if args.confirm != args.schedule:
+        raise ValueError(
+            "schedule revocation confirmation must exactly match schedule ID"
+        )
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    book = RelationshipDisclosureScheduleBook(
+        config.relationship_disclosure_schedules_path,
+        own_actor_id=identity.node_id,
+    )
+    item = book.revoke(
+        args.schedule,
+        reason=args.reason or "",
+    )
+    _print_json({**item.to_dict(), "state": item.state()})
+    return 0
+
+
+def cmd_relation_disclosure_schedule_run(
+    args: argparse.Namespace,
+) -> int:
+    config = NodeConfig.load(args.home)
+    node = AnetNode(config)
+    try:
+        results = node.run_relationship_disclosure_schedules_once(
+            schedule_id=args.schedule or "",
+            force=bool(args.schedule),
+        )
+    finally:
+        node.close()
+    _print_json(
+        {
+            "results": results,
+            "forced": bool(args.schedule),
+            "audience_pull": False,
         }
     )
     return 0
@@ -2734,6 +2862,95 @@ def build_parser() -> argparse.ArgumentParser:
     )
     relation_disclosure_list.set_defaults(
         func=cmd_relation_disclosure_list
+    )
+
+    relation_schedule_add = sub.add_parser(
+        "relation-disclosure-schedule-add",
+        help="create a revocable observer-local disclosure schedule",
+    )
+    relation_schedule_add.add_argument("destination")
+    relation_schedule_scope = relation_schedule_add.add_mutually_exclusive_group(
+        required=True
+    )
+    relation_schedule_scope.add_argument(
+        "--all",
+        action="store_true",
+        help="disclose new activity across all local Subject hypotheses",
+    )
+    relation_schedule_scope.add_argument(
+        "--subject",
+        help="limit disclosure to one observer-local subj_ reference",
+    )
+    relation_schedule_add.add_argument(
+        "--interval",
+        type=int,
+        default=300,
+        help="poll interval in seconds (30-86400; default: 300)",
+    )
+    relation_schedule_add.add_argument(
+        "--limit",
+        type=int,
+        default=100,
+        help="maximum activities per disclosure (1-100; default: 100)",
+    )
+    relation_schedule_add.add_argument(
+        "--lifetime",
+        type=int,
+        default=30 * 86400,
+        help="schedule lifetime in seconds (default: 30 days)",
+    )
+    relation_schedule_add.add_argument(
+        "--packet-ttl",
+        type=int,
+        default=7 * 86400,
+        help="encrypted Packet lifetime in seconds (default: 7 days)",
+    )
+    relation_schedule_add.add_argument(
+        "--include-history",
+        action="store_true",
+        help="explicitly begin at existing history instead of starting now",
+    )
+    relation_schedule_add.set_defaults(
+        func=cmd_relation_disclosure_schedule_add
+    )
+
+    relation_schedule_list = sub.add_parser(
+        "relation-disclosure-schedule-list",
+        help="list observer-local disclosure schedules and delivery state",
+    )
+    relation_schedule_list.set_defaults(
+        func=cmd_relation_disclosure_schedule_list
+    )
+
+    relation_schedule_revoke = sub.add_parser(
+        "relation-disclosure-schedule-revoke",
+        help="stop one disclosure schedule and discard its pending batch",
+    )
+    relation_schedule_revoke.add_argument("schedule")
+    relation_schedule_revoke.add_argument(
+        "--confirm",
+        required=True,
+        help="repeat the complete rdsc_ schedule ID",
+    )
+    relation_schedule_revoke.add_argument(
+        "--reason",
+        default="",
+        help="optional bounded local reason code",
+    )
+    relation_schedule_revoke.set_defaults(
+        func=cmd_relation_disclosure_schedule_revoke
+    )
+
+    relation_schedule_run = sub.add_parser(
+        "relation-disclosure-schedule-run",
+        help="run due schedules once, or force one named active schedule",
+    )
+    relation_schedule_run.add_argument(
+        "--schedule",
+        help="force one complete rdsc_ schedule ID",
+    )
+    relation_schedule_run.set_defaults(
+        func=cmd_relation_disclosure_schedule_run
     )
 
     relation_decide = sub.add_parser(

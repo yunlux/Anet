@@ -44,12 +44,16 @@ from .prekeys import (
     import_prekey_bundle,
     load_local_prekey_bundle,
 )
+from .relation_activity import RelationshipActivityFeed
 from .relation_projection import RelationshipProjector
 from .relationship_disclosures import (
     RELATIONSHIP_DISCLOSURE_KIND,
     RelationshipDisclosure,
     RelationshipDisclosureBook,
     validate_relationship_disclosure,
+)
+from .relationship_disclosure_schedules import (
+    RelationshipDisclosureScheduleBook,
 )
 from .relations import RelationshipBook
 from .routing import AdaptiveRouter
@@ -1343,6 +1347,12 @@ class AnetNode:
             with suppress(Exception):
                 self.maintain_prekeys()
             try:
+                self.run_relationship_disclosure_schedules_once()
+            except Exception:
+                LOGGER.exception(
+                    "background relationship disclosure scheduling failed"
+                )
+            try:
                 await self.adaptive_sync_once(force_carriers=False)
             except Exception:
                 LOGGER.exception("background sync failed")
@@ -1351,6 +1361,129 @@ class AnetNode:
                 await asyncio.wait_for(self._stop.wait(), timeout=delay)
             except asyncio.TimeoutError:
                 pass
+
+    def run_relationship_disclosure_schedules_once(
+        self,
+        *,
+        schedule_id: str = "",
+        force: bool = False,
+        now: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Prepare and queue due observer-local relationship disclosures."""
+
+        current = now_ms() if now is None else int(now)
+        schedules = RelationshipDisclosureScheduleBook(
+            self.config.relationship_disclosure_schedules_path,
+            own_actor_id=self.node_id,
+        )
+        relationships = RelationshipBook(
+            self.config.relationships_path,
+            own_actor_id=self.node_id,
+        )
+        relationships.reload()
+        model = relationships.snapshot()
+        if schedule_id:
+            selected = (schedules.require(schedule_id),)
+        else:
+            selected = schedules.all()
+        results: list[dict[str, Any]] = []
+        for selected_item in selected:
+            schedules.reload()
+            item = schedules.require(selected_item.schedule_id)
+            if item.state(now=current) != "active":
+                if item.state(now=current) == "expired":
+                    item = schedules.discard_expired_pending(
+                        item.schedule_id,
+                        now=current,
+                    )
+                results.append(
+                    {
+                        "schedule_id": item.schedule_id,
+                        "state": item.state(now=current),
+                        "queued": False,
+                    }
+                )
+                continue
+            if not force and not item.due(now=current):
+                continue
+            try:
+                pending = item.pending
+                if pending is None:
+                    page = RelationshipActivityFeed.read(
+                        model,
+                        after=item.cursor,
+                        limit=item.batch_limit,
+                        subject_ref=item.subject_ref,
+                    )
+                    if not page.activities:
+                        schedules.record_idle(
+                            item.schedule_id,
+                            cursor=page.next_cursor,
+                            now=current,
+                        )
+                        results.append(
+                            {
+                                "schedule_id": item.schedule_id,
+                                "state": "active",
+                                "queued": False,
+                                "activities": 0,
+                            }
+                        )
+                        continue
+                    disclosure = RelationshipDisclosure.create(
+                        page,
+                        audience_actor_id=item.audience_actor_id,
+                        now=current,
+                    )
+                    item = schedules.prepare(
+                        item.schedule_id,
+                        disclosure,
+                        start_cursor=item.cursor,
+                        now=current,
+                    )
+                    pending = item.pending
+                if pending is None:
+                    raise RuntimeError(
+                        "relationship disclosure preparation was not persisted"
+                    )
+                packet_id = self.queue(
+                    item.audience_actor_id,
+                    kind=RELATIONSHIP_DISCLOSURE_KIND,
+                    body=pending.disclosure.to_dict(),
+                    ttl_seconds=item.packet_ttl_seconds,
+                    qos="normal",
+                )
+                completed = schedules.record_success(
+                    item.schedule_id,
+                    packet_id,
+                    now=current,
+                )
+                results.append(
+                    {
+                        "schedule_id": item.schedule_id,
+                        "state": completed.state(now=current),
+                        "queued": True,
+                        "packet_id": packet_id,
+                        "disclosure_id": pending.disclosure.disclosure_id,
+                        "activities": len(pending.disclosure.activities),
+                        "has_more": pending.disclosure.has_more,
+                    }
+                )
+            except Exception as exc:
+                schedules.record_failure(
+                    item.schedule_id,
+                    type(exc).__name__,
+                    now=current,
+                )
+                results.append(
+                    {
+                        "schedule_id": item.schedule_id,
+                        "state": "active",
+                        "queued": False,
+                        "error": type(exc).__name__,
+                    }
+                )
+        return results
 
     async def _ahub_relay_listener_loop(
         self,

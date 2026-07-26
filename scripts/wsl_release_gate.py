@@ -169,6 +169,7 @@ class ReleaseGate:
             "relationships.json",
             "relationship-claims.json",
             "relationship-disclosures.json",
+            "relationship-disclosure-schedules.json",
             "tls-key.pem",
             "revocations.json",
         )
@@ -188,6 +189,7 @@ class ReleaseGate:
             "relationships.json",
             "relationship-claims.json",
             "relationship-disclosures.json",
+            "relationship-disclosure-schedules.json",
             "tls-key.pem",
             "revocations.json",
             "anet.sqlite3",

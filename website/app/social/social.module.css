@@ -615,6 +615,52 @@
   font: 9px var(--font-mono);
 }
 .disclosureHeading button:hover { color: #1e1f1b; background: #d9ff43; }
+.scheduleConsole {
+  margin-top: 24px;
+  padding: 17px 18px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  border: 1px dashed #8f9188;
+  background: rgba(30,31,27,.045);
+}
+.scheduleConsole small,
+.scheduleConsole strong { display: block; }
+.scheduleConsole small {
+  color: #ff5c35;
+  font: 8px var(--font-mono);
+  letter-spacing: .08em;
+}
+.scheduleConsole strong {
+  margin-top: 8px;
+  color: #3d3f39;
+  font: 10px var(--font-mono);
+}
+.scheduleConsole p {
+  margin: 7px 0 0;
+  color: #74766d;
+  font: 8px/1.5 var(--font-mono);
+}
+.scheduleConsole > div:last-child {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.scheduleConsole button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #1e1f1b;
+  color: #1e1f1b;
+  background: #d9ff43;
+  cursor: pointer;
+  font: 8px var(--font-mono);
+}
+.scheduleConsole .revokeButton {
+  color: #f4f5ee;
+  background: #ff5c35;
+  border-color: #ff5c35;
+}
 .disclosureFlow {
   margin-top: 30px;
   display: grid;
@@ -742,6 +788,8 @@
   }
   .timeline article:nth-child(-n+3) { border-bottom: 1px solid #c9c9c1; }
   .disclosureLab { padding: 20px; }
+  .scheduleConsole { align-items: stretch; flex-direction: column; }
+  .scheduleConsole > div:last-child { flex-wrap: wrap; }
   .disclosureFlow { grid-template-columns: 1fr; }
   .disclosureFlow > i { min-height: 34px; transform: rotate(90deg); }
   .factBoundary { grid-template-columns: 1fr; }

@@ -626,6 +626,9 @@ export function SocialCircleDemo() {
   const [importedActivity, setImportedActivity] = useState<TimelineEvent[]>([]);
   const [importError, setImportError] = useState("");
   const [disclosureSent, setDisclosureSent] = useState(false);
+  const [disclosureSchedule, setDisclosureSchedule] = useState<
+    "off" | "active" | "revoked"
+  >("off");
   const [demoDecisions, setDemoDecisions] = useState<
     Record<string, "accepted" | "rejected">
   >({});
@@ -1192,6 +1195,55 @@ export function SocialCircleDemo() {
             </button>
           </div>
 
+          <div className={styles.scheduleConsole}>
+            <div>
+              <small>OBSERVER-LOCAL DISCLOSURE SCHEDULE</small>
+              <strong>
+                {disclosureSchedule === "active"
+                  ? "ACTIVE · A → G · FUTURE ACTIVITY"
+                  : disclosureSchedule === "revoked"
+                    ? "REVOKED · PENDING BATCH CLEARED"
+                    : "NOT CONFIGURED"}
+              </strong>
+              <p>
+                scope: all subjects · interval: 5m · expires: 30d ·
+                history replay: off
+              </p>
+            </div>
+            <div>
+              {disclosureSchedule !== "active" ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDisclosureSchedule("active");
+                    setDisclosureSent(false);
+                  }}
+                >
+                  创建持续披露计划
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setDisclosureSent(true)}
+                  >
+                    模拟一条新活动
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.revokeButton}
+                    onClick={() => {
+                      setDisclosureSchedule("revoked");
+                      setDisclosureSent(false);
+                    }}
+                  >
+                    立即撤销
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
           <div className={styles.disclosureFlow}>
             <article>
               <small>01 · OBSERVER A</small>
@@ -1227,9 +1279,10 @@ export function SocialCircleDemo() {
           </div>
 
           <p className={styles.disclosureBoundary}>
-            <b>SEPARATE LEDGER</b>
+            <b>SEPARATE LEDGER · NO AUDIENCE PULL</b>
             G 收到的是“A 如何看待关系”的披露，不是共同事实，也不是同步后的
-            社交图。人类与 Agent 都可以处于 A 或 G 的位置，角色对调不改变协议。
+            社交图。计划只由 A 创建、限定、过期和撤销；G 不能拉取、扩权或续期。
+            人类与 Agent 都可以处于 A 或 G 的位置，角色对调不改变协议。
           </p>
         </section>
 

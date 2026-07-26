@@ -55,7 +55,7 @@ The received-disclosure book is deliberately separate from
 - does not create, merge, split, or supersede a Subject hypothesis;
 - does not set a circle, label, contextual trust estimate, or suggestion;
 - does not change PeerBook trust, capability, approval, or authorization;
-- is idempotent on Packet ID.
+- is idempotent on Packet ID and disclosure ID.
 
 A later explicit local observation may cite a disclosure as evidence, but that
 is a distinct action and is not part of v1.
@@ -87,6 +87,50 @@ anet --home <B_HOME> relation-disclosure-list --sender <A_NODE_ID>
 `relation-disclose` requires an already pinned destination. Queueing is not
 delivery; run the normal Anet service or synchronization path.
 
+## Observer-local schedules
+
+A node may maintain a revocable, expiring instruction to disclose future
+activity to exactly one pinned audience:
+
+```text
+anet --home <A_HOME> relation-disclosure-schedule-add <B_NODE_ID> \
+  --all --interval 300 --lifetime 2592000
+anet --home <A_HOME> relation-disclosure-schedule-list
+```
+
+Use `--subject <SUBJECT_REF>` instead of `--all` to bind the instruction to one
+local Subject hypothesis. New schedules start at the current global activity
+cursor, so enabling one does not silently reveal existing history. Historical
+replay requires the explicit `--include-history` flag.
+
+The long-running `anet serve` loop prepares and queues due pages. An operator
+or test may run due schedules once:
+
+```text
+anet --home <A_HOME> relation-disclosure-schedule-run
+anet --home <A_HOME> relation-disclosure-schedule-run \
+  --schedule <RDSC_ID>
+```
+
+Naming one schedule forces an immediate active-schedule check; it cannot bypass
+revocation or expiry. Revoke locally with exact confirmation:
+
+```text
+anet --home <A_HOME> relation-disclosure-schedule-revoke <RDSC_ID> \
+  --confirm <RDSC_ID> --reason observer-stopped
+```
+
+Schedule state is private in
+`relationship-disclosure-schedules.json`. A prepared batch is persisted before
+queueing, so a crash retries the same deterministic disclosure ID. The
+receiver deduplicates that ID even if retries arrive in distinct Packets.
+Revocation discards any pending batch before another send.
+
+This is a local disclosure instruction, not a remote subscription. The audience
+cannot create it, pull from it, widen its Subject scope, change its interval,
+renew it, or prevent revocation. It authorizes only the named disclosure flow;
+it never modifies PeerBook trust, capabilities, approvals, or contextual trust.
+
 ## MCP
 
 The default MCP configuration sets:
@@ -106,7 +150,6 @@ capabilities are also enabled.
 
 ## v1 omissions
 
-v1 does not define standing subscriptions, automatic periodic disclosure,
-withdrawal, remote deletion, redaction after receipt, multi-audience broadcast,
-or automatic evidence import. These require separate consent, retention, and
-revocation semantics.
+v1 does not define audience-initiated subscriptions, remote deletion or
+redaction after receipt, multi-audience broadcast, automatic evidence import,
+or automatic renewal. These require separate consent and retention semantics.

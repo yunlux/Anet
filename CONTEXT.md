@@ -107,6 +107,13 @@ sender's reported worldview, separately from its own Subject hypotheses,
 Relationship estimates, trust, and authorization.
 _Avoid_: Relationship synchronization, shared social graph, delegated trust
 
+**Relationship disclosure schedule**:
+A revocable, expiring, observer-local instruction to disclose bounded new
+Relationship activity to exactly one audience Actor. It starts at the current
+cursor unless history replay is explicitly selected. The audience cannot
+create, pull, widen, or renew it.
+_Avoid_: Remote subscription, shared feed, delegated observation authority
+
 **Mutual relationship claim**:
 A portable statement signed by two verified Actors that they both accepted the
 same circle and public relationship labels. Each observer attributes the claim

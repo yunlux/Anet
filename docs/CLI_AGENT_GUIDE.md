@@ -319,6 +319,28 @@ disclosure remains the sender's reported worldview and is never imported into
 the receiver's own relationship model or authorization. See
 [`RELATIONSHIP_DISCLOSURES_V1.md`](RELATIONSHIP_DISCLOSURES_V1.md).
 
+For continuous future disclosure, create an observer-local schedule. It starts
+at the current cursor unless historical replay is explicitly requested:
+
+```text
+anet --home <A_HOME> relation-disclosure-schedule-add <B_NODE_ID> \
+  --all --interval 300 --lifetime 2592000
+anet --home <A_HOME> relation-disclosure-schedule-list
+anet --home <A_HOME> relation-disclosure-schedule-run
+```
+
+Use `--subject <SUBJECT_REF>` instead of `--all` for one local hypothesis.
+Revoke with the complete ID and exact confirmation:
+
+```text
+anet --home <A_HOME> relation-disclosure-schedule-revoke <RDSC_ID> \
+  --confirm <RDSC_ID> --reason observer-stopped
+```
+
+The audience cannot pull, widen, or renew this instruction. Schedule
+configuration stays in the CLI control plane; it is intentionally not exposed
+as an MCP mutation tool.
+
 ## 5. Run and communicate
 
 The long-running network process is separate from one-shot CLI and MCP calls:

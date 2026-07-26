@@ -537,6 +537,7 @@ class RelationshipDisclosureBook:
         ):
             raise ValueError("invalid relationship disclosure book")
         received: dict[str, ReceivedRelationshipDisclosure] = {}
+        disclosure_ids: set[str] = set()
         for raw in value["received"]:
             if not isinstance(raw, Mapping):
                 raise ValueError(
@@ -547,11 +548,15 @@ class RelationshipDisclosureBook:
                 sender_node_id=item.sender_actor_id,
                 destination_node_id=self.own_actor_id,
             )
-            if item.packet_id in received:
+            if (
+                item.packet_id in received
+                or item.disclosure.disclosure_id in disclosure_ids
+            ):
                 raise ValueError(
                     "relationship disclosure book contains a duplicate"
                 )
             received[item.packet_id] = item
+            disclosure_ids.add(item.disclosure.disclosure_id)
         self._received = received
 
     def save(self) -> None:
@@ -592,7 +597,11 @@ class RelationshipDisclosureBook:
             received_ms=_now_ms(received_ms),
             disclosure=disclosure,
         )
-        if item.packet_id in self._received:
+        if item.packet_id in self._received or any(
+            current.disclosure.disclosure_id
+            == item.disclosure.disclosure_id
+            for current in self._received.values()
+        ):
             return False
         self._received[item.packet_id] = item
         self.save()

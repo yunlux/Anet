@@ -77,7 +77,9 @@ test("renders the relationship demo with explicit fact and inference boundaries"
   assert.match(html, />拒绝</);
   assert.match(html, /APPEND ORDER/);
   assert.match(html, /RELATIONSHIP DISCLOSURE/);
-  assert.match(html, /SEPARATE LEDGER/);
+  assert.match(html, /OBSERVER-LOCAL DISCLOSURE SCHEDULE/);
+  assert.match(html, /history replay: off/);
+  assert.match(html, /NO AUDIENCE PULL/);
   assert.match(html, /AUTHORIZATION EFFECT: NONE/);
   assert.match(html, /本地持久化顺序回放/);
   assert.match(html, /social-og-activity\.png/);
