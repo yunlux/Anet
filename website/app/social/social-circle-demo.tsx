@@ -247,7 +247,7 @@ const baseSubjects: SubjectModel[] = [
     rel: 84,
     confidence: 86,
     summary: "研究伙伴。多个 Actor 的语言、时间和签名行为高度一致。",
-    labels: ["研究伙伴", "高频互惠"],
+    labels: ["研究伙伴", "双方签名关系", "高频互惠"],
     actors: [
       { name: "B · an1…7f2", proof: "Node 签名", confidence: 100 },
       { name: "B · Discord", proof: "跨端声明", confidence: 78 },
@@ -369,7 +369,7 @@ const formationEvents = [
   },
   {
     title: "双方确认成为朋友",
-    detail: "关系建议由双方签名确认。A 保留“文件执行”领域的较低信任。",
+    detail: "A 与 B 签署同一份 Actor-to-Actor relationship claim；A 仍保留“文件执行”领域的较低信任。",
     tag: "MILESTONE",
   },
 ];

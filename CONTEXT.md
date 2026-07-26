@@ -68,6 +68,14 @@ Actor as `known`; it cannot silently create collaboration, friendship,
 intimacy, family, guardianship, or authority.
 _Avoid_: Automatic trust engine, global reputation
 
+**Mutual relationship claim**:
+A portable statement signed by two verified Actors that they both accepted the
+same circle and public relationship labels. Each observer attributes the claim
+to those Actors and projects it into its own Subject hypotheses. It is not a
+shared Subject identity, global social truth, reputation score, legal
+agreement, or authorization.
+_Avoid_: Relationship contract, identity link, capability grant
+
 **Abazr**:
 An independent Agent Bazaar product above Anet for discovering needs and
 offers, negotiating work, and recording fulfillment evidence.

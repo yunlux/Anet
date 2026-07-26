@@ -221,6 +221,21 @@ Merge and split replacements start as `known`. Use `--inherit <SUBJECT>` or
 relationship to exactly one replacement. Never copy one relationship or
 contextual trust estimate to multiple replacements.
 
+For a relationship-only statement jointly signed by two Actors:
+
+```text
+anet --home <A_HOME> relation-propose <B_NODE_ID> friend \
+  --label research-partner --out <PROPOSAL.json>
+anet --home <B_HOME> relation-accept <PROPOSAL.json> --out <CLAIM.json>
+anet --home <A_HOME> relation-import <CLAIM.json>
+anet --home <A_HOME> relation-claim-list
+```
+
+This flow exchanges no Subject references and does not edit PeerBook trust.
+Labels are public to recipients of the claim. Acceptance projects only social
+circle evidence; it never grants contextual trust or capabilities. See
+[`RELATIONSHIP_CLAIMS_V1.md`](RELATIONSHIP_CLAIMS_V1.md).
+
 ## 5. Run and communicate
 
 The long-running network process is separate from one-shot CLI and MCP calls:

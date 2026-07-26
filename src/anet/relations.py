@@ -1634,6 +1634,55 @@ class RelationshipBook:
             raise RuntimeError("friend confirmation did not create a relationship")
         return result
 
+    def confirm_mutual_relationship(
+        self,
+        card: PeerCard,
+        circle: str,
+        *,
+        evidence_ref: str,
+        labels: Iterable[str] = (),
+        now: int | None = None,
+    ) -> RelationshipRecord:
+        if circle not in RELATION_CIRCLES[1:]:
+            raise ValueError("mutual relationship circle must be known or closer")
+        current = _now_ms(now)
+        subject = self.primary_subject(card.node_id)
+        if subject is not None:
+            existing = self._relationships[subject.subject_ref]
+            if evidence_ref in existing.evidence_refs:
+                result = self.get(card.node_id)
+                if result is None:
+                    raise RuntimeError("mutual relationship projection is missing")
+                return result
+        subject = self.observe_actor(
+            card,
+            evidence_ref=evidence_ref,
+            now=current,
+        )
+        existing = self._relationships[subject.subject_ref]
+        projected_circle = (
+            existing.circle
+            if RELATION_CIRCLES.index(existing.circle)
+            >= RELATION_CIRCLES.index(circle)
+            else circle
+        )
+        self.set_circle(
+            subject.subject_ref,
+            projected_circle,
+            confidence=100,
+            labels=(
+                *labels,
+                "relationship:mutual",
+                f"relationship:mutual:{circle}",
+            ),
+            evidence_ref=evidence_ref,
+            now=current,
+        )
+        result = self.get(card.node_id)
+        if result is None:
+            raise RuntimeError("mutual relationship claim was not projected")
+        return result
+
     def revoke_actor(
         self,
         actor_id: str,

@@ -283,16 +283,20 @@ separately from the social relationship.
 Ahub remains an untrusted-to-read rendezvous, mailbox, and relay. It does not
 calculate Subject hypotheses, circles, labels, or trust.
 
-An observer may exchange separately signed public relationship claims or
-evidence with another node in a later protocol. Imported claims remain
-attributed evidence; they never overwrite the observer's local model
-automatically.
+Two Actors may exchange a proposal and counter-sign it as a mutual relationship
+claim. The portable object contains Actor cards, a circle, public labels, and
+both signatures but no Subject references. Each participant projects it into
+its own local model, never into a shared identity or global relationship
+registry. See [`RELATIONSHIP_CLAIMS_V1.md`](RELATIONSHIP_CLAIMS_V1.md).
+
+Ahub may carry an encrypted claim as ordinary end-to-end payload, but it does
+not inspect, calculate, or project the relationship.
 
 ## Current omissions
 
 Relations v1 does not yet standardize:
 
-- signed mutual-relationship claims;
+- mutual claim replacement, withdrawal, or jointly acknowledged ending;
 - policy suggestions derived from relationship changes;
 - encrypted projection streams for human observers;
 - cross-node portable relation bundles;

@@ -60,6 +60,11 @@ from .pairing import PairOffer, PairResponse
 from .packet import inspect_packet
 from .peers import PeerBook
 from .prekeys import PreKeyBundle, generate_prekey_bundle, import_prekey_bundle
+from .relationship_claims import (
+    MutualRelationshipClaim,
+    RelationshipClaimBook,
+    RelationshipProposal,
+)
 from .relations import RELATION_CIRCLES, RelationshipBook
 from .scheduling import AdaptiveSchedule
 from .social import SocialPolicy, SocialThreshold
@@ -518,6 +523,108 @@ def cmd_relation_trust(args: argparse.Namespace) -> int:
         evidence_ref=args.evidence,
     )
     _print_json(relationship.to_dict())
+    return 0
+
+
+def cmd_relation_propose(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    proposal = RelationshipProposal.create(
+        identity,
+        identity.card(),
+        peer_actor_id=args.peer,
+        circle=args.circle,
+        labels=args.label,
+        ttl_seconds=args.ttl,
+    )
+    proposal.save(args.out)
+    _print_json(
+        {
+            "proposal_id": proposal.proposal_id,
+            "peer_actor_id": proposal.peer_actor_id,
+            "circle": proposal.circle,
+            "labels": list(proposal.labels),
+            "expires_ms": proposal.expires_ms,
+            "path": str(Path(args.out).resolve()),
+            "warning": (
+                "the proposal is public signed relationship evidence, "
+                "not trust or authorization"
+            ),
+        }
+    )
+    return 0
+
+
+def _project_mutual_relationship_claim(
+    config: NodeConfig,
+    identity: Identity,
+    claim: MutualRelationshipClaim,
+) -> dict[str, Any]:
+    claim.verify()
+    peer_card = claim.peer_card_for(identity.node_id)
+    claim_book = RelationshipClaimBook(config.relationship_claims_path)
+    stored = claim_book.add(claim)
+    relationship = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=identity.node_id,
+    ).confirm_mutual_relationship(
+        peer_card,
+        claim.circle,
+        evidence_ref=f"mutual:{claim.claim_id}",
+        labels=claim.labels,
+    )
+    return {
+        "claim_id": claim.claim_id,
+        "stored": stored,
+        "peer_actor_id": peer_card.node_id,
+        "circle": relationship.circle,
+        "subject_ref": relationship.subject_ref,
+        "labels": list(claim.labels),
+        "trust_changed": False,
+        "capabilities_granted": [],
+    }
+
+
+def cmd_relation_accept(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    proposal = RelationshipProposal.load(args.proposal)
+    claim = MutualRelationshipClaim.create(
+        proposal,
+        identity,
+        identity.card(),
+    )
+    claim.save(args.out)
+    result = _project_mutual_relationship_claim(config, identity, claim)
+    result["path"] = str(Path(args.out).resolve())
+    _print_json(result)
+    return 0
+
+
+def cmd_relation_import(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    claim = MutualRelationshipClaim.load(args.claim)
+    _print_json(_project_mutual_relationship_claim(config, identity, claim))
+    return 0
+
+
+def cmd_relation_claim_list(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    claims = RelationshipClaimBook(config.relationship_claims_path)
+    _print_json(
+        [
+            {
+                "claim_id": claim.claim_id,
+                "proposer_actor_id": claim.proposal.proposer_card.node_id,
+                "accepter_actor_id": claim.accepter_card.node_id,
+                "circle": claim.circle,
+                "labels": list(claim.labels),
+                "accepted_ms": claim.accepted_ms,
+            }
+            for claim in claims.all()
+        ]
+    )
     return 0
 
 
@@ -2342,6 +2449,52 @@ def build_parser() -> argparse.ArgumentParser:
         help="bounded local evidence reference; not raw private content",
     )
     relation_trust.set_defaults(func=cmd_relation_trust)
+
+    relation_propose = sub.add_parser(
+        "relation-propose",
+        help="sign a relationship proposal addressed to one Actor",
+    )
+    relation_propose.add_argument("peer", help="complete intended peer Actor Node ID")
+    relation_propose.add_argument(
+        "circle",
+        choices=RELATION_CIRCLES[1:],
+        help="mutually proposed social circle",
+    )
+    relation_propose.add_argument("--out", type=Path, required=True)
+    relation_propose.add_argument(
+        "--ttl",
+        type=int,
+        default=3600,
+        help="acceptance window in seconds",
+    )
+    relation_propose.add_argument(
+        "--label",
+        action="append",
+        default=[],
+        help="public mutual relationship label; may be repeated",
+    )
+    relation_propose.set_defaults(func=cmd_relation_propose)
+
+    relation_accept = sub.add_parser(
+        "relation-accept",
+        help="counter-sign a relationship proposal addressed to this Actor",
+    )
+    relation_accept.add_argument("proposal", type=Path)
+    relation_accept.add_argument("--out", type=Path, required=True)
+    relation_accept.set_defaults(func=cmd_relation_accept)
+
+    relation_import = sub.add_parser(
+        "relation-import",
+        help="verify and project a mutually signed relationship claim",
+    )
+    relation_import.add_argument("claim", type=Path)
+    relation_import.set_defaults(func=cmd_relation_import)
+
+    relation_claim_list = sub.add_parser(
+        "relation-claim-list",
+        help="list stored mutually signed relationship claim summaries",
+    )
+    relation_claim_list.set_defaults(func=cmd_relation_claim_list)
 
     subject_supersede = sub.add_parser(
         "subject-supersede",
