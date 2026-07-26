@@ -179,7 +179,7 @@ def test_qr_friend_cli_pins_both_peers_and_creates_local_circle_records(
 
     assert main(["--home", str(a_home), "relation-list", "--model"]) == 0
     model = json.loads(capsys.readouterr().out)
-    assert model["version"] == 2
+    assert model["version"] == 3
     assert model["actors"][0]["state"] == "revoked"
     assert model["relationships"][0]["circle"] == "friend"
     assert model["events"][-1]["event_type"] == "actor.revoked"

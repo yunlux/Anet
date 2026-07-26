@@ -43,6 +43,8 @@ from .prekeys import (
     import_prekey_bundle,
     load_local_prekey_bundle,
 )
+from .relation_projection import RelationshipProjector
+from .relations import RelationshipBook
 from .routing import AdaptiveRouter
 from .scheduling import AdaptiveSchedule
 from .social import DISCORD_SIGNAL_KIND, validate_discord_signal
@@ -110,6 +112,7 @@ class AnetNode:
         self._fallback_schedules: dict[str, AdaptiveSchedule] = {}
         self._prekey_response_last_ms: dict[str, int] = {}
         self._discord_bridge: DiscordSocialBridge | None = None
+        self._relationship_projector: RelationshipProjector | None = None
         self._loop_schedule = AdaptiveSchedule(
             config.sync_interval,
             config.sync_jitter,
@@ -326,6 +329,14 @@ class AnetNode:
                     info.packet_id,
                 )
             self.store.add_packet(raw, depth=0, origin="local")
+            self._project_interaction(
+                recipient,
+                packet_id=info.packet_id,
+                kind=kind,
+                body=body,
+                direction="outgoing",
+                occurred_ms=info.created_ms,
+            )
             return info.packet_id
         except BaseException:
             if reservation is not None:
@@ -2138,6 +2149,14 @@ class AnetNode:
         )
         if not created or not trusted:
             return
+        self._project_interaction(
+            self.peers.require(message.sender_id),
+            packet_id=message.packet_id,
+            kind=message.kind,
+            body=message.body,
+            direction="incoming",
+            occurred_ms=message.created_ms,
+        )
         if message.kind == PREKEY_REQUEST_KIND:
             self._handle_prekey_request(message)
             return
@@ -2164,6 +2183,41 @@ class AnetNode:
             LOGGER.warning(
                 "message %s was accepted but its receipt could not be queued",
                 message.packet_id,
+                exc_info=True,
+            )
+
+    def _project_interaction(
+        self,
+        card: PeerCard,
+        *,
+        packet_id: str,
+        kind: str,
+        body: Any,
+        direction: str,
+        occurred_ms: int,
+    ) -> None:
+        """Best-effort social projection; it never controls packet acceptance."""
+
+        try:
+            if self._relationship_projector is None:
+                self._relationship_projector = RelationshipProjector(
+                    RelationshipBook(
+                        self.config.relationships_path,
+                        own_actor_id=self.node_id,
+                    )
+                )
+            self._relationship_projector.project_packet(
+                card,
+                packet_id=packet_id,
+                kind=kind,
+                body=body,
+                direction=direction,
+                occurred_ms=occurred_ms,
+            )
+        except Exception:
+            LOGGER.warning(
+                "packet %s succeeded but relationship evidence was not projected",
+                packet_id,
                 exc_info=True,
             )
 

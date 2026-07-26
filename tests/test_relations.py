@@ -135,7 +135,7 @@ def test_version_one_relationship_book_migrates_without_claiming_identity(
 
     book = RelationshipBook(path, own_actor_id=observer.node_id)
     snapshot = book.snapshot()
-    assert snapshot["version"] == 2
+    assert snapshot["version"] == 3
     assert snapshot["actors"][0]["actor_id"] == peer.node_id
     assert snapshot["subjects"][0]["confidence"] == 50
     assert snapshot["relationships"][0]["circle"] == "friend"
@@ -149,7 +149,32 @@ def test_version_one_relationship_book_migrates_without_claiming_identity(
         evidence_ref="message:legacy-upgrade",
         now=1_800_000_000_002,
     )
-    assert json.loads(path.read_text(encoding="utf-8"))["version"] == 2
+    assert json.loads(path.read_text(encoding="utf-8"))["version"] == 3
+
+
+def test_version_two_relationship_book_loads_with_empty_interactions(
+    tmp_path,
+) -> None:
+    observer = Identity.generate("observer")
+    peer = Identity.generate("peer")
+    path = tmp_path / "relationships.json"
+    original = RelationshipBook(path, own_actor_id=observer.node_id)
+    original.observe_actor(
+        peer.card(),
+        evidence_ref="packet:legacy-v2",
+        now=1_800_000_000_001,
+    )
+    value = json.loads(path.read_text(encoding="utf-8"))
+    value["version"] = 2
+    value.pop("interactions", None)
+    path.write_text(json.dumps(value), encoding="utf-8")
+
+    migrated = RelationshipBook(path, own_actor_id=observer.node_id)
+    snapshot = migrated.snapshot()
+    assert snapshot["version"] == 3
+    assert snapshot["interactions"] == []
+    assert snapshot["interaction_stats"] == []
+    assert migrated.get(peer.node_id) is not None
 
 
 def test_relationship_book_rejects_unknown_links_and_invalid_scores(tmp_path) -> None:
@@ -284,7 +309,7 @@ def test_relation_cli_edits_and_exports_the_full_local_model(
 
     assert main(["--home", str(home), "relation-list", "--model"]) == 0
     model = json.loads(capsys.readouterr().out)
-    assert model["version"] == 2
+    assert model["version"] == 3
     assert len(model["actors"]) == 2
     assert len(model["subjects"]) == 2
     assert model["events"][-1]["event_type"] == "relationship.context-trust-set"

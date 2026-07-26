@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import secrets
 import time
@@ -11,7 +12,7 @@ from .encoding import atomic_json
 from .identity import PeerCard
 
 
-RELATION_BOOK_VERSION = 2
+RELATION_BOOK_VERSION = 3
 RELATION_CIRCLES = (
     "public",
     "known",
@@ -26,6 +27,22 @@ RELATIONSHIP_STATES = frozenset({"active", "dormant", "ended"})
 MAX_LABEL_LENGTH = 128
 MAX_EVIDENCE_LENGTH = 256
 MAX_CONTEXT_LENGTH = 64
+INTERACTION_DIRECTIONS = frozenset({"incoming", "outgoing"})
+INTERACTION_FACETS = frozenset({"message", "task", "skill", "artifact"})
+INTERACTION_OUTCOMES = frozenset(
+    {
+        "queued",
+        "received",
+        "submitted",
+        "working",
+        "input-required",
+        "auth-required",
+        "completed",
+        "failed",
+        "canceled",
+        "rejected",
+    }
+)
 
 
 def _now_ms(now: int | None) -> int:
@@ -362,6 +379,116 @@ class RelationshipEvent:
 
 
 @dataclass(frozen=True)
+class InteractionEvidence:
+    """Content-free evidence that a verified Actor interaction occurred."""
+
+    interaction_id: str
+    actor_id: str
+    subject_ref: str
+    direction: str
+    facets: tuple[str, ...]
+    context: str
+    outcome: str
+    evidence_ref: str
+    occurred_ms: int
+
+    def __post_init__(self) -> None:
+        if not self.interaction_id.startswith("iev_"):
+            raise ValueError("invalid interaction evidence ID")
+        if not self.actor_id.startswith("an1"):
+            raise ValueError("invalid interaction Actor")
+        if not self.subject_ref.startswith("subj_"):
+            raise ValueError("invalid interaction Subject")
+        if self.direction not in INTERACTION_DIRECTIONS:
+            raise ValueError("invalid interaction direction")
+        if not self.facets or any(
+            facet not in INTERACTION_FACETS for facet in self.facets
+        ):
+            raise ValueError("invalid interaction facets")
+        if len(self.facets) != len(set(self.facets)):
+            raise ValueError("duplicate interaction facet")
+        _bounded_text(
+            self.context,
+            label="interaction context",
+            maximum=MAX_CONTEXT_LENGTH,
+        )
+        if self.outcome not in INTERACTION_OUTCOMES:
+            raise ValueError("invalid interaction outcome")
+        _bounded_text(
+            self.evidence_ref,
+            label="interaction evidence reference",
+            maximum=MAX_EVIDENCE_LENGTH,
+        )
+        if self.occurred_ms <= 0:
+            raise ValueError("invalid interaction time")
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        actor_id: str,
+        subject_ref: str,
+        direction: str,
+        facets: Iterable[str],
+        context: str,
+        outcome: str,
+        evidence_ref: str,
+        occurred_ms: int,
+    ) -> "InteractionEvidence":
+        normalized_facets = tuple(sorted({str(item) for item in facets}))
+        source = "\0".join(
+            (
+                str(actor_id),
+                str(direction),
+                str(evidence_ref),
+            )
+        ).encode("utf-8")
+        interaction_id = "iev_" + hashlib.blake2s(
+            source,
+            digest_size=16,
+            person=b"anet-iev",
+        ).hexdigest()
+        return cls(
+            interaction_id=interaction_id,
+            actor_id=str(actor_id),
+            subject_ref=str(subject_ref),
+            direction=str(direction),
+            facets=normalized_facets,
+            context=str(context),
+            outcome=str(outcome),
+            evidence_ref=str(evidence_ref),
+            occurred_ms=int(occurred_ms),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "interaction_id": self.interaction_id,
+            "actor_id": self.actor_id,
+            "subject_ref": self.subject_ref,
+            "direction": self.direction,
+            "facets": list(self.facets),
+            "context": self.context,
+            "outcome": self.outcome,
+            "evidence_ref": self.evidence_ref,
+            "occurred_ms": self.occurred_ms,
+        }
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "InteractionEvidence":
+        return cls(
+            interaction_id=str(value["interaction_id"]),
+            actor_id=str(value["actor_id"]),
+            subject_ref=str(value["subject_ref"]),
+            direction=str(value["direction"]),
+            facets=tuple(str(item) for item in value.get("facets", ())),
+            context=str(value["context"]),
+            outcome=str(value["outcome"]),
+            evidence_ref=str(value["evidence_ref"]),
+            occurred_ms=int(value["occurred_ms"]),
+        )
+
+
+@dataclass(frozen=True)
 class RelationshipRecord:
     """Compatibility projection for one Actor through its primary Subject."""
 
@@ -401,6 +528,7 @@ class RelationshipBook:
         self._subjects: dict[str, SubjectHypothesis] = {}
         self._relationships: dict[str, RelationshipEstimate] = {}
         self._events: list[RelationshipEvent] = []
+        self._interactions: dict[str, InteractionEvidence] = {}
         self.reload()
 
     def reload(self) -> None:
@@ -409,13 +537,14 @@ class RelationshipBook:
             self._subjects = {}
             self._relationships = {}
             self._events = []
+            self._interactions = {}
             return
         value = json.loads(self.path.read_text(encoding="utf-8"))
         version = int(value.get("version", 0))
         if version == 1:
             self._load_v1(value)
             return
-        if version != RELATION_BOOK_VERSION:
+        if version not in {2, RELATION_BOOK_VERSION}:
             raise ValueError("unsupported relationship book version")
         actors = {
             item.actor_id: item
@@ -440,11 +569,25 @@ class RelationshipBook:
         events = [
             RelationshipEvent.from_dict(dict(item)) for item in value.get("events", ())
         ]
-        self._validate_model(actors, subjects, relationships, events)
+        interactions = {
+            item.interaction_id: item
+            for item in (
+                InteractionEvidence.from_dict(dict(item))
+                for item in value.get("interactions", ())
+            )
+        }
+        self._validate_model(
+            actors,
+            subjects,
+            relationships,
+            events,
+            interactions,
+        )
         self._actors = actors
         self._subjects = subjects
         self._relationships = relationships
         self._events = events
+        self._interactions = interactions
 
     def _load_v1(self, value: dict[str, Any]) -> None:
         actors: dict[str, ActorRecord] = {}
@@ -509,6 +652,7 @@ class RelationshipBook:
         self._subjects = subjects
         self._relationships = relationships
         self._events = []
+        self._interactions = {}
 
     def _validate_model(
         self,
@@ -516,6 +660,7 @@ class RelationshipBook:
         subjects: dict[str, SubjectHypothesis],
         relationships: dict[str, RelationshipEstimate],
         events: list[RelationshipEvent],
+        interactions: dict[str, InteractionEvidence] | None = None,
     ) -> None:
         if self.own_actor_id in actors:
             raise ValueError("relationship book contains the local Actor")
@@ -532,6 +677,16 @@ class RelationshipBook:
         event_ids = [event.event_id for event in events]
         if len(event_ids) != len(set(event_ids)):
             raise ValueError("relationship book contains a duplicate event")
+        for interaction in (interactions or {}).values():
+            if interaction.actor_id not in actors:
+                raise ValueError("interaction references an unknown Actor")
+            subject = subjects.get(interaction.subject_ref)
+            if subject is None:
+                raise ValueError("interaction references an unknown Subject")
+            if interaction.actor_id not in {
+                link.actor_id for link in subject.actor_links
+            }:
+                raise ValueError("interaction Actor is not linked to its Subject")
 
     def save(self) -> None:
         atomic_json(
@@ -548,6 +703,10 @@ class RelationshipBook:
                     for key in sorted(self._relationships)
                 ],
                 "events": [event.to_dict() for event in self._events],
+                "interactions": [
+                    self._interactions[key].to_dict()
+                    for key in sorted(self._interactions)
+                ],
             },
             private=True,
         )
@@ -665,6 +824,37 @@ class RelationshipBook:
         )
         self.save()
         return subject
+
+    def has_interaction(self, interaction_id: str) -> bool:
+        return str(interaction_id) in self._interactions
+
+    def record_interaction(
+        self,
+        evidence: InteractionEvidence,
+    ) -> bool:
+        """Persist one idempotent, content-free interaction observation."""
+
+        if evidence.interaction_id in self._interactions:
+            return False
+        if evidence.actor_id not in self._actors:
+            raise KeyError(f"unknown Actor: {evidence.actor_id}")
+        subject = self._subjects.get(evidence.subject_ref)
+        if subject is None:
+            raise KeyError(f"unknown Subject hypothesis: {evidence.subject_ref}")
+        if evidence.actor_id not in {
+            link.actor_id for link in subject.actor_links
+        }:
+            raise ValueError("interaction Actor is not linked to its Subject")
+        self._interactions[evidence.interaction_id] = evidence
+        self._append_event(
+            "interaction.observed",
+            actor_id=evidence.actor_id,
+            subject_ref=evidence.subject_ref,
+            evidence_ref=evidence.evidence_ref,
+            now=evidence.occurred_ms,
+        )
+        self.save()
+        return True
 
     def link_actor(
         self,
@@ -978,7 +1168,48 @@ class RelationshipBook:
                 for key in sorted(self._relationships)
             ],
             "events": [event.to_dict() for event in self._events],
+            "interactions": [
+                self._interactions[key].to_dict()
+                for key in sorted(self._interactions)
+            ],
+            "interaction_stats": self.interaction_stats(),
         }
+
+    def interaction_stats(self) -> list[dict[str, Any]]:
+        """Return a derived summary; counts are evidence, never trust scores."""
+
+        grouped: dict[
+            tuple[str, str, str],
+            dict[str, Any],
+        ] = {}
+        for evidence in self._interactions.values():
+            for facet in evidence.facets:
+                key = (evidence.subject_ref, evidence.context, facet)
+                item = grouped.setdefault(
+                    key,
+                    {
+                        "subject_ref": evidence.subject_ref,
+                        "context": evidence.context,
+                        "facet": facet,
+                        "incoming": 0,
+                        "outgoing": 0,
+                        "outcomes": {},
+                        "first_ms": evidence.occurred_ms,
+                        "last_ms": evidence.occurred_ms,
+                    },
+                )
+                item[evidence.direction] += 1
+                outcomes = item["outcomes"]
+                outcomes[evidence.outcome] = outcomes.get(evidence.outcome, 0) + 1
+                item["first_ms"] = min(item["first_ms"], evidence.occurred_ms)
+                item["last_ms"] = max(item["last_ms"], evidence.occurred_ms)
+        return [
+            {
+                **item,
+                "outcomes": dict(sorted(item["outcomes"].items())),
+            }
+            for _, item in sorted(grouped.items())
+        ]
 
     def all(self) -> tuple[RelationshipRecord, ...]:
         result = []

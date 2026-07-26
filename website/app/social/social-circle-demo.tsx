@@ -37,6 +37,14 @@ type RelationSnapshot = {
       confidence: number;
     }[];
   }[];
+  interaction_stats?: {
+    subject_ref: string;
+    context: string;
+    facet: string;
+    incoming: number;
+    outgoing: number;
+    outcomes: Record<string, number>;
+  }[];
 };
 
 type SubjectModel = {
@@ -52,6 +60,7 @@ type SubjectModel = {
   labels: string[];
   actors: { name: string; proof: string; confidence: number }[];
   trust: { label: string; value: number }[];
+  activity?: { label: string; count: number; detail: string }[];
   position: { left: string; top: string };
 };
 
@@ -97,12 +106,12 @@ function projectSnapshot(value: unknown): {
   }
   const snapshot = value as RelationSnapshot;
   if (
-    snapshot.version !== 2 ||
+    ![2, 3].includes(snapshot.version) ||
     !Array.isArray(snapshot.actors) ||
     !Array.isArray(snapshot.subjects) ||
     !Array.isArray(snapshot.relationships)
   ) {
-    throw new Error("仅支持 relation-list --model 输出的 v2 模型");
+    throw new Error("仅支持 relation-list --model 输出的 v2/v3 模型");
   }
   const actors = new Map(snapshot.actors.map((actor) => [actor.actor_id, actor]));
   const relationships = new Map(
@@ -111,6 +120,9 @@ function projectSnapshot(value: unknown): {
       relationship,
     ]),
   );
+  const interactionStats = Array.isArray(snapshot.interaction_stats)
+    ? snapshot.interaction_stats
+    : [];
   const projected = snapshot.subjects.map((subject, index) => {
     const relationship = relationships.get(subject.subject_ref);
     const circle =
@@ -154,6 +166,13 @@ function projectSnapshot(value: unknown): {
             value: Number(item.estimate ?? 0),
           }))
         : [],
+      activity: interactionStats
+        .filter((item) => item.subject_ref === subject.subject_ref)
+        .map((item) => ({
+          label: `${item.facet} · ${item.context}`,
+          count: Number(item.incoming ?? 0) + Number(item.outgoing ?? 0),
+          detail: `收 ${Number(item.incoming ?? 0)} · 发 ${Number(item.outgoing ?? 0)}`,
+        })),
       position: importPositions[index % importPositions.length],
     } satisfies SubjectModel;
   });
@@ -639,6 +658,24 @@ export function SocialCircleDemo() {
             <div><span>CIRCLE</span><strong>{circleMeta[selected.id === "b" ? demoCircle : selected.circle].index}</strong><small>{circleMeta[selected.id === "b" ? demoCircle : selected.circle].label}</small></div>
             <div><span>ACTORS</span><strong>{selected.actors.length}</strong><small>关联来源</small></div>
           </div>
+
+          {selected.activity && selected.activity.length > 0 && (
+            <>
+              <div className={styles.sectionTitle}>
+                <span>INTERACTION EVIDENCE</span>
+                <small>仅元数据 · 不等于信任</small>
+              </div>
+              <div className={styles.actorList}>
+                {selected.activity.map((item) => (
+                  <div key={item.label}>
+                    <i />
+                    <span><strong>{item.label}</strong><small>{item.detail}</small></span>
+                    <b>{item.count}</b>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
 
           <div className={styles.sectionTitle}>
             <span>CONTEXT TRUST</span>

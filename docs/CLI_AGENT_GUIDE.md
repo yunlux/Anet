@@ -192,7 +192,13 @@ not prove the concrete Subject behind that Actor or grant tool/task/file
 capabilities. See [`QR_FRIENDS.md`](QR_FRIENDS.md).
 
 The full model keeps Actor facts, Subject hypotheses, relationship estimates,
-contextual trust, and relationship events separate. `relation-link`,
+contextual trust, relationship events, and content-free interaction evidence
+separate. Once a trusted peer exchanges an application Packet, the runtime
+idempotently records only its Packet reference, direction, coarse
+message/task/skill/artifact facets, outcome, and time. It does not copy the
+payload. A first verified interaction may move `public` to `known`; traffic
+volume never creates `collab`, `friend`, `close`, or `family`, never changes a
+contextual trust estimate, and never grants a capability. `relation-link`,
 `relation-circle`, and `relation-trust` update only this observer's local social
 model. They never grant Anet trust or execution capability. Do not place raw
 private content in their `--evidence` references.

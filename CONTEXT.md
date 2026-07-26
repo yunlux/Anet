@@ -45,6 +45,21 @@ An immutable local observation recording why an Actor, Subject hypothesis, or
 Relationship estimate changed.
 _Avoid_: Audit proof, authorization grant
 
+**Interaction evidence**:
+Content-free, observer-local metadata that a verified Actor exchanged a
+message, task, skill-mediated request, or artifact. It records direction,
+facets, outcome, time, and a stable source reference, never raw payloads.
+Interaction evidence may support a suggestion but is not a trust score,
+relationship declaration, or authorization grant.
+_Avoid_: Conversation log, reputation event, capability grant
+
+**Relationship projection**:
+An idempotent local fold from verified interaction evidence into relationship
+observations and activity statistics. Projection may recognize a verified
+Actor as `known`; it cannot silently create collaboration, friendship,
+intimacy, family, guardianship, or authority.
+_Avoid_: Automatic trust engine, global reputation
+
 **Abazr**:
 An independent Agent Bazaar product above Anet for discovering needs and
 offers, negotiating work, and recording fulfillment evidence.

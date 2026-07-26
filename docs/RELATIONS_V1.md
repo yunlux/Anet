@@ -69,6 +69,28 @@ Evidence references must not contain raw conversations, credentials, private
 files, human sensor data, or other sensitive material. They should point to a
 locally controlled evidence object or stable event identifier.
 
+### Interaction evidence
+
+Interaction evidence is a content-free observation that a verified Actor
+participated in an application interaction. It contains:
+
+- a deterministic local evidence ID;
+- the linked Actor and observer-local Subject reference;
+- incoming or outgoing direction;
+- one or more coarse facets: `message`, `task`, `skill`, or `artifact`;
+- a coarse context and outcome;
+- the Packet reference and occurrence time.
+
+The projector may inspect a validated in-memory payload only to recognize
+coarse facets and task outcome. It never copies message text, task objectives,
+task output, filenames, file contents, credentials, or private context into
+`relationships.json`.
+
+Network probes, receipts, prekey traffic, and Companion control messages are
+not social interactions. Projection runs after durable queueing or acceptance
+and fails independently, so a damaged relationship book cannot reject or
+undo a valid Packet.
+
 ## Relationship circles
 
 The ordered default circles are:
@@ -116,7 +138,7 @@ human-device grants, or application-specific approval.
 
 ## Persistent model
 
-`relationships.json` version 2 is private node-local state with five logical
+`relationships.json` version 3 is private node-local state with six persisted
 sections:
 
 ```text
@@ -125,11 +147,21 @@ Actors
 Subject hypotheses and Actor links
 Relationship estimates
 Relationship events
+Content-free interaction evidence
 ```
 
-The loader accepts version 1 books and projects their one-Actor/one-Subject
-records into version 2. The next mutation writes version 2. Migration does not
-increase Subject confidence or invent events.
+`relation-list --model` adds a seventh, derived `interaction_stats` projection;
+the redundant counters are not persisted.
+
+The loader accepts version 1 and version 2 books. It projects v1
+one-Actor/one-Subject records into the current model and treats a v2 book as
+having no interaction evidence. The next mutation writes version 3. Migration
+does not increase Subject confidence, invent interaction evidence, or invent
+events.
+
+Interaction statistics are derived from evidence and are deliberately not
+trust scores. Repeated traffic can increase a count but cannot raise
+contextual trust or grant a capability.
 
 One runtime owns one relationship book. Books must not be copied between node
 homes to make two observers appear to share a worldview.
@@ -216,7 +248,6 @@ Relations v1 does not yet standardize:
 
 - signed mutual-relationship claims;
 - Subject split, merge, or supersession commands;
-- automatic evidence ingestion from messages, tasks, skills, and artifacts;
 - policy suggestions derived from relationship changes;
 - encrypted projection streams for human observers;
 - cross-node portable relation bundles;
