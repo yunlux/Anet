@@ -257,6 +257,9 @@ For a display-ready remote perspective, use
 `relation-reported-view <SENDER_NODE_ID>`. It derives a provenance-bearing,
 `partial-unknown` report from received disclosures without treating the
 sender's Subjects, circles, or contextual trust as local state.
+Scheduled disclosures use v2 series metadata so a selected `rdsr_` chain can
+prove cursor continuity or expose a missing page; continuity never implies
+complete reality or current state.
 
 ### Typed tasks
 

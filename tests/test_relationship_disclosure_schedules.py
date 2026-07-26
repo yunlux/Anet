@@ -134,6 +134,14 @@ def test_schedule_defaults_to_now_then_discloses_only_new_activity(
         own_actor_id=b_identity.node_id,
     ).all()
     assert len(received) == 1
+    assert received[0].disclosure.version == 2
+    assert received[0].disclosure.sequence == 0
+    assert received[0].disclosure.series_id == schedule.series_id
+    persisted = RelationshipDisclosureScheduleBook(
+        a_config.relationship_disclosure_schedules_path,
+        own_actor_id=a_identity.node_id,
+    ).require(schedule.schedule_id)
+    assert persisted.next_sequence == 1
     assert len(received[0].disclosure.activities) == 1
     assert received[0].disclosure.activities[0].activity_type == (
         "interaction.observed"
@@ -217,9 +225,14 @@ def test_revocation_discards_pending_and_prevents_forced_send(
 
     schedules.prepare(
         schedule.schedule_id,
-        RelationshipDisclosure.create(
+        RelationshipDisclosure.create_series(
             page,
             audience_actor_id=b_identity.node_id,
+            series_id=schedule.series_id,
+            sequence=schedule.next_sequence,
+            starts_after=schedule.cursor,
+            scope_subject_ref=schedule.subject_ref,
+            baseline=schedule.baseline,
             now=NOW + 35,
         ),
         start_cursor="",
@@ -351,3 +364,139 @@ def test_schedule_cli_lifecycle(tmp_path, capsys) -> None:
                 b_identity.node_id,
             ]
         )
+
+
+def test_v1_schedule_file_migrates_to_fresh_current_cursor_series(
+    tmp_path,
+) -> None:
+    a_config, _b_config, a_identity, b_identity = _pair(tmp_path)
+    book = RelationshipDisclosureScheduleBook(
+        a_config.relationship_disclosure_schedules_path,
+        own_actor_id=a_identity.node_id,
+    )
+    created = book.create(
+        b_identity.node_id,
+        cursor="",
+        interval_seconds=30,
+        now=NOW + 10,
+    )
+    legacy = created.to_dict()
+    legacy["version"] = 1
+    legacy["type"] = "anet.relationship.disclosure-schedule.v1"
+    del legacy["series_id"]
+    del legacy["next_sequence"]
+    del legacy["baseline"]
+    a_config.relationship_disclosure_schedules_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "own_actor_id": a_identity.node_id,
+                "schedules": [legacy],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    migrated = RelationshipDisclosureScheduleBook(
+        a_config.relationship_disclosure_schedules_path,
+        own_actor_id=a_identity.node_id,
+    ).require(created.schedule_id)
+    assert migrated.version == 2
+    assert migrated.series_id.startswith("rdsr_")
+    assert migrated.next_sequence == 0
+    assert migrated.baseline == "current-cursor"
+
+
+def test_subject_schedule_emits_cursor_checkpoint_for_other_subjects(
+    tmp_path,
+) -> None:
+    a_config, b_config, a_identity, b_identity = _pair(tmp_path)
+    observed = Identity.generate("observed")
+    relations, subject_ref = _observed_relation(
+        a_config,
+        a_identity,
+        observed,
+    )
+    tail = RelationshipActivityFeed.read(
+        relations.snapshot(),
+        limit=1,
+        tail=True,
+    ).next_cursor
+    schedules = RelationshipDisclosureScheduleBook(
+        a_config.relationship_disclosure_schedules_path,
+        own_actor_id=a_identity.node_id,
+    )
+    schedule = schedules.create(
+        b_identity.node_id,
+        cursor=tail,
+        subject_ref=subject_ref,
+        interval_seconds=30,
+        now=NOW + 30,
+    )
+    other = Identity.generate("other")
+    relations.observe_actor(
+        other.card(),
+        evidence_ref="packet:other",
+        now=NOW + 40,
+    )
+    sender = AnetNode(a_config)
+    receiver = AnetNode(b_config)
+    try:
+        checkpoint = sender.run_relationship_disclosure_schedules_once(
+            schedule_id=schedule.schedule_id,
+            force=True,
+            now=NOW + 50,
+        )[0]
+        assert checkpoint["queued"] is True
+        assert checkpoint["checkpoint"] is True
+        assert checkpoint["activities"] == 0
+        raw = sender.store.get_packet(checkpoint["packet_id"])
+        assert raw is not None
+        receiver.accept_carrier_packet(
+            raw,
+            depth=1,
+            peer_id=sender.node_id,
+        )
+
+        relations.record_interaction(
+            InteractionEvidence.create(
+                actor_id=observed.node_id,
+                subject_ref=subject_ref,
+                direction="outgoing",
+                facets=("message",),
+                context="social.discord",
+                outcome="submitted",
+                evidence_ref="discord:subject-message",
+                occurred_ms=NOW + 60,
+            )
+        )
+        activity = sender.run_relationship_disclosure_schedules_once(
+            schedule_id=schedule.schedule_id,
+            force=True,
+            now=NOW + 70,
+        )[0]
+        assert activity["checkpoint"] is False
+        raw = sender.store.get_packet(activity["packet_id"])
+        assert raw is not None
+        receiver.accept_carrier_packet(
+            raw,
+            depth=1,
+            peer_id=sender.node_id,
+        )
+    finally:
+        sender.close()
+        receiver.close()
+
+    disclosures = sorted(
+        (
+            item.disclosure
+            for item in RelationshipDisclosureBook(
+                b_config.relationship_disclosures_path,
+                own_actor_id=b_identity.node_id,
+            ).all()
+        ),
+        key=lambda item: item.sequence,
+    )
+    assert [item.sequence for item in disclosures] == [0, 1]
+    assert disclosures[0].activities == ()
+    assert disclosures[1].starts_after == disclosures[0].next_cursor

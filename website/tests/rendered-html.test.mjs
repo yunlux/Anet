@@ -82,8 +82,11 @@ test("renders the relationship demo with explicit fact and inference boundaries"
   assert.match(html, /NO AUDIENCE PULL/);
   assert.match(html, /VIEWPOINT WORKBENCH/);
   assert.match(html, /SENDER-REPORTED/);
-  assert.match(html, /PARTIAL-UNKNOWN/);
-  assert.match(html, /history-baseline-unknown/);
+  assert.match(html, /PROVEN-CONTINUOUS-SEGMENT/);
+  assert.match(html, /CONTINUITY VERIFIED/);
+  assert.match(html, /cursor links verified/);
+  assert.match(html, /current-state-after-last-cursor-not-proven/);
+  assert.match(html, /模拟缺页/);
   assert.match(html, /G 的本地判断/);
   assert.match(html, /AUTHORIZATION EFFECT: NONE/);
   assert.match(html, /本地持久化顺序回放/);

@@ -1415,10 +1415,12 @@ class AnetNode:
                         limit=item.batch_limit,
                         subject_ref=item.subject_ref,
                     )
-                    if not page.activities:
+                    if (
+                        not page.activities
+                        and page.next_cursor == item.cursor
+                    ):
                         schedules.record_idle(
                             item.schedule_id,
-                            cursor=page.next_cursor,
                             now=current,
                         )
                         results.append(
@@ -1430,9 +1432,14 @@ class AnetNode:
                             }
                         )
                         continue
-                    disclosure = RelationshipDisclosure.create(
+                    disclosure = RelationshipDisclosure.create_series(
                         page,
                         audience_actor_id=item.audience_actor_id,
+                        series_id=item.series_id,
+                        sequence=item.next_sequence,
+                        starts_after=item.cursor,
+                        scope_subject_ref=item.subject_ref,
+                        baseline=item.baseline,
                         now=current,
                     )
                     item = schedules.prepare(
@@ -1466,6 +1473,7 @@ class AnetNode:
                         "packet_id": packet_id,
                         "disclosure_id": pending.disclosure.disclosure_id,
                         "activities": len(pending.disclosure.activities),
+                        "checkpoint": not pending.disclosure.activities,
                         "has_more": pending.disclosure.has_more,
                     }
                 )

@@ -185,6 +185,9 @@ by [`RELATIONSHIP_DISCLOSURES_V1.md`](RELATIONSHIP_DISCLOSURES_V1.md).
 The reported-view tool never claims synchronized state: it returns
 `completeness: partial-unknown` and cannot alter local Subjects, circles, trust,
 capabilities, or authorization.
+Pass `series_id` to inspect one scheduled v2 series. A verified chain returns
+`proven-continuous-segment`; missing sequence or cursor links return
+`gap-detected`. Both remain sender reports with `authorization_effect: none`.
 
 ### Typed task execution
 

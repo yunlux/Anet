@@ -8,6 +8,7 @@ from .actors import validate_actor_id
 from .relationship_disclosures import (
     DisclosedRelationshipActivity,
     RelationshipDisclosureBook,
+    ReceivedRelationshipDisclosure,
 )
 
 
@@ -42,21 +43,71 @@ class ReportedRelationshipViewProjector:
         book: RelationshipDisclosureBook,
         *,
         sender_actor_id: str,
+        series_id: str = "",
         subject_ref: str = "",
         include_activities: bool = False,
         activity_limit: int = 100,
         now: int | None = None,
     ) -> dict[str, Any]:
         sender = validate_actor_id(sender_actor_id)
+        selected_series = str(series_id).strip().lower()
         selected_subject = str(subject_ref).strip()
         page_limit = int(activity_limit)
         if not 1 <= page_limit <= 500:
             raise ValueError("reported relationship activity limit must be 1-500")
 
-        received = sorted(
+        all_received = sorted(
             book.all(sender_actor_id=sender, limit=None),
             key=lambda item: (item.received_ms, item.packet_id),
         )
+        legacy = [
+            item for item in all_received if item.disclosure.version == 1
+        ]
+        series_groups: dict[
+            str,
+            list[ReceivedRelationshipDisclosure],
+        ] = defaultdict(list)
+        for item in all_received:
+            if item.disclosure.version == 2:
+                series_groups[item.disclosure.series_id].append(item)
+        series_values = [
+            cls._analyze_series(series_groups[key])
+            for key in sorted(series_groups)
+        ]
+        if selected_series:
+            if selected_series not in series_groups:
+                raise KeyError(
+                    f"unknown relationship disclosure series: {selected_series}"
+                )
+            received = sorted(
+                series_groups[selected_series],
+                key=lambda item: (
+                    item.disclosure.sequence,
+                    item.disclosure.disclosure_id,
+                ),
+            )
+            selected_analysis = next(
+                item
+                for item in series_values
+                if item["series_id"] == selected_series
+            )
+        elif len(series_groups) == 1 and not legacy:
+            selected_series = next(iter(series_groups))
+            received = sorted(
+                series_groups[selected_series],
+                key=lambda item: (
+                    item.disclosure.sequence,
+                    item.disclosure.disclosure_id,
+                ),
+            )
+            selected_analysis = series_values[0]
+        else:
+            received = all_received
+            selected_analysis = None
+        legacy_in_view = [
+            item for item in received if item.disclosure.version == 1
+        ]
+
         activities: list[DisclosedRelationshipActivity] = []
         seen: dict[str, dict[str, Any]] = {}
         for item in received:
@@ -99,22 +150,51 @@ class ReportedRelationshipViewProjector:
             (item.disclosure.issued_ms for item in received),
             default=0,
         )
-        warnings = [
-            "history-baseline-unknown",
-            "cross-packet-append-continuity-unproven",
-        ]
+        warnings: list[str] = []
+        if legacy_in_view:
+            warnings.extend(
+                [
+                    "legacy-v1-disclosures-present",
+                    "history-baseline-unknown",
+                    "cross-packet-append-continuity-unproven",
+                ]
+            )
+        if len(series_groups) > 1 and not selected_series:
+            warnings.append("multiple-series-order-unproven")
+        if selected_analysis is not None:
+            warnings.extend(selected_analysis["issues"])
+            if selected_analysis["baseline"] == "current-cursor":
+                warnings.append(
+                    "history-before-declared-baseline-not-covered"
+                )
+        elif not legacy_in_view:
+            warnings.extend(
+                [
+                    "history-baseline-unknown",
+                    "cross-packet-append-continuity-unproven",
+                ]
+            )
+        warnings.append("current-state-after-last-cursor-not-proven")
         if any(item.disclosure.has_more for item in received):
             warnings.append("sender-reported-undisclosed-remainder")
         if not received:
             warnings.append("no-disclosure-received")
 
+        completeness = "partial-unknown"
+        if selected_analysis is not None:
+            completeness = (
+                "proven-continuous-segment"
+                if selected_analysis["continuity"] == "proven-continuous"
+                else "gap-detected"
+            )
         view: dict[str, Any] = {
             "version": 1,
             "type": "anet.reported-relationship-view.v1",
             "observer_actor_id": sender,
             "audience_actor_id": book.own_actor_id,
             "viewpoint": "sender-reported",
-            "completeness": "partial-unknown",
+            "completeness": completeness,
+            "selected_series_id": selected_series,
             "subjects": subject_values,
             "actors": [
                 {
@@ -153,6 +233,8 @@ class ReportedRelationshipViewProjector:
                     max(0, current - last_received) if last_received else None
                 ),
                 "source_proof": "authenticated-encrypted-packet",
+                "legacy_v1_disclosures": len(legacy),
+                "series": series_values,
             },
             "warnings": warnings,
             "projection_into_local_relations": False,
@@ -177,6 +259,79 @@ class ReportedRelationshipViewProjector:
                 len(selected_activities) > page_limit
             )
         return view
+
+    @staticmethod
+    def _analyze_series(
+        received: list[ReceivedRelationshipDisclosure],
+    ) -> dict[str, Any]:
+        ordered = sorted(
+            received,
+            key=lambda item: (
+                item.disclosure.sequence,
+                item.disclosure.disclosure_id,
+            ),
+        )
+        first = ordered[0].disclosure
+        sequences = [item.disclosure.sequence for item in ordered]
+        issues: list[str] = []
+        if len(sequences) != len(set(sequences)):
+            issues.append("duplicate-series-sequence")
+        if sequences != list(range(0, max(sequences, default=-1) + 1)):
+            issues.append("missing-series-sequence")
+        if any(
+            item.disclosure.baseline != first.baseline
+            or item.disclosure.scope_subject_ref
+            != first.scope_subject_ref
+            or item.disclosure.observer_actor_id
+            != first.observer_actor_id
+            or item.disclosure.audience_actor_id
+            != first.audience_actor_id
+            for item in ordered
+        ):
+            issues.append("series-metadata-mismatch")
+        by_sequence = {
+            item.disclosure.sequence: item.disclosure for item in ordered
+        }
+        for sequence in range(1, max(sequences, default=-1) + 1):
+            previous = by_sequence.get(sequence - 1)
+            current = by_sequence.get(sequence)
+            if (
+                previous is not None
+                and current is not None
+                and current.starts_after != previous.next_cursor
+            ):
+                issues.append("series-cursor-link-mismatch")
+                break
+        return {
+            "series_id": first.series_id,
+            "continuity": (
+                "proven-continuous" if not issues else "gap-detected"
+            ),
+            "baseline": first.baseline,
+            "coverage": (
+                "history-through-cursor"
+                if first.baseline == "history-start" and not issues
+                else (
+                    "declared-baseline-through-cursor"
+                    if not issues
+                    else "discontinuous"
+                )
+            ),
+            "scope": (
+                "subject" if first.scope_subject_ref else "all"
+            ),
+            "scope_subject_ref": first.scope_subject_ref,
+            "first_sequence": min(sequences),
+            "last_sequence": max(sequences),
+            "through_cursor": ordered[-1].disclosure.next_cursor,
+            "authenticated_disclosures": len(ordered),
+            "packet_ids": [item.packet_id for item in ordered],
+            "disclosure_ids": [
+                item.disclosure.disclosure_id for item in ordered
+            ],
+            "issues": issues,
+            "authorization_effect": "none",
+        }
 
     @staticmethod
     def _fold(

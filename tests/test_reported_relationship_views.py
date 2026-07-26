@@ -214,3 +214,131 @@ def test_reported_view_subject_filter_and_cli(tmp_path, capsys) -> None:
     assert len(value["activities"]) == 1
     assert value["activities_truncated"] is False
     assert value["viewpoint"] == "sender-reported"
+
+
+def test_v2_series_proves_continuity_despite_out_of_order_arrival(
+    tmp_path,
+) -> None:
+    observer = Identity.generate("observer")
+    audience = Identity.generate("audience")
+    observed = Identity.generate("observed")
+    relations = RelationshipBook(
+        tmp_path / "series-source.json",
+        own_actor_id=observer.node_id,
+    )
+    subject = relations.observe_actor(
+        observed.card(),
+        evidence_ref="packet:actor",
+        now=NOW + 10,
+    )
+    relations.set_circle(
+        subject.subject_ref,
+        "friend",
+        confidence=70,
+        evidence_ref="relationship:circle",
+        now=NOW + 20,
+    )
+    first_page = RelationshipActivityFeed.read(
+        relations.snapshot(),
+        limit=1,
+    )
+    second_page = RelationshipActivityFeed.read(
+        relations.snapshot(),
+        after=first_page.next_cursor,
+        limit=10,
+    )
+    series_id = "rdsr_" + ("a" * 32)
+    first = RelationshipDisclosure.create_series(
+        first_page,
+        audience_actor_id=audience.node_id,
+        series_id=series_id,
+        sequence=0,
+        starts_after="",
+        baseline="history-start",
+        now=NOW + 30,
+    )
+    second = RelationshipDisclosure.create_series(
+        second_page,
+        audience_actor_id=audience.node_id,
+        series_id=series_id,
+        sequence=1,
+        starts_after=first.next_cursor,
+        baseline="history-start",
+        now=NOW + 40,
+    )
+    received = RelationshipDisclosureBook(
+        tmp_path / "series-received.json",
+        own_actor_id=audience.node_id,
+    )
+    # Transport arrival order is deliberately opposite to observer sequence.
+    received.add(
+        second,
+        packet_id="44" * 16,
+        sender_actor_id=observer.node_id,
+        received_ms=NOW + 50,
+    )
+    received.add(
+        first,
+        packet_id="55" * 16,
+        sender_actor_id=observer.node_id,
+        received_ms=NOW + 60,
+    )
+
+    view = ReportedRelationshipViewProjector.project(
+        received,
+        sender_actor_id=observer.node_id,
+    )
+    assert view["selected_series_id"] == series_id
+    assert view["completeness"] == "proven-continuous-segment"
+    assert view["subjects"][0]["reported_circle"]["circle"] == "friend"
+    series = view["provenance"]["series"][0]
+    assert series["continuity"] == "proven-continuous"
+    assert series["coverage"] == "history-through-cursor"
+    assert series["first_sequence"] == 0
+    assert series["last_sequence"] == 1
+    assert series["issues"] == []
+    assert "cross-packet-append-continuity-unproven" not in view["warnings"]
+    assert "current-state-after-last-cursor-not-proven" in view["warnings"]
+
+
+def test_v2_series_detects_missing_sequence(tmp_path) -> None:
+    observer = Identity.generate("observer")
+    audience = Identity.generate("audience")
+    observed = Identity.generate("observed")
+    relations = RelationshipBook(
+        tmp_path / "gap-source.json",
+        own_actor_id=observer.node_id,
+    )
+    relations.observe_actor(
+        observed.card(),
+        evidence_ref="packet:actor",
+        now=NOW + 10,
+    )
+    page = RelationshipActivityFeed.read(relations.snapshot())
+    missing_first = RelationshipDisclosure.create_series(
+        page,
+        audience_actor_id=audience.node_id,
+        series_id="rdsr_" + ("b" * 32),
+        sequence=1,
+        starts_after=page.next_cursor,
+        baseline="current-cursor",
+        now=NOW + 20,
+    )
+    received = RelationshipDisclosureBook(
+        tmp_path / "gap-received.json",
+        own_actor_id=audience.node_id,
+    )
+    received.add(
+        missing_first,
+        packet_id="66" * 16,
+        sender_actor_id=observer.node_id,
+        received_ms=NOW + 30,
+    )
+
+    view = ReportedRelationshipViewProjector.project(
+        received,
+        sender_actor_id=observer.node_id,
+    )
+    assert view["completeness"] == "gap-detected"
+    assert "missing-series-sequence" in view["warnings"]
+    assert view["provenance"]["series"][0]["coverage"] == "discontinuous"

@@ -746,6 +746,11 @@
   color: #1e1f1b;
   background: #d9ff43;
 }
+.viewpointTabs .gapButton {
+  border-color: #ff5c35;
+  color: #f4f5ee;
+  background: #ff5c35;
+}
 .reportedMeta {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -784,6 +789,15 @@
 }
 .coverageWarning b { margin-right: 10px; color: #ff5c35; }
 .coverageWarning span { float: right; color: #3d3f39; }
+.coverageVerified { background: rgba(217,255,67,.2); }
+.coverageGap { background: rgba(255,92,53,.12); }
+.realityLimit {
+  padding: 11px 18px;
+  border-top: 1px solid #c8c9c1;
+  color: #686a62;
+  font: 8px/1.5 var(--font-mono);
+}
+.realityLimit b { margin-right: 10px; color: #ff5c35; }
 .localViewEmpty { padding: 28px; }
 .localViewEmpty small,
 .localViewEmpty strong,

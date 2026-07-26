@@ -273,7 +273,10 @@ into `relationships.json`. They cannot create a local Actor, Subject, circle,
 contextual trust estimate, PeerBook trust, capability, or authorization.
 `relation-reported-view` is a derived, sender-attributed read model for UI and
 Agent consumption. It always declares unknown coverage because v1 cannot prove
-a complete baseline or continuous order across Packets.
+a complete baseline or continuous order across Packets. Scheduled v2
+disclosures add a fixed series, sequence, baseline, scope, and cursor links, so
+one selected segment can be verified as continuous or fail visibly with a gap.
+Continuity still does not establish current state or external truth.
 See [`RELATIONSHIP_DISCLOSURES_V1.md`](RELATIONSHIP_DISCLOSURES_V1.md).
 
 ## CLI interface

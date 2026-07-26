@@ -632,6 +632,7 @@ export function SocialCircleDemo() {
   const [reportedViewpoint, setReportedViewpoint] = useState<
     "local" | "reported"
   >("reported");
+  const [seriesGap, setSeriesGap] = useState(false);
   const [demoDecisions, setDemoDecisions] = useState<
     Record<string, "accepted" | "rejected">
   >({});
@@ -1210,7 +1211,8 @@ export function SocialCircleDemo() {
               </strong>
               <p>
                 scope: all subjects · interval: 5m · expires: 30d ·
-                history replay: off
+                history replay: off · series: rdsr_7c1… · baseline:
+                current-cursor
               </p>
             </div>
             <div>
@@ -1308,6 +1310,15 @@ export function SocialCircleDemo() {
                 >
                   A 报告的判断
                 </button>
+                {reportedViewpoint === "reported" && (
+                  <button
+                    type="button"
+                    className={seriesGap ? styles.gapButton : ""}
+                    onClick={() => setSeriesGap((current) => !current)}
+                  >
+                    {seriesGap ? "补回缺页" : "模拟缺页"}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1316,7 +1327,12 @@ export function SocialCircleDemo() {
                 <div className={styles.reportedMeta}>
                   <span><b>VIEWPOINT</b> SENDER-REPORTED</span>
                   <span><b>OBSERVER</b> ACTOR A</span>
-                  <span><b>COMPLETENESS</b> PARTIAL-UNKNOWN</span>
+                  <span>
+                    <b>COMPLETENESS</b>
+                    {seriesGap
+                      ? "GAP-DETECTED"
+                      : "PROVEN-CONTINUOUS-SEGMENT"}
+                  </span>
                   <span><b>LOCAL PROJECTION</b> NONE</span>
                 </div>
                 <div className={styles.reportedSubjects}>
@@ -1333,11 +1349,23 @@ export function SocialCircleDemo() {
                     </article>
                   ))}
                 </div>
-                <div className={styles.coverageWarning}>
-                  <b>COVERAGE WARNING</b>
-                  history-baseline-unknown ·
-                  cross-packet-append-continuity-unproven
-                  <span>2 authenticated Packets · 11 unique activities</span>
+                <div
+                  className={`${styles.coverageWarning} ${
+                    seriesGap ? styles.coverageGap : styles.coverageVerified
+                  }`}
+                >
+                  <b>
+                    {seriesGap ? "GAP DETECTED" : "CONTINUITY VERIFIED"}
+                  </b>
+                  {seriesGap
+                    ? "missing-series-sequence: 01"
+                    : "rdsr_7c1… · seq 00 → 02 · cursor links verified"}
+                  <span>3 authenticated Packets · 11 unique activities</span>
+                </div>
+                <div className={styles.realityLimit}>
+                  <b>REALITY LIMIT</b>
+                  current-state-after-last-cursor-not-proven ·
+                  history-before-declared-baseline-not-covered
                 </div>
               </>
             ) : (

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import secrets
@@ -13,15 +14,16 @@ from .encoding import atomic_json
 from .relationship_disclosures import RelationshipDisclosure
 
 
-RELATIONSHIP_DISCLOSURE_SCHEDULE_VERSION = 1
+RELATIONSHIP_DISCLOSURE_SCHEDULE_VERSION = 2
 RELATIONSHIP_DISCLOSURE_SCHEDULE_TYPE = (
-    "anet.relationship.disclosure-schedule.v1"
+    "anet.relationship.disclosure-schedule.v2"
 )
 MIN_INTERVAL_SECONDS = 30
 MAX_INTERVAL_SECONDS = 86400
 MAX_SCHEDULE_LIFETIME_SECONDS = 365 * 86400
 
 _SCHEDULE_ID_RE = re.compile(r"^rdsc_[0-9a-f]{32}$")
+_SERIES_ID_RE = re.compile(r"^rdsr_[0-9a-f]{32}$")
 _SUBJECT_REF_RE = re.compile(r"^subj_[0-9a-f]{16}$")
 _CURSOR_RE = re.compile(r"^(|rac_[0-9a-f]{16}_revt_[0-9a-f]{24})$")
 _PACKET_ID_RE = re.compile(r"^(|[0-9a-f]{32})$")
@@ -97,6 +99,9 @@ class RelationshipDisclosureSchedule:
     expires_ms: int
     cursor: str
     next_due_ms: int
+    series_id: str
+    next_sequence: int
+    baseline: str
     revoked_ms: int = 0
     revoke_reason: str = ""
     last_attempt_ms: int = 0
@@ -116,6 +121,12 @@ class RelationshipDisclosureSchedule:
             raise ValueError("unsupported relationship disclosure schedule")
         if not _SCHEDULE_ID_RE.fullmatch(self.schedule_id):
             raise ValueError("invalid relationship disclosure schedule ID")
+        if not _SERIES_ID_RE.fullmatch(self.series_id):
+            raise ValueError("invalid relationship disclosure series ID")
+        if type(self.next_sequence) is not int or self.next_sequence < 0:
+            raise ValueError("invalid relationship disclosure next sequence")
+        if self.baseline not in {"history-start", "current-cursor"}:
+            raise ValueError("invalid relationship disclosure schedule baseline")
         observer = validate_actor_id(self.observer_actor_id)
         audience = validate_actor_id(self.audience_actor_id)
         if observer == audience:
@@ -160,6 +171,23 @@ class RelationshipDisclosureSchedule:
                 or disclosure.audience_actor_id != audience
             ):
                 raise ValueError("pending disclosure does not match schedule actors")
+            if disclosure.version == 2 and (
+                disclosure.series_id != self.series_id
+                or disclosure.sequence != self.next_sequence
+                or disclosure.starts_after != self.cursor
+                or disclosure.scope_subject_ref != self.subject_ref
+                or disclosure.baseline != self.baseline
+            ):
+                raise ValueError(
+                    "pending disclosure does not match schedule series"
+                )
+            if disclosure.version == 1 and (
+                self.next_sequence != 0
+                or self.baseline != "current-cursor"
+            ):
+                raise ValueError(
+                    "legacy pending disclosure is outside migration boundary"
+                )
 
     @property
     def scope(self) -> str:
@@ -193,6 +221,9 @@ class RelationshipDisclosureSchedule:
             "expires_ms": self.expires_ms,
             "cursor": self.cursor,
             "next_due_ms": self.next_due_ms,
+            "series_id": self.series_id,
+            "next_sequence": self.next_sequence,
+            "baseline": self.baseline,
             "revoked_ms": self.revoked_ms,
             "revoke_reason": self.revoke_reason,
             "last_attempt_ms": self.last_attempt_ms,
@@ -211,7 +242,7 @@ class RelationshipDisclosureSchedule:
         cls,
         value: Mapping[str, Any],
     ) -> "RelationshipDisclosureSchedule":
-        expected = {
+        base_expected = {
             "version",
             "type",
             "schedule_id",
@@ -238,6 +269,13 @@ class RelationshipDisclosureSchedule:
             "audience_pull",
             "authorization_effect",
         }
+        series_fields = {"series_id", "next_sequence", "baseline"}
+        version = value.get("version")
+        expected = (
+            base_expected | series_fields
+            if version == RELATIONSHIP_DISCLOSURE_SCHEDULE_VERSION
+            else base_expected
+        )
         if set(value) != expected:
             raise ValueError("relationship disclosure schedule has unexpected fields")
         integer_fields = {
@@ -253,6 +291,8 @@ class RelationshipDisclosureSchedule:
             "last_success_ms",
             "failure_count",
         }
+        if version == RELATIONSHIP_DISCLOSURE_SCHEDULE_VERSION:
+            integer_fields.add("next_sequence")
         string_fields = {
             "type",
             "schedule_id",
@@ -267,6 +307,8 @@ class RelationshipDisclosureSchedule:
             "control",
             "authorization_effect",
         }
+        if version == RELATIONSHIP_DISCLOSURE_SCHEDULE_VERSION:
+            string_fields.update({"series_id", "baseline"})
         if (
             any(type(value.get(key)) is not int for key in integer_fields)
             or any(not isinstance(value.get(key), str) for key in string_fields)
@@ -277,13 +319,28 @@ class RelationshipDisclosureSchedule:
             != ("subject" if value.get("subject_ref") else "all")
         ):
             raise ValueError("relationship disclosure schedule boundary is invalid")
+        if (
+            version == 1
+            and value.get("type")
+            != "anet.relationship.disclosure-schedule.v1"
+        ) or (
+            version == RELATIONSHIP_DISCLOSURE_SCHEDULE_VERSION
+            and value.get("type") != RELATIONSHIP_DISCLOSURE_SCHEDULE_TYPE
+        ):
+            raise ValueError("relationship disclosure schedule type is invalid")
         pending = value.get("pending")
         if pending is not None and not isinstance(pending, Mapping):
             raise ValueError("relationship disclosure schedule pending is invalid")
+        if version not in {1, RELATIONSHIP_DISCLOSURE_SCHEDULE_VERSION}:
+            raise ValueError("unsupported relationship disclosure schedule")
+        schedule_id = str(value["schedule_id"])
+        migrated_series = "rdsr_" + hashlib.sha256(
+            f"anet-schedule-migration:{schedule_id}".encode("utf-8")
+        ).hexdigest()[:32]
         return cls(
-            version=int(value["version"]),
-            object_type=str(value["type"]),
-            schedule_id=str(value["schedule_id"]),
+            version=RELATIONSHIP_DISCLOSURE_SCHEDULE_VERSION,
+            object_type=RELATIONSHIP_DISCLOSURE_SCHEDULE_TYPE,
+            schedule_id=schedule_id,
             observer_actor_id=str(value["observer_actor_id"]),
             audience_actor_id=str(value["audience_actor_id"]),
             subject_ref=str(value["subject_ref"]),
@@ -294,6 +351,9 @@ class RelationshipDisclosureSchedule:
             expires_ms=int(value["expires_ms"]),
             cursor=str(value["cursor"]),
             next_due_ms=int(value["next_due_ms"]),
+            series_id=str(value.get("series_id", migrated_series)),
+            next_sequence=int(value.get("next_sequence", 0)),
+            baseline=str(value.get("baseline", "current-cursor")),
             revoked_ms=int(value["revoked_ms"]),
             revoke_reason=str(value["revoke_reason"]),
             last_attempt_ms=int(value["last_attempt_ms"]),
@@ -325,7 +385,8 @@ class RelationshipDisclosureScheduleBook:
         value = json.loads(self.path.read_text(encoding="utf-8"))
         if (
             not isinstance(value, Mapping)
-            or value.get("version") != 1
+            or type(value.get("version")) is not int
+            or value.get("version") not in {1, 2}
             or value.get("own_actor_id") != self.own_actor_id
             or not isinstance(value.get("schedules"), list)
         ):
@@ -347,7 +408,7 @@ class RelationshipDisclosureScheduleBook:
         atomic_json(
             self.path,
             {
-                "version": 1,
+                "version": 2,
                 "own_actor_id": self.own_actor_id,
                 "schedules": [
                     self._schedules[key].to_dict()
@@ -367,6 +428,7 @@ class RelationshipDisclosureScheduleBook:
         batch_limit: int = 100,
         packet_ttl_seconds: int = 7 * 86400,
         lifetime_seconds: int = 30 * 86400,
+        baseline: str = "current-cursor",
         now: int | None = None,
     ) -> RelationshipDisclosureSchedule:
         current = _now_ms(now)
@@ -385,6 +447,9 @@ class RelationshipDisclosureScheduleBook:
             expires_ms=current + lifetime * 1000,
             cursor=str(cursor).strip(),
             next_due_ms=current,
+            series_id="rdsr_" + secrets.token_hex(16),
+            next_sequence=0,
+            baseline=str(baseline).strip(),
         )
         self._schedules[item.schedule_id] = item
         self.save()
@@ -462,6 +527,10 @@ class RelationshipDisclosureScheduleBook:
             raise ValueError("relationship disclosure schedule is not active")
         if item.pending is not None:
             return item
+        if disclosure.version != 2:
+            raise ValueError(
+                "new scheduled disclosures must use a continuity series"
+            )
         prepared = replace(
             item,
             pending=PendingRelationshipDisclosure(
@@ -518,6 +587,11 @@ class RelationshipDisclosureScheduleBook:
             replace(
                 item,
                 cursor=item.pending.next_cursor,
+                next_sequence=(
+                    item.next_sequence + 1
+                    if item.pending.disclosure.version == 2
+                    else item.next_sequence
+                ),
                 pending=None,
                 last_attempt_ms=current,
                 last_success_ms=current,

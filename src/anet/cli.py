@@ -683,6 +683,7 @@ def cmd_relation_reported_view(args: argparse.Namespace) -> int:
         ReportedRelationshipViewProjector.project(
             book,
             sender_actor_id=args.sender,
+            series_id=args.series or "",
             subject_ref=args.subject or "",
             include_activities=args.include_activities,
             activity_limit=args.limit,
@@ -732,6 +733,11 @@ def cmd_relation_disclosure_schedule_add(
         batch_limit=args.limit,
         packet_ttl_seconds=args.packet_ttl,
         lifetime_seconds=args.lifetime,
+        baseline=(
+            "history-start"
+            if args.include_history
+            else "current-cursor"
+        ),
     )
     _print_json(
         {
@@ -2893,6 +2899,10 @@ def build_parser() -> argparse.ArgumentParser:
     relation_reported_view.add_argument(
         "sender",
         help="complete Actor ID of the reporting observer",
+    )
+    relation_reported_view.add_argument(
+        "--series",
+        help="select one continuity-proven rdsr_ disclosure series",
     )
     relation_reported_view.add_argument(
         "--subject",

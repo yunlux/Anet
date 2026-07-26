@@ -27,6 +27,24 @@ end-to-end encryption, TTL, routing, optional one-time-prekey forward secrecy,
 deduplication, and receipts. The disclosure body repeats observer and audience
 IDs so the runtime can reject a valid body replayed toward another destination.
 
+Scheduled disclosure uses the compatible v2 body type
+`anet.relationship.disclosure.v2`. It adds digest-bound:
+
+- an opaque `rdsr_` series ID and zero-based sequence;
+- `starts_after` and `next_cursor` continuity links;
+- fixed `all` or one-Subject scope;
+- a `history-start` or `current-cursor` declared baseline.
+
+Sequence zero establishes the declared baseline. Later items prove continuity
+only when every sequence is present and each `starts_after` equals the previous
+`next_cursor`. Transport receive order and wall-clock issue time never replace
+those links.
+
+A Subject-scoped v2 series may send an encrypted zero-activity checkpoint when
+the observer cursor advances only across other Subjects. The checkpoint reveals
+no out-of-scope activity; it prevents a silent cursor jump from looking
+continuous.
+
 ## Privacy projection
 
 Activities may contain only bounded structural fields already produced by the
@@ -99,6 +117,20 @@ and interaction counts. Every value remains attributed to A. It reports
 or cross-Packet append continuity. Packet and disclosure provenance, receive
 times, cursor heads, and coverage warnings remain visible.
 
+For v2, select one series when several exist:
+
+```text
+anet --home <B_HOME> relation-reported-view <A_NODE_ID> \
+  --series <RDSR_ID>
+```
+
+The result is `proven-continuous-segment` only when sequence and cursor links
+verify. Missing sequence or cursor mismatch produces `gap-detected`.
+`history-through-cursor` means the declared history-start scope is continuous
+through that cursor; `declared-baseline-through-cursor` covers only a
+current-cursor baseline. Neither status proves current state after the last
+cursor or that the observer perceived all external reality.
+
 Overlapping disclosed pages are deduplicated by activity ID. A conflicting body
 for the same activity ID fails closed instead of choosing one. Arrival and
 issue times are useful provenance but do not prove the sender's complete
@@ -145,6 +177,12 @@ Schedule state is private in
 queueing, so a crash retries the same deterministic disclosure ID. The
 receiver deduplicates that ID even if retries arrive in distinct Packets.
 Revocation discards any pending batch before another send.
+
+New schedules persist a series ID and next sequence. Existing v1 schedule files
+migrate to schedule v2 with a fresh deterministic series at the already stored
+cursor and `current-cursor` baseline. A pending legacy v1 batch may finish
+idempotently; the subsequent v2 series starts from the resulting cursor without
+claiming that pre-migration delivery was continuous.
 
 This is a local disclosure instruction, not a remote subscription. The audience
 cannot create it, pull from it, widen its Subject scope, change its interval,

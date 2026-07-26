@@ -16,10 +16,13 @@ from .relation_activity import RelationshipActivityPage
 RELATIONSHIP_DISCLOSURE_VERSION = 1
 RELATIONSHIP_DISCLOSURE_KIND = "social.relationship.disclosure"
 RELATIONSHIP_DISCLOSURE_TYPE = "anet.relationship.disclosure.v1"
+RELATIONSHIP_DISCLOSURE_SERIES_VERSION = 2
+RELATIONSHIP_DISCLOSURE_SERIES_TYPE = "anet.relationship.disclosure.v2"
 MAX_DISCLOSURE_ACTIVITIES = 100
 MAX_CLOCK_SKEW_MS = 5 * 60 * 1000
 
 _DISCLOSURE_ID_RE = re.compile(r"^rdis_[0-9a-f]{64}$")
+_SERIES_ID_RE = re.compile(r"^rdsr_[0-9a-f]{32}$")
 _EVENT_ID_RE = re.compile(r"^revt_[0-9a-f]{24}$")
 _CURSOR_RE = re.compile(r"^rac_[0-9a-f]{16}_revt_[0-9a-f]{24}$")
 _SUBJECT_REF_RE = re.compile(r"^subj_[0-9a-f]{16}$")
@@ -259,14 +262,49 @@ class RelationshipDisclosure:
     activities: tuple[DisclosedRelationshipActivity, ...]
     next_cursor: str
     has_more: bool
+    series_id: str = ""
+    sequence: int = 0
+    starts_after: str = ""
+    scope_subject_ref: str = ""
+    baseline: str = ""
     version: int = RELATIONSHIP_DISCLOSURE_VERSION
     object_type: str = RELATIONSHIP_DISCLOSURE_TYPE
 
     def __post_init__(self) -> None:
-        if (
-            self.version != RELATIONSHIP_DISCLOSURE_VERSION
-            or self.object_type != RELATIONSHIP_DISCLOSURE_TYPE
-        ):
+        if self.version == RELATIONSHIP_DISCLOSURE_VERSION:
+            if (
+                self.object_type != RELATIONSHIP_DISCLOSURE_TYPE
+                or self.series_id
+                or self.sequence
+                or self.starts_after
+                or self.scope_subject_ref
+                or self.baseline
+            ):
+                raise ValueError("invalid v1 relationship disclosure")
+        elif self.version == RELATIONSHIP_DISCLOSURE_SERIES_VERSION:
+            if self.object_type != RELATIONSHIP_DISCLOSURE_SERIES_TYPE:
+                raise ValueError("invalid v2 relationship disclosure")
+            if not _SERIES_ID_RE.fullmatch(self.series_id):
+                raise ValueError("invalid relationship disclosure series ID")
+            if type(self.sequence) is not int or self.sequence < 0:
+                raise ValueError("invalid relationship disclosure sequence")
+            if self.starts_after and not _CURSOR_RE.fullmatch(
+                self.starts_after
+            ):
+                raise ValueError("invalid relationship disclosure start cursor")
+            _subject_ref(self.scope_subject_ref)
+            if self.baseline not in {"history-start", "current-cursor"}:
+                raise ValueError("invalid relationship disclosure baseline")
+            if self.baseline == "history-start" and self.sequence == 0:
+                if self.starts_after:
+                    raise ValueError(
+                        "history-start disclosure cannot begin after a cursor"
+                    )
+            if self.sequence > 0 and not self.starts_after:
+                raise ValueError(
+                    "continued relationship disclosure must name its prior cursor"
+                )
+        else:
             raise ValueError("unsupported relationship disclosure")
         if not _DISCLOSURE_ID_RE.fullmatch(self.disclosure_id):
             raise ValueError("invalid relationship disclosure ID")
@@ -278,15 +316,20 @@ class RelationshipDisclosure:
             )
         if type(self.issued_ms) is not int or self.issued_ms <= 0:
             raise ValueError("invalid relationship disclosure issue time")
-        if not 1 <= len(self.activities) <= MAX_DISCLOSURE_ACTIVITIES:
+        minimum_activities = (
+            1 if self.version == RELATIONSHIP_DISCLOSURE_VERSION else 0
+        )
+        if not minimum_activities <= len(
+            self.activities
+        ) <= MAX_DISCLOSURE_ACTIVITIES:
             raise ValueError(
-                "relationship disclosure must contain 1-100 activities"
+                "relationship disclosure has an invalid activity count"
             )
         if not _CURSOR_RE.fullmatch(self.next_cursor):
             raise ValueError("invalid relationship disclosure cursor")
 
     def content_fields(self) -> dict[str, Any]:
-        return {
+        value = {
             "version": self.version,
             "type": self.object_type,
             "observer_actor_id": self.observer_actor_id,
@@ -300,6 +343,20 @@ class RelationshipDisclosure:
             "visibility": "audience-private",
             "authorization_effect": "none",
         }
+        if self.version == RELATIONSHIP_DISCLOSURE_SERIES_VERSION:
+            value.update(
+                {
+                    "series_id": self.series_id,
+                    "sequence": self.sequence,
+                    "starts_after": self.starts_after,
+                    "scope": (
+                        "subject" if self.scope_subject_ref else "all"
+                    ),
+                    "scope_subject_ref": self.scope_subject_ref,
+                    "baseline": self.baseline,
+                }
+            )
+        return value
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -336,16 +393,7 @@ class RelationshipDisclosure:
         now: int | None = None,
     ) -> "RelationshipDisclosure":
         issued_ms = _now_ms(now)
-        activities = tuple(
-            DisclosedRelationshipActivity.from_dict(
-                {
-                    key: value
-                    for key, value in item.to_dict().items()
-                    if key in _ACTIVITY_FIELDS
-                }
-            )
-            for item in page.activities
-        )
+        activities = cls._activities_from_page(page)
         unsigned = cls(
             disclosure_id="rdis_" + ("0" * 64),
             observer_actor_id=page.observer_actor_id,
@@ -355,6 +403,59 @@ class RelationshipDisclosure:
             next_cursor=page.next_cursor,
             has_more=page.has_more,
         )
+        return cls._with_digest(unsigned)
+
+    @classmethod
+    def create_series(
+        cls,
+        page: RelationshipActivityPage,
+        *,
+        audience_actor_id: str,
+        series_id: str,
+        sequence: int,
+        starts_after: str,
+        scope_subject_ref: str = "",
+        baseline: str,
+        now: int | None = None,
+    ) -> "RelationshipDisclosure":
+        unsigned = cls(
+            disclosure_id="rdis_" + ("0" * 64),
+            observer_actor_id=page.observer_actor_id,
+            audience_actor_id=validate_actor_id(audience_actor_id),
+            issued_ms=_now_ms(now),
+            activities=cls._activities_from_page(page),
+            next_cursor=page.next_cursor,
+            has_more=page.has_more,
+            series_id=str(series_id).strip().lower(),
+            sequence=int(sequence),
+            starts_after=str(starts_after).strip(),
+            scope_subject_ref=str(scope_subject_ref).strip(),
+            baseline=str(baseline).strip(),
+            version=RELATIONSHIP_DISCLOSURE_SERIES_VERSION,
+            object_type=RELATIONSHIP_DISCLOSURE_SERIES_TYPE,
+        )
+        return cls._with_digest(unsigned)
+
+    @staticmethod
+    def _activities_from_page(
+        page: RelationshipActivityPage,
+    ) -> tuple[DisclosedRelationshipActivity, ...]:
+        return tuple(
+            DisclosedRelationshipActivity.from_dict(
+                {
+                    key: value
+                    for key, value in item.to_dict().items()
+                    if key in _ACTIVITY_FIELDS
+                }
+            )
+            for item in page.activities
+        )
+
+    @classmethod
+    def _with_digest(
+        cls,
+        unsigned: "RelationshipDisclosure",
+    ) -> "RelationshipDisclosure":
         disclosure_id = "rdis_" + hashlib.sha256(
             canonical_pack(unsigned.content_fields())
         ).hexdigest()
@@ -367,7 +468,7 @@ class RelationshipDisclosure:
 
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "RelationshipDisclosure":
-        expected = {
+        base_expected = {
             "version",
             "type",
             "disclosure_id",
@@ -382,6 +483,20 @@ class RelationshipDisclosure:
             "visibility",
             "authorization_effect",
         }
+        version = value.get("version")
+        series_fields = {
+            "series_id",
+            "sequence",
+            "starts_after",
+            "scope",
+            "scope_subject_ref",
+            "baseline",
+        }
+        expected = (
+            base_expected | series_fields
+            if version == RELATIONSHIP_DISCLOSURE_SERIES_VERSION
+            else base_expected
+        )
         if set(value) != expected:
             raise ValueError("relationship disclosure has unexpected fields")
         if (
@@ -392,6 +507,13 @@ class RelationshipDisclosure:
             or type(value.get("has_more")) is not bool
             or type(value.get("version")) is not int
             or type(value.get("issued_ms")) is not int
+            or (
+                version
+                not in {
+                    RELATIONSHIP_DISCLOSURE_VERSION,
+                    RELATIONSHIP_DISCLOSURE_SERIES_VERSION,
+                }
+            )
             or any(
                 not isinstance(value.get(key), str)
                 for key in {
@@ -409,6 +531,29 @@ class RelationshipDisclosure:
             raise ValueError(
                 "relationship disclosure activities must be a list"
             )
+        if version == RELATIONSHIP_DISCLOSURE_SERIES_VERSION:
+            if (
+                type(value.get("sequence")) is not int
+                or any(
+                    not isinstance(value.get(key), str)
+                    for key in {
+                        "series_id",
+                        "starts_after",
+                        "scope",
+                        "scope_subject_ref",
+                        "baseline",
+                    }
+                )
+                or value.get("scope")
+                != (
+                    "subject"
+                    if value.get("scope_subject_ref")
+                    else "all"
+                )
+            ):
+                raise ValueError(
+                    "relationship disclosure series boundary is invalid"
+                )
         disclosure = cls(
             version=int(value["version"]),
             object_type=str(value["type"]),
@@ -423,6 +568,11 @@ class RelationshipDisclosure:
             ),
             next_cursor=str(value["next_cursor"]),
             has_more=value["has_more"],
+            series_id=str(value.get("series_id", "")),
+            sequence=int(value.get("sequence", 0)),
+            starts_after=str(value.get("starts_after", "")),
+            scope_subject_ref=str(value.get("scope_subject_ref", "")),
+            baseline=str(value.get("baseline", "")),
         )
         if len(disclosure.activities) != len(raw_activities):
             raise ValueError(

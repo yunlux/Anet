@@ -371,6 +371,7 @@ async def anet_relation_disclosures(
 )
 async def anet_relation_reported_view(
     sender_actor_id: str,
+    series_id: str = "",
     subject_ref: str = "",
     include_activities: bool = False,
     activity_limit: int = 100,
@@ -385,6 +386,7 @@ async def anet_relation_reported_view(
         ReportedRelationshipViewProjector.project(
             book,
             sender_actor_id=sender_actor_id,
+            series_id=series_id,
             subject_ref=subject_ref,
             include_activities=include_activities,
             activity_limit=activity_limit,

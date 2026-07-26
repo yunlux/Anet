@@ -325,6 +325,10 @@ circle view instead of raw disclosure envelopes. The result is explicitly
 `sender-reported` and `partial-unknown`; provenance and missing-coverage
 warnings must remain visible. Use `--subject` to select one remote hypothesis
 and `--include-activities` only when source-event inspection is needed.
+When scheduled v2 disclosures expose more than one `rdsr_` series, use
+`--series <RDSR_ID>` before treating a segment as ordered. Only
+`proven-continuous-segment` establishes cursor continuity; `gap-detected`
+requires waiting for/recovering the missing disclosure.
 
 For continuous future disclosure, create an observer-local schedule. It starts
 at the current cursor unless historical replay is explicitly requested:

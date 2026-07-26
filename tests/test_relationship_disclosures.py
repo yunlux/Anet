@@ -119,6 +119,43 @@ def test_disclosure_rejects_raw_or_unknown_activity_details(tmp_path) -> None:
         RelationshipDisclosure.from_dict(disclosure)
 
 
+def test_v2_disclosure_series_metadata_is_digest_bound(tmp_path) -> None:
+    observer = Identity.generate("observer")
+    audience = Identity.generate("audience")
+    observed = Identity.generate("observed")
+    _book, page = _source_page(
+        tmp_path / "relationships.json",
+        observer,
+        observed,
+    )
+    series = RelationshipDisclosure.create_series(
+        page,
+        audience_actor_id=audience.node_id,
+        series_id="rdsr_" + ("a" * 32),
+        sequence=0,
+        starts_after="",
+        scope_subject_ref=page.activities[0].subject_ref,
+        baseline="history-start",
+        now=1_800_000_000_300,
+    )
+    value = series.to_dict()
+    assert value["version"] == 2
+    assert value["type"] == "anet.relationship.disclosure.v2"
+    assert value["sequence"] == 0
+    assert value["scope"] == "subject"
+    assert RelationshipDisclosure.from_dict(value) == series
+
+    tampered = dict(value)
+    tampered["baseline"] = "current-cursor"
+    with pytest.raises(ValueError, match="digest"):
+        RelationshipDisclosure.from_dict(tampered)
+
+    invalid_sequence = dict(value)
+    invalid_sequence["sequence"] = True
+    with pytest.raises(ValueError, match="series boundary"):
+        RelationshipDisclosure.from_dict(invalid_sequence)
+
+
 def test_trusted_packet_projects_into_separate_disclosure_book(
     tmp_path,
 ) -> None:
