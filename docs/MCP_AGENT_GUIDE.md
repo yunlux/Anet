@@ -172,6 +172,9 @@ raw payloads, and always reports `authorization_effect: none`.
 | `anet_relation_disclose` | Queue one selected content-free activity page to an allowed pinned peer. |
 | `anet_relation_disclosures` | Read trusted disclosures received by this node without importing them into local relations. |
 | `anet_relation_reported_view` | Derive a compact sender-attributed partial relationship view with provenance and coverage warnings. |
+| `anet_relation_gap_notice` | Report sequence numbers visibly absent from one received series without requesting data. |
+| `anet_relation_gap_notices` | Read authenticated advisory gap notices received by the observer. |
+| `anet_relation_gap_retransmit` | Retransmit exact archived pages while their original schedule remains active. |
 
 Both tools are unavailable unless
 `ANET_MCP_ALLOW_RELATION_DISCLOSURE=1`. Sending is additionally restricted by
@@ -188,6 +191,10 @@ capabilities, or authorization.
 Pass `series_id` to inspect one scheduled v2 series. A verified chain returns
 `proven-continuous-segment`; missing sequence or cursor links return
 `gap-detected`. Both remain sender reports with `authorization_effect: none`.
+Gap notices are likewise advisory: they declare `requested_action: none` and
+cannot pull history, widen a Subject scope, or renew a schedule. Retransmission
+is the observer's independent action, is limited to the original audience and
+exact archived disclosure body, and fails closed after revocation or expiry.
 
 ### Typed task execution
 

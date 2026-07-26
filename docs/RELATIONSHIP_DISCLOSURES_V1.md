@@ -131,6 +131,36 @@ through that cursor; `declared-baseline-through-cursor` covers only a
 current-cursor baseline. Neither status proves current state after the last
 cursor or that the observer perceived all external reality.
 
+When `gap-detected` includes `missing_sequences`, the audience may report its
+observation without gaining pull authority:
+
+```text
+anet --home <B_HOME> relation-disclosure-gap-notice <A_NODE_ID> \
+  --series <RDSR_ID>
+```
+
+The encrypted `social.relationship.disclosure.gap-notice` body contains only
+the audience Actor, observer Actor, series, missing sequence numbers, detection
+horizon, and explicit `requested_action: none`, `scope_change: false`, and
+`authorization_effect: none` boundaries. It reports B's local delivery view;
+it does not prove A failed to send or that a carrier lost a Packet.
+
+After receiving a trusted notice, A may inspect it and independently choose to
+retransmit:
+
+```text
+anet --home <A_HOME> relation-disclosure-gap-notice-list \
+  --reporter <B_NODE_ID>
+anet --home <A_HOME> relation-disclosure-gap-retransmit <RGAP_ID>
+```
+
+Retransmission uses the exact digest-identical page retained in A's private
+`relationship-disclosure-archive.json`. It is permitted only when the original
+schedule is still active, goes only to its original audience, does not change
+scope, and does not advance the series. Revoked or expired schedules fail
+closed. A page outside the bounded archive is reported as unavailable rather
+than reconstructed from newer state.
+
 Overlapping disclosed pages are deduplicated by activity ID. A conflicting body
 for the same activity ID fails closed instead of choosing one. Arrival and
 issue times are useful provenance but do not prove the sender's complete
@@ -201,7 +231,11 @@ An operator may explicitly enable it for a scoped process. The tools are:
 
 - `anet_relation_disclose` — queue one disclosure to an allowed peer;
 - `anet_relation_disclosures` — read trusted received disclosures;
-- `anet_relation_reported_view` — derive one sender-attributed partial view.
+- `anet_relation_reported_view` — derive one sender-attributed partial view;
+- `anet_relation_gap_notice` — report visible missing sequences;
+- `anet_relation_gap_notices` — read trusted advisory notices;
+- `anet_relation_gap_retransmit` — resend exact archived pages under an active
+  original schedule.
 
 `ANET_MCP_ALLOWED_PEERS` still limits destinations. Enabling disclosure does
 not enable raw Inbox access or relationship activity unless those separate
@@ -209,6 +243,7 @@ capabilities are also enabled.
 
 ## v1 omissions
 
-v1 does not define audience-initiated subscriptions, remote deletion or
-redaction after receipt, multi-audience broadcast, automatic evidence import,
-or automatic renewal. These require separate consent and retention semantics.
+v1 does not define audience-initiated subscriptions, disclosure pulls, remote
+deletion or redaction after receipt, multi-audience broadcast, automatic
+evidence import, or automatic renewal. Gap notices deliberately remain
+advisory and do not add any of those powers.

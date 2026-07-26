@@ -70,6 +70,8 @@ function Get-NodeSnapshot {
         "relationships.json", "relationship-claims.json",
         "relationship-disclosures.json",
         "relationship-disclosure-schedules.json",
+        "relationship-disclosure-gap-notices.json",
+        "relationship-disclosure-archive.json",
         "tls-key.pem", "revocations.json"
     )) {
         $path = Join-Path $NodePath $name

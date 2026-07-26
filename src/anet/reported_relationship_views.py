@@ -273,10 +273,23 @@ class ReportedRelationshipViewProjector:
         )
         first = ordered[0].disclosure
         sequences = [item.disclosure.sequence for item in ordered]
+        unique_sequences = set(sequences)
+        missing_sequences = [
+            sequence
+            for sequence in range(0, max(sequences, default=-1) + 1)
+            if sequence not in unique_sequences
+        ]
+        duplicate_sequences = sorted(
+            {
+                sequence
+                for sequence in sequences
+                if sequences.count(sequence) > 1
+            }
+        )
         issues: list[str] = []
-        if len(sequences) != len(set(sequences)):
+        if duplicate_sequences:
             issues.append("duplicate-series-sequence")
-        if sequences != list(range(0, max(sequences, default=-1) + 1)):
+        if missing_sequences:
             issues.append("missing-series-sequence")
         if any(
             item.disclosure.baseline != first.baseline
@@ -323,6 +336,8 @@ class ReportedRelationshipViewProjector:
             "scope_subject_ref": first.scope_subject_ref,
             "first_sequence": min(sequences),
             "last_sequence": max(sequences),
+            "missing_sequences": missing_sequences,
+            "duplicate_sequences": duplicate_sequences,
             "through_cursor": ordered[-1].disclosure.next_cursor,
             "authenticated_disclosures": len(ordered),
             "packet_ids": [item.packet_id for item in ordered],

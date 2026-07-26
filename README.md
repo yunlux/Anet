@@ -260,6 +260,10 @@ sender's Subjects, circles, or contextual trust as local state.
 Scheduled disclosures use v2 series metadata so a selected `rdsr_` chain can
 prove cursor continuity or expose a missing page; continuity never implies
 complete reality or current state.
+An audience may send an advisory gap notice naming only the visibly missing
+sequence numbers. It is not a disclosure pull. The observer may resend the
+exact archived page only while its original schedule remains active, without
+changing scope or advancing the series.
 
 ### Typed tasks
 

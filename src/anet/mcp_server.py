@@ -26,6 +26,9 @@ from .relationship_disclosures import (
     RelationshipDisclosure,
     RelationshipDisclosureBook,
 )
+from .relationship_disclosure_recovery import (
+    RelationshipDisclosureGapNoticeBook,
+)
 from .reported_relationship_views import (
     ReportedRelationshipViewProjector,
 )
@@ -392,6 +395,82 @@ async def anet_relation_reported_view(
             activity_limit=activity_limit,
         )
     )
+
+
+@server.tool(
+    name="anet_relation_gap_notice",
+    description=(
+        "Report sequence gaps visible in one received disclosure series. "
+        "This is an advisory observation, not a pull request, scope change, "
+        "or authorization. Disabled unless "
+        "ANET_MCP_ALLOW_RELATION_DISCLOSURE=1."
+    ),
+)
+async def anet_relation_gap_notice(
+    observer_actor_id: str,
+    series_id: str,
+) -> str:
+    _require_relation_disclosure_enabled()
+    node = _require_node()
+    observer = _scoped_peer(observer_actor_id)
+    return _dump(
+        node.queue_relationship_disclosure_gap_notice(
+            observer,
+            series_id,
+        )
+    )
+
+
+@server.tool(
+    name="anet_relation_gap_notices",
+    description=(
+        "Read authenticated advisory relationship disclosure gap notices. "
+        "Disabled unless ANET_MCP_ALLOW_RELATION_DISCLOSURE=1."
+    ),
+)
+async def anet_relation_gap_notices(
+    reporter_actor_id: str = "",
+    limit: int = 100,
+) -> str:
+    _require_relation_disclosure_enabled()
+    node = _require_node()
+    reporter = (
+        _scoped_peer(reporter_actor_id)
+        if str(reporter_actor_id).strip()
+        else ""
+    )
+    book = RelationshipDisclosureGapNoticeBook(
+        node.config.relationship_disclosure_gap_notices_path,
+        own_actor_id=node.node_id,
+    )
+    return _dump(
+        {
+            "observer_actor_id": node.node_id,
+            "received": [
+                item.to_dict()
+                for item in book.all(
+                    reporter_actor_id=reporter,
+                    limit=limit,
+                )
+            ],
+            "requested_action": "none",
+            "authorization_effect": "none",
+        }
+    )
+
+
+@server.tool(
+    name="anet_relation_gap_retransmit",
+    description=(
+        "Retransmit exact archived disclosure pages named by one authenticated "
+        "gap notice, only while the original observer-owned schedule remains "
+        "active. Disabled unless ANET_MCP_ALLOW_RELATION_DISCLOSURE=1."
+    ),
+)
+async def anet_relation_gap_retransmit(notice_id: str) -> str:
+    _require_relation_disclosure_enabled()
+    node = _require_node()
+    return _dump(node.retransmit_relationship_disclosure_gap(notice_id))
 
 
 @server.tool(

@@ -95,4 +95,11 @@ def test_generic_mcp_example_is_valid_and_fail_closed() -> None:
 
 def test_release_gates_protect_received_relationship_disclosures() -> None:
     for name in ("wsl_release_gate.py", "windows_release_gate.ps1"):
-        assert "relationship-disclosures.json" in source(name), name
+        gate = source(name)
+        for protected in (
+            "relationship-disclosures.json",
+            "relationship-disclosure-schedules.json",
+            "relationship-disclosure-gap-notices.json",
+            "relationship-disclosure-archive.json",
+        ):
+            assert protected in gate, (name, protected)

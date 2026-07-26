@@ -72,6 +72,9 @@ from .relationship_disclosures import (
 from .relationship_disclosure_schedules import (
     RelationshipDisclosureScheduleBook,
 )
+from .relationship_disclosure_recovery import (
+    RelationshipDisclosureGapNoticeBook,
+)
 from .reported_relationship_views import (
     ReportedRelationshipViewProjector,
 )
@@ -819,6 +822,60 @@ def cmd_relation_disclosure_schedule_run(
             "audience_pull": False,
         }
     )
+    return 0
+
+
+def cmd_relation_disclosure_gap_notice(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    node = AnetNode(config)
+    try:
+        result = node.queue_relationship_disclosure_gap_notice(
+            args.sender,
+            args.series,
+        )
+    finally:
+        node.close()
+    _print_json(result)
+    return 0
+
+
+def cmd_relation_disclosure_gap_notice_list(
+    args: argparse.Namespace,
+) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    book = RelationshipDisclosureGapNoticeBook(
+        config.relationship_disclosure_gap_notices_path,
+        own_actor_id=identity.node_id,
+    )
+    _print_json(
+        {
+            "observer_actor_id": identity.node_id,
+            "received": [
+                item.to_dict()
+                for item in book.all(
+                    reporter_actor_id=args.reporter or "",
+                    limit=args.limit,
+                )
+            ],
+            "meaning": "delivery-gap-observed",
+            "requested_action": "none",
+            "authorization_effect": "none",
+        }
+    )
+    return 0
+
+
+def cmd_relation_disclosure_gap_retransmit(
+    args: argparse.Namespace,
+) -> int:
+    config = NodeConfig.load(args.home)
+    node = AnetNode(config)
+    try:
+        result = node.retransmit_relationship_disclosure_gap(args.notice)
+    finally:
+        node.close()
+    _print_json(result)
     return 0
 
 
@@ -3008,6 +3065,53 @@ def build_parser() -> argparse.ArgumentParser:
     )
     relation_schedule_run.set_defaults(
         func=cmd_relation_disclosure_schedule_run
+    )
+
+    relation_gap_notice = sub.add_parser(
+        "relation-disclosure-gap-notice",
+        help="report visible missing pages without requesting disclosure",
+    )
+    relation_gap_notice.add_argument(
+        "sender",
+        help="complete Actor ID of the reporting observer",
+    )
+    relation_gap_notice.add_argument(
+        "--series",
+        required=True,
+        help="gapped rdsr_ disclosure series",
+    )
+    relation_gap_notice.set_defaults(
+        func=cmd_relation_disclosure_gap_notice
+    )
+
+    relation_gap_notice_list = sub.add_parser(
+        "relation-disclosure-gap-notice-list",
+        help="list authenticated advisory gap notices received",
+    )
+    relation_gap_notice_list.add_argument(
+        "--reporter",
+        help="limit results to one complete reporter Actor ID",
+    )
+    relation_gap_notice_list.add_argument(
+        "--limit",
+        type=int,
+        default=100,
+        help="maximum notices to return (1-500; default: 100)",
+    )
+    relation_gap_notice_list.set_defaults(
+        func=cmd_relation_disclosure_gap_notice_list
+    )
+
+    relation_gap_retransmit = sub.add_parser(
+        "relation-disclosure-gap-retransmit",
+        help="retransmit archived pages under their still-active schedule",
+    )
+    relation_gap_retransmit.add_argument(
+        "notice",
+        help="complete authenticated rgap_ notice ID",
+    )
+    relation_gap_retransmit.set_defaults(
+        func=cmd_relation_disclosure_gap_retransmit
     )
 
     relation_decide = sub.add_parser(

@@ -128,6 +128,12 @@ prove one reported segment is continuous or expose a gap; it cannot prove that
 the observer reported all reality or that nothing changed after its last cursor.
 _Avoid_: Complete history, synchronized timeline, current-state proof
 
+**Relationship disclosure gap notice**:
+An audience-authored, authenticated advisory that identifies sequence numbers
+visibly absent from one Relationship disclosure series. It is not a pull
+request, disclosure instruction, scope change, or authorization.
+_Avoid_: Retransmission request, subscription pull, missing-data demand
+
 **Mutual relationship claim**:
 A portable statement signed by two verified Actors that they both accepted the
 same circle and public relationship labels. Each observer attributes the claim

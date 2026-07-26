@@ -328,7 +328,25 @@ and `--include-activities` only when source-event inspection is needed.
 When scheduled v2 disclosures expose more than one `rdsr_` series, use
 `--series <RDSR_ID>` before treating a segment as ordered. Only
 `proven-continuous-segment` establishes cursor continuity; `gap-detected`
-requires waiting for/recovering the missing disclosure.
+requires waiting for or reporting the missing disclosure. To report a visible
+gap without requesting or widening disclosure:
+
+```text
+anet --home <B_HOME> relation-disclosure-gap-notice <A_NODE_ID> \
+  --series <RDSR_ID>
+```
+
+On A, inspect the authenticated advisory and retransmit only if the original
+schedule remains active:
+
+```text
+anet --home <A_HOME> relation-disclosure-gap-notice-list
+anet --home <A_HOME> relation-disclosure-gap-retransmit <RGAP_ID>
+```
+
+The retransmit command sends the exact archived page to the original audience.
+It cannot reconstruct history, expand scope, revive a revoked schedule, or
+advance the series.
 
 For continuous future disclosure, create an observer-local schedule. It starts
 at the current cursor unless historical replay is explicitly requested:

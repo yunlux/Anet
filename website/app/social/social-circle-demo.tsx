@@ -633,6 +633,9 @@ export function SocialCircleDemo() {
     "local" | "reported"
   >("reported");
   const [seriesGap, setSeriesGap] = useState(false);
+  const [gapRecovery, setGapRecovery] = useState<
+    "idle" | "noticed" | "retransmitted"
+  >("idle");
   const [demoDecisions, setDemoDecisions] = useState<
     Record<string, "accepted" | "rejected">
   >({});
@@ -1314,7 +1317,10 @@ export function SocialCircleDemo() {
                   <button
                     type="button"
                     className={seriesGap ? styles.gapButton : ""}
-                    onClick={() => setSeriesGap((current) => !current)}
+                    onClick={() => {
+                      setSeriesGap((current) => !current);
+                      setGapRecovery("idle");
+                    }}
                   >
                     {seriesGap ? "补回缺页" : "模拟缺页"}
                   </button>
@@ -1367,6 +1373,59 @@ export function SocialCircleDemo() {
                   current-state-after-last-cursor-not-proven ·
                   history-before-declared-baseline-not-covered
                 </div>
+                <div className={styles.gapRecovery}>
+                  <div>
+                    <small>01 · AUDIENCE G</small>
+                    <strong>检测缺口，不推断原因</strong>
+                    <p>missing sequence 01 · local delivery observation</p>
+                  </div>
+                  <i aria-hidden="true">→</i>
+                  <div
+                    className={
+                      gapRecovery !== "idle" ? styles.recoveryActive : ""
+                    }
+                  >
+                    <small>02 · ADVISORY NOTICE</small>
+                    <strong>咨询性缺页通知</strong>
+                    <p>requested_action: none · scope_change: false</p>
+                  </div>
+                  <i aria-hidden="true">→</i>
+                  <div
+                    className={
+                      gapRecovery === "retransmitted"
+                        ? styles.recoveryActive
+                        : ""
+                    }
+                  >
+                    <small>03 · OBSERVER A</small>
+                    <strong>自主决定是否补发</strong>
+                    <p>exact archived page · active schedule required</p>
+                  </div>
+                  <span>
+                    {seriesGap && gapRecovery === "idle" ? (
+                      <button
+                        type="button"
+                        onClick={() => setGapRecovery("noticed")}
+                      >
+                        G 发送咨询性缺页通知
+                      </button>
+                    ) : seriesGap && gapRecovery === "noticed" ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setGapRecovery("retransmitted");
+                          setSeriesGap(false);
+                        }}
+                      >
+                        A 自主补发原始页
+                      </button>
+                    ) : gapRecovery === "retransmitted" ? (
+                      <b>RECOVERED · SERIES NOT ADVANCED</b>
+                    ) : (
+                      <b>模拟缺页后可演练恢复协议</b>
+                    )}
+                  </span>
+                </div>
               </>
             ) : (
               <div className={styles.localViewEmpty}>
@@ -1385,6 +1444,7 @@ export function SocialCircleDemo() {
             <b>SEPARATE LEDGER · NO AUDIENCE PULL</b>
             G 收到的是“A 如何看待关系”的披露，不是共同事实，也不是同步后的
             社交图。计划只由 A 创建、限定、过期和撤销；G 不能拉取、扩权或续期。
+            缺页通知只报告 G 看见的序号缺口，A 仍独立决定是否在原计划内补发。
             人类与 Agent 都可以处于 A 或 G 的位置，角色对调不改变协议。
           </p>
         </section>

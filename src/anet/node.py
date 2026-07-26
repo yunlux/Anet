@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 from cryptography.exceptions import InvalidSignature, InvalidTag
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
+from .actors import validate_actor_id
 from .config import (
     AhubCarrierConfig,
     DirectDialerConfig,
@@ -55,6 +56,14 @@ from .relationship_disclosures import (
 from .relationship_disclosure_schedules import (
     RelationshipDisclosureScheduleBook,
 )
+from .relationship_disclosure_recovery import (
+    RELATIONSHIP_DISCLOSURE_GAP_NOTICE_KIND,
+    RelationshipDisclosureArchiveBook,
+    RelationshipDisclosureGapNotice,
+    RelationshipDisclosureGapNoticeBook,
+    validate_relationship_disclosure_gap_notice,
+)
+from .reported_relationship_views import ReportedRelationshipViewProjector
 from .relations import RelationshipBook
 from .routing import AdaptiveRouter
 from .scheduling import AdaptiveSchedule
@@ -126,6 +135,9 @@ class AnetNode:
         self._relationship_projector: RelationshipProjector | None = None
         self._relationship_disclosure_book: (
             RelationshipDisclosureBook | None
+        ) = None
+        self._relationship_gap_notice_book: (
+            RelationshipDisclosureGapNoticeBook | None
         ) = None
         self._discord_relationship_projector: (
             DiscordRelationshipProjector | None
@@ -302,6 +314,12 @@ class AnetNode:
             body = validate_discord_signal(body)
         elif normalized_kind == RELATIONSHIP_DISCLOSURE_KIND:
             body = validate_relationship_disclosure(
+                body,
+                sender_node_id=self.node_id,
+                destination_node_id=destination_id,
+            )
+        elif normalized_kind == RELATIONSHIP_DISCLOSURE_GAP_NOTICE_KIND:
+            body = validate_relationship_disclosure_gap_notice(
                 body,
                 sender_node_id=self.node_id,
                 destination_node_id=destination_id,
@@ -1460,6 +1478,15 @@ class AnetNode:
                     ttl_seconds=item.packet_ttl_seconds,
                     qos="normal",
                 )
+                RelationshipDisclosureArchiveBook(
+                    self.config.relationship_disclosure_archive_path,
+                    own_actor_id=self.node_id,
+                ).add(
+                    item.schedule_id,
+                    packet_id,
+                    pending.disclosure,
+                    archived_ms=current,
+                )
                 completed = schedules.record_success(
                     item.schedule_id,
                     packet_id,
@@ -1492,6 +1519,137 @@ class AnetNode:
                     }
                 )
         return results
+
+    def queue_relationship_disclosure_gap_notice(
+        self,
+        observer_actor_id: str,
+        series_id: str,
+        *,
+        now: int | None = None,
+    ) -> dict[str, Any]:
+        """Report visible missing pages without requesting data or authority."""
+
+        observer = validate_actor_id(observer_actor_id)
+        book = RelationshipDisclosureBook(
+            self.config.relationship_disclosures_path,
+            own_actor_id=self.node_id,
+        )
+        view = ReportedRelationshipViewProjector.project(
+            book,
+            sender_actor_id=observer,
+            series_id=series_id,
+            now=now,
+        )
+        analysis = next(
+            item
+            for item in view["provenance"]["series"]
+            if item["series_id"] == view["selected_series_id"]
+        )
+        missing = tuple(int(item) for item in analysis["missing_sequences"])
+        if not missing:
+            raise ValueError("relationship disclosure series has no visible gap")
+        notice = RelationshipDisclosureGapNotice.create(
+            reporter_actor_id=self.node_id,
+            observer_actor_id=observer,
+            series_id=view["selected_series_id"],
+            missing_sequences=missing,
+            detected_through_sequence=int(analysis["last_sequence"]),
+            now=now,
+        )
+        packet_id = self.queue(
+            observer,
+            kind=RELATIONSHIP_DISCLOSURE_GAP_NOTICE_KIND,
+            body=notice.to_dict(),
+            ttl_seconds=7 * 86400,
+            qos="control",
+        )
+        return {
+            "queued": True,
+            "packet_id": packet_id,
+            "notice_id": notice.notice_id,
+            "observer_actor_id": observer,
+            "series_id": notice.series_id,
+            "missing_sequences": list(notice.missing_sequences),
+            "meaning": "delivery-gap-observed",
+            "requested_action": "none",
+            "authorization_effect": "none",
+        }
+
+    def retransmit_relationship_disclosure_gap(
+        self,
+        notice_id: str,
+        *,
+        now: int | None = None,
+    ) -> dict[str, Any]:
+        """Retransmit exact archived pages only under their still-active schedule."""
+
+        current = now_ms() if now is None else int(now)
+        received = RelationshipDisclosureGapNoticeBook(
+            self.config.relationship_disclosure_gap_notices_path,
+            own_actor_id=self.node_id,
+        ).require(notice_id)
+        notice = received.notice
+        schedules = RelationshipDisclosureScheduleBook(
+            self.config.relationship_disclosure_schedules_path,
+            own_actor_id=self.node_id,
+        )
+        candidates = [
+            item
+            for item in schedules.all()
+            if item.series_id == notice.series_id
+            and item.audience_actor_id == notice.reporter_actor_id
+        ]
+        if len(candidates) != 1:
+            raise ValueError(
+                "gap notice does not match one local disclosure schedule"
+            )
+        schedule = candidates[0]
+        if schedule.state(now=current) != "active":
+            raise PermissionError(
+                "gap retransmission requires the original active schedule"
+            )
+        archive = RelationshipDisclosureArchiveBook(
+            self.config.relationship_disclosure_archive_path,
+            own_actor_id=self.node_id,
+        )
+        retransmitted: list[dict[str, Any]] = []
+        unavailable: list[int] = []
+        for sequence in notice.missing_sequences:
+            archived = archive.find(notice.series_id, sequence)
+            if (
+                archived is None
+                or archived.schedule_id != schedule.schedule_id
+                or archived.disclosure.audience_actor_id
+                != notice.reporter_actor_id
+            ):
+                unavailable.append(sequence)
+                continue
+            packet_id = self.queue(
+                notice.reporter_actor_id,
+                kind=RELATIONSHIP_DISCLOSURE_KIND,
+                body=archived.disclosure.to_dict(),
+                ttl_seconds=schedule.packet_ttl_seconds,
+                qos="normal",
+            )
+            retransmitted.append(
+                {
+                    "sequence": sequence,
+                    "disclosure_id": archived.disclosure.disclosure_id,
+                    "packet_id": packet_id,
+                }
+            )
+        return {
+            "notice_id": notice.notice_id,
+            "series_id": notice.series_id,
+            "audience_actor_id": notice.reporter_actor_id,
+            "schedule_id": schedule.schedule_id,
+            "schedule_state": "active",
+            "retransmitted": retransmitted,
+            "unavailable_sequences": unavailable,
+            "scope_unchanged": True,
+            "series_advanced": False,
+            "authorization_effect": "none",
+        }
 
     async def _ahub_relay_listener_loop(
         self,
@@ -2293,6 +2451,15 @@ class AnetNode:
                     destination_node_id=self.node_id,
                 ),
             )
+        elif message.kind == RELATIONSHIP_DISCLOSURE_GAP_NOTICE_KIND:
+            message = replace(
+                message,
+                body=validate_relationship_disclosure_gap_notice(
+                    message.body,
+                    sender_node_id=message.sender_id,
+                    destination_node_id=self.node_id,
+                ),
+            )
         if (
             info.key_mode == "opk"
             and material is not None
@@ -2317,6 +2484,12 @@ class AnetNode:
             # safely; the reverse ordering could hide a delivered disclosure
             # from its dedicated observer view forever.
             self._store_relationship_disclosure(message)
+        if (
+            trusted
+            and message.kind
+            == RELATIONSHIP_DISCLOSURE_GAP_NOTICE_KIND
+        ):
+            self._store_relationship_disclosure_gap_notice(message)
         created = self.store.commit_local_message(
             message,
             trusted=trusted,
@@ -2374,6 +2547,23 @@ class AnetNode:
             )
         self._relationship_disclosure_book.add(
             RelationshipDisclosure.from_dict(message.body),
+            packet_id=message.packet_id,
+            sender_actor_id=message.sender_id,
+            received_ms=now_ms(),
+        )
+
+    def _store_relationship_disclosure_gap_notice(self, message: Any) -> None:
+        """Persist a trusted advisory notice outside local authorization."""
+
+        if self._relationship_gap_notice_book is None:
+            self._relationship_gap_notice_book = (
+                RelationshipDisclosureGapNoticeBook(
+                    self.config.relationship_disclosure_gap_notices_path,
+                    own_actor_id=self.node_id,
+                )
+            )
+        self._relationship_gap_notice_book.add(
+            RelationshipDisclosureGapNotice.from_dict(message.body),
             packet_id=message.packet_id,
             sender_actor_id=message.sender_id,
             received_ms=now_ms(),
