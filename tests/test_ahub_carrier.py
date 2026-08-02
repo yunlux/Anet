@@ -21,6 +21,7 @@ from anet.carriers.ahub import (
     current_node_reachability,
     sync_ahub_once,
 )
+from anet.control_plane import issue_reachability_record
 from anet.node import AnetNode
 from anet.peers import PeerBook
 
@@ -283,3 +284,121 @@ def test_reachability_checkpoint_retries_without_skipping_on_publish_failure(
             restarted.close()
     finally:
         node.close()
+
+
+def test_peer_reachability_overlay_precedes_card_fallback(
+    tmp_path: Path,
+) -> None:
+    local_config = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_port=0,
+    )
+    peer_config = initialize_node(
+        tmp_path / "peer",
+        label="peer",
+        listen_host="192.0.2.22",
+        listen_port=43122,
+    )
+    local = AnetNode(local_config)
+    peer = AnetNode(peer_config)
+    try:
+        card = peer.local_card
+        PeerBook(
+            local.config.peers_path,
+            own_node_id=local.node_id,
+        ).add(card)
+        local.peers.reload()
+        descriptor = current_node_descriptor(peer)
+        dynamic = issue_reachability_record(
+            peer.identity,
+            descriptor,
+            protocol_versions=("anet/1",),
+            candidates=(
+                "tls://198.51.100.23:43123?scope=wan&priority=0",
+            ),
+            capability_digest=bytes(32),
+        )
+        with pytest.raises(
+            ValueError,
+            match="reachability descriptor belongs to another peer",
+        ):
+            local.set_peer_reachability(
+                card,
+                current_node_descriptor(local),
+                dynamic,
+            )
+        local.set_peer_reachability(card, descriptor, dynamic)
+        called: list[str] = []
+
+        async def fake_sync_address(expected, address, dialer) -> None:
+            del expected, dialer
+            called.append(address)
+
+        local._sync_address = fake_sync_address
+        assert asyncio.run(local._sync_peer(card)) is True
+        assert called[0] == dynamic.candidates[0]
+        assert card.addresses[0] in local._peer_addresses(card)
+    finally:
+        local.close()
+        peer.close()
+
+
+def test_ahub_sync_refreshes_verified_peer_reachability_overlay(
+    tmp_path: Path,
+) -> None:
+    local_config = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_port=0,
+    )
+    peer_config = initialize_node(
+        tmp_path / "peer",
+        label="peer",
+        listen_host="192.0.2.24",
+        listen_port=43124,
+    )
+    local = AnetNode(local_config)
+    peer = AnetNode(peer_config)
+    try:
+        card = peer.local_card
+        PeerBook(
+            local.config.peers_path,
+            own_node_id=local.node_id,
+        ).add(card)
+        local.peers.reload()
+        descriptor = current_node_descriptor(peer)
+        record = current_node_reachability(peer, descriptor)
+        carrier = AhubCarrierConfig(
+            name="test",
+            base_url="https://example.invalid",
+        )
+        with (
+            patch.object(AhubHTTPClient, "publish_descriptor", return_value=True),
+            patch.object(
+                AhubHTTPClient,
+                "publish_reachability",
+                return_value=True,
+            ),
+            patch.object(
+                AhubHTTPClient,
+                "lookup",
+                return_value=(descriptor, record),
+            ),
+            patch.object(AhubHTTPClient, "settlements", return_value=[]),
+            patch.object(AhubHTTPClient, "claim", return_value=[]),
+        ):
+            stats = sync_ahub_once(local, carrier)
+        assert stats["peer_reachability"] == [
+            {
+                "peer_id": peer.node_id,
+                "available": True,
+                "sequence": 1,
+                "candidates": list(record.candidates),
+            }
+        ]
+        assert not stats["peer_reachability_errors"]
+        assert local._peer_addresses(card) == card.addresses
+    finally:
+        local.close()
+        peer.close()

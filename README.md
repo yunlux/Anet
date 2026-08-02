@@ -112,13 +112,21 @@ from another device:
 
 ~~~text
 Install and deploy Anet from https://github.com/yunlux/Anet. Use this control
-page URL: <CONTROL_URL> (replace the placeholder before running). Detect the
-platform and use its one-click deployment entry point; on Windows use the
-PowerShell one-command entry, adding -Admin only for a machine-wide startup.
-Report the installed runtime, independent node, auto-start service, node ID,
-node home, and control-page URL. Stop on an existing deployment, identity,
-hash, permission, or control-page conflict. Do not copy identity, TLS private
-keys, SQLite state, or an entire node home from another device.
+page URL: <CONTROL_URL> (replace the placeholder before running). This request
+authorizes one independent persistent node, its service/autostart integration,
+and the supervisor's remote control-page polling. Detect the platform and use
+its one-click deployment entry point; on native Windows use the PowerShell
+one-command entry, adding -Admin only for machine-wide startup. On WSL, Linux,
+macOS, or Termux run the matching one-click script from the checkout. If WSL
+must restart after a Windows reboot, also register the host keepalive task when
+that host-side action is authorized. Treat Windows and WSL as separate nodes:
+use separate homes, identities, Node IDs, and listener ports, and never publish
+127.0.0.1 as a host-scoped peer address. Report the installed runtime,
+independent node, auto-start service/task, node ID, node home, and control-page
+URL. Stop on an existing deployment, identity, hash, permission, or
+control-page conflict; use -AllowExisting/--allow-existing only when a second
+deployment is explicitly requested. Do not copy identity, TLS private keys,
+SQLite state, or an entire node home from another device.
 ~~~
 
 This prompt only delegates the commands above to an agent; it does not change

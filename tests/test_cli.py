@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import time
 
+from anet.ahub_http import AhubHTTPClient
+from anet.carriers.ahub import current_node_descriptor, current_node_reachability
 from anet.cli import main
 from anet.config import NodeConfig
 from anet.control_plane import (
@@ -12,6 +14,7 @@ from anet.control_plane import (
     issue_node_descriptor,
 )
 from anet.identity import Identity
+from anet.node import AnetNode
 
 
 def last_json(capsys):
@@ -760,3 +763,101 @@ def test_cli_persists_identity_authenticated_ahub_carrier(
     ) == 0
     last_json(capsys)
     assert NodeConfig.load(a_home).ahub_carriers == ()
+
+
+def test_cli_queries_pinned_peer_reachability_without_editing_peerbook(
+    tmp_path,
+    capsys,
+    monkeypatch,
+) -> None:
+    local_home = tmp_path / "local"
+    peer_home = tmp_path / "peer"
+    assert main(
+        [
+            "--home",
+            str(local_home),
+            "init",
+            "--label",
+            "local",
+            "--port",
+            "44111",
+        ]
+    ) == 0
+    local_init = last_json(capsys)
+    assert main(
+        [
+            "--home",
+            str(peer_home),
+            "init",
+            "--label",
+            "peer",
+            "--port",
+            "44112",
+        ]
+    ) == 0
+    peer_init = last_json(capsys)
+    peer_card = tmp_path / "peer.card.json"
+    assert main(
+        [
+            "--home",
+            str(peer_home),
+            "card",
+            "--out",
+            str(peer_card),
+        ]
+    ) == 0
+    last_json(capsys)
+    assert main(
+        [
+            "--home",
+            str(local_home),
+            "peer-add",
+            str(peer_card),
+        ]
+    ) == 0
+    last_json(capsys)
+    peers_path = NodeConfig.load(local_home).peers_path
+    peers_before = peers_path.read_text(encoding="utf-8")
+    assert main(
+        [
+            "--home",
+            str(local_home),
+            "carrier-add",
+            "https://ahub.example",
+            "--type",
+            "ahub",
+            "--name",
+            "control",
+            "--peer",
+            peer_init["node_id"],
+        ]
+    ) == 0
+    last_json(capsys)
+
+    peer_node = AnetNode(NodeConfig.load(peer_home))
+    try:
+        descriptor = current_node_descriptor(peer_node)
+        record = current_node_reachability(peer_node, descriptor)
+    finally:
+        peer_node.close()
+
+    monkeypatch.setattr(
+        AhubHTTPClient,
+        "lookup",
+        lambda self, node_id: (descriptor, record),
+    )
+    assert main(
+        [
+            "--home",
+            str(local_home),
+            "peer-reachability",
+            peer_init["node_id"],
+        ]
+    ) == 0
+    result = last_json(capsys)
+    assert result["ok"] is True
+    assert result["peer_id"] == peer_init["node_id"]
+    assert result["sources"][0]["candidates"] == list(record.candidates)
+    assert result["effective_candidates"] == list(record.candidates)
+    assert peers_path.read_text(encoding="utf-8") == peers_before
+    assert local_init["node_id"] != peer_init["node_id"]

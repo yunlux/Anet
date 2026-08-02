@@ -87,11 +87,16 @@ Linux    skills/install-anet/scripts/install.py
 
 ~~~text
 从 https://github.com/yunlux/Anet 安装并部署 Anet。使用这个控制页 URL：
-<CONTROL_URL>（执行前替换占位符）。自动检测平台并调用对应的 one-click 入口；
-Windows 使用 PowerShell 一条命令，只有需要整机启动时才加入 -Admin。最后报告
-runtime、独立节点、节点 ID、node home、服务/任务状态和控制页地址。遇到已有部署、
-身份、哈希、权限或控制页格式冲突时停止并报告。禁止从其他设备复制 identity、
-TLS 私钥、SQLite 状态或整个 node home。
+<CONTROL_URL>（执行前替换占位符）。本请求已授权创建一个独立持久节点、服务/自启动
+以及 supervisor 对远程控制页的轮询。自动检测平台并调用对应的 one-click 入口；
+原生 Windows 使用 PowerShell 一条命令，只有需要整机启动时才加入 -Admin；WSL、Linux、
+macOS、Termux 使用 checkout 中对应的一键脚本。如果 WSL 还必须在 Windows 重启后恢复，
+且主机侧操作已获授权，再注册 WSL keepalive 任务。Windows 与 WSL 必须视为两个节点：
+使用不同 node home、identity、Node ID 和监听端口，不能把 127.0.0.1 作为 host-scoped
+peer 地址发布。最后报告 runtime、独立节点、服务/任务状态、节点 ID、node home 和控制页地址。
+遇到已有部署、身份、哈希、权限或控制页格式冲突时停止；只有明确要求第二套部署时才使用
+-AllowExisting/--allow-existing。禁止从其他设备复制 identity、TLS 私钥、SQLite 状态或整个
+node home。
 ~~~
 
 这段提示词只是把上面的命令交给 Agent 执行，不改变各平台的 node home、身份隔离和重复检测规则。
@@ -167,7 +172,9 @@ anet --home "$ANET_HOME" discord-social-status
 分叉和终局撤销跨重启成立；Ahub StoreCarrier 会在所属节点 home 保存签名公开
 descriptor 的 `control-state.json` 和短期可达性记录的
 `reachability-state.json`，并在同步时持续发布当前候选地址。动态记录不改变
-PeerBook trust，也不会把地址自动提升为授权；规范与尚未接入 PeerBook/locator CLI 的边界见
+PeerBook trust，也不会把地址自动提升为授权；运行中的节点会把经过 PeerCard 公钥校验的
+动态记录作为临时候选，供 direct/health/dialer probe 和 `peer-reachability` CLI 使用，
+但不会写入长期 PeerBook；规范与后续边界见
 [docs/CONTROL_PLANE_V1.md](docs/CONTROL_PLANE_V1.md)。
 
 P0.2 Ahub 切片把这些公开对象接入私有 allowlist Rendezvous，并以签名请求、

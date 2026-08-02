@@ -171,7 +171,10 @@ continues. A failed publish does not advance the checkpoint, so the same
 revision can be retried. This publication does not change PeerBook trust or
 turn a reachability candidate into an authorization.
 
-Dynamic Reachability is still not wired into PeerBook/locator CLI, transparency
-gossip, Android secure-key storage, approval request/decision schemas, QUIC,
-live relay discovery, LAN discovery, or network migration. Those remain
-subsequent roadmap gates.
+Dynamic Reachability is still not wired into PeerBook as a persistent field,
+transparency gossip, Android secure-key storage, approval request/decision
+schemas, QUIC, live relay discovery, LAN discovery, or network migration. The
+running node now keeps the record as an ephemeral overlay over the pinned
+PeerCard; direct sync, health/dialer probes, and the
+`peer-reachability` CLI use it without mutating long-term trust. The remaining
+items are subsequent roadmap gates.

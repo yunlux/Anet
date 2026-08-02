@@ -194,10 +194,18 @@ Prefer an explicit home on every command:
 anet --home <ABSOLUTE_PRIVATE_NODE_HOME> doctor
 anet --home <ABSOLUTE_PRIVATE_NODE_HOME> status
 anet --home <ABSOLUTE_PRIVATE_NODE_HOME> peer-list
+anet --home <ABSOLUTE_PRIVATE_NODE_HOME> peer-reachability <PEER_NODE_ID>
 ```
 
 `doctor` must succeed before network or MCP use. A label, directory name, IP
 address, or service name is not identity; compare complete Node IDs.
+
+`peer-reachability` queries the configured Ahub carriers for the signed,
+short-lived reachability overlay of an already pinned peer. It verifies the
+descriptor keys against the PeerBook entry, returns dynamic candidates before
+the static Card fallback, and never edits `peers.json`. A running node performs
+the same validation during Ahub synchronization; its direct sync, health probe,
+and dialer probe can then use the dynamic candidates until they expire.
 
 ## 3. Create a node only when authorized
 

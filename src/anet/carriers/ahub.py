@@ -15,6 +15,7 @@ from ..control_plane import (
     issue_reachability_record,
 )
 from ..encoding import atomic_json, b64d, b64e, canonical_pack
+from ..identity import PeerCard
 from ..packet import now_ms
 
 if TYPE_CHECKING:
@@ -87,6 +88,29 @@ def current_node_descriptor(node: AnetNode, *, current_ms: int | None = None) ->
         private=True,
     )
     return descriptor
+
+
+def validate_peer_reachability(
+    peer: PeerCard,
+    descriptor: NodeDescriptor,
+    record: ReachabilityRecord | None,
+    *,
+    current_ms: int | None = None,
+) -> ReachabilityRecord | None:
+    """Validate an Ahub reachability response against a pinned PeerCard."""
+
+    current = now_ms() if current_ms is None else current_ms
+    descriptor.verify(now=current)
+    if descriptor.node_id != peer.node_id:
+        raise ValueError("reachability descriptor belongs to another peer")
+    if (
+        descriptor.sign_public != peer.sign_public
+        or descriptor.box_public != peer.box_public
+    ):
+        raise ValueError("reachability descriptor keys do not match pinned peer")
+    if record is not None:
+        record.verify(descriptor, now=current)
+    return record
 
 
 def _load_reachability_checkpoint(
@@ -284,6 +308,30 @@ def sync_ahub_once(
     reachability = current_node_reachability(node, descriptor)
     reachability_changed = client.publish_reachability(reachability)
     commit_node_reachability(node, reachability)
+    peer_reachability: list[dict[str, Any]] = []
+    peer_reachability_errors: dict[str, str] = {}
+    for card in cards:
+        try:
+            peer_descriptor, peer_record = client.lookup(card.node_id)
+            validated = node.set_peer_reachability(
+                card,
+                peer_descriptor,
+                peer_record,
+            )
+            peer_reachability.append(
+                {
+                    "peer_id": card.node_id,
+                    "available": validated is not None,
+                    "sequence": (
+                        None if validated is None else validated.sequence
+                    ),
+                    "candidates": (
+                        [] if validated is None else list(validated.candidates)
+                    ),
+                }
+            )
+        except Exception as exc:
+            peer_reachability_errors[card.node_id] = str(exc)[:1000]
     stats: dict[str, Any] = {
         "carrier": "ahub-v1",
         "base_origin": config.base_url,
@@ -291,6 +339,8 @@ def sync_ahub_once(
         "descriptor_published": descriptor_changed,
         "reachability_published": reachability_changed,
         "reachability_sequence": reachability.sequence,
+        "peer_reachability": peer_reachability,
+        "peer_reachability_errors": peer_reachability_errors,
         "pulled_acks": 0,
         "acknowledged_settlements": 0,
         "pulled_packets": 0,

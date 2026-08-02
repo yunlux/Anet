@@ -14,9 +14,31 @@ The Skill has two deliberately separate modes:
    bootstrap-managed local Agents, writes a restrictive MCP config, and starts
    systemd user services.
 
-## One-sentence cross-platform prompt
+## Full persistent one-click deployment prompt
 
-Send this sentence to a new Agent on Windows, WSL, macOS, or Linux:
+Use this prompt only when the user has explicitly authorized creating a
+persistent node, remote-control configuration, and service/autostart state on
+the target device. It is the prompt for the new-device deployment path; the
+Skill-only prompt below remains runtime-only unless WSL bootstrap is separately
+authorized.
+
+Chinese:
+
+```text
+从 https://github.com/yunlux/Anet 在本机完成 Anet 一键部署。用户已明确授权创建一个独立持久节点、服务/自启动，以及 supervisor 对这个控制页 URL 的轮询：<CONTROL_URL>（执行前替换占位符）。自动检测平台并使用对应的一键入口：原生 Windows 使用从 GitHub Raw 获取的 PowerShell 入口，只有需要整机开机启动且当前 PowerShell 已提升权限时才加入 -Admin；WSL、Linux、macOS、Termux 从 checkout 中运行对应的 install_*_oneclick.py。让控制页提供软件版本、首次安装 wheel 和校验哈希，并让 supervisor 继续处理远程软件、默认配置、Peer Card、pages/kv 更新。安装前执行有界重复检测；发现已有 Anet/Ahub 部署、服务、任务或进程时停止，只有用户明确要求第二套部署时才使用 -AllowExisting/--allow-existing。Windows 与 WSL 即使使用镜像网络也必须是不同 node home、identity、Node ID 和监听端口；host-scoped 地址不能发布 127.0.0.1。若要求 WSL 在 Windows 重启后恢复，且主机侧注册已获授权，再注册 WSL keepalive 任务。最后验证并报告 runtime、node home、完整 Node ID、服务/任务状态、控制页 URL 和复用/创建结果。禁止复制其他设备的 identity、TLS 私钥、SQLite 状态或整个 node home；遇到身份、哈希、权限、控制页或授权冲突时停止并报告。
+```
+
+English:
+
+```text
+Deploy Anet on this device from https://github.com/yunlux/Anet. The user explicitly authorizes one independent persistent node, its service/autostart state, and supervisor polling of this control-page URL: <CONTROL_URL> (replace the placeholder before running). Detect the platform and use its one-click entry point: on native Windows fetch and run the PowerShell entry point, adding -Admin only from an elevated PowerShell when machine-wide boot startup is requested; on WSL, Linux, macOS, or Termux run the matching install_*_oneclick.py from the checkout. Require the control page to provide the release version, an initial wheel, and a verification hash, then let the supervisor apply later software, default-config, Peer Card, and pages/kv updates. Run the bounded duplicate preflight first; stop on an existing Anet/Ahub deployment, service, task, or process, and use -AllowExisting/--allow-existing only when a second deployment is explicitly requested. Windows and WSL remain different nodes even with mirrored networking: use separate node homes, identities, Node IDs, and listener ports, and never publish 127.0.0.1 as a host-scoped address. If WSL must return after a Windows reboot, register the host keepalive task only when that host-side action is authorized. Verify and report the runtime, node home, complete Node ID, service/task state, control-page URL, and reused/created resources. Never copy another device's identity, TLS private key, SQLite state, or entire node home; stop and report identity, hash, permission, control-page, or authorization conflicts.
+```
+
+## Skill-only prompt
+
+Use this narrower prompt when the user wants the bundled runtime, or the
+explicitly authorized WSL bootstrap, rather than the full cross-platform
+one-click deployment:
 
 ```text
 从 https://github.com/yunlux/Anet 安装 Anet 并自动检测平台：原生 Windows 使用 scripts/install_windows.ps1，macOS 使用 scripts/install_macos.py，Linux 使用 $install-anet Skill（skills/install-anet/scripts/install.py）。常规安全决策由你自主完成，不要让我选择路径、标签、端口、服务名或 Ahub 设置。在 WSL 上使用 $install-anet 的 bootstrap_wsl.py 完成已授权的持久引导（scripts/install_wsl.py 是只安装 runtime 的替代入口）；优先推导当前 profile 的稳定本地 ID，若没有则自行生成并持久保存一个 Agent 中立的 profile 本地 ID；复用本机已登记且健康的第一个 Ahub，只有确认不存在 Ahub 时才创建一个；为当前 Agent 创建或复用独立节点，将它与该 Ahub 下其他本机 Agent 显式配对，生成最小权限 MCP 配置并接入当前 profile，最后报告所有复用/创建结果、服务状态和路径。非 WSL 平台若未另行授权持久配置，则在验证 runtime 后停止。遇到身份、Ahub 状态、哈希、权限或授权冲突时停止并直接报告；禁止复制身份、启动第二个 Ahub、使用 sudo 或绕过校验。

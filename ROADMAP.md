@@ -70,8 +70,8 @@ v0.1–v0.11 已完成以下可复用能力：
   AdaptiveRouter 自动接入也已完成，但尚未抽象为独立 `SessionCarrier`，也没有
   生产 TLS/rate-limit 配置和真实公网运行证据；
 - Peer Card 仍混合长期身份描述和较动态的地址信息；NodeDescriptor 与短期
-  ReachabilityRecord 已由 Ahub Carrier 发布，但动态 Reachability 尚未接入
-  PeerBook/locator CLI；
+  ReachabilityRecord 已由 Ahub Carrier 发布，动态记录作为临时 overlay 接入
+  direct/health/dialer probe 与 locator CLI，但不写入长期 PeerBook；
 - 已有短期、可过期、防回放的 `ReachabilityRecord`，真实节点会在 Ahub
   StoreCarrier 同步时持续刷新；
 - 没有 QUIC 会话、LAN 签名发现、NAT 穿透或移动网络迁移；
@@ -99,7 +99,9 @@ checkpoint 已完成；`NodeDescriptor/ReachabilityRecord` 已接入 P0.2 Ahub
 Rendezvous，Ahub Carrier 已在所属节点 home 保持公开 descriptor revision
 checkpoint，并在真实 Anet 节点的 Ahub StoreCarrier 同步中发布短期
 ReachabilityRecord，使用独立 `reachability-state.json` 跨重启延续序列；
-动态 Reachability 尚未接入 PeerBook/locator CLI。
+运行中的节点会把经过 PeerCard 公钥钉扎校验的记录作为临时 locator overlay，
+direct/health/dialer probe 会优先使用动态候选；`peer-reachability` CLI 已可查询
+Ahub 当前记录，且不改写长期 PeerBook。
 
 - 定义长期 `NodeDescriptor/PeerCard v2`：Node ID、身份键、静态协议能力、
   card sequence、前序摘要、有效期和轮换/撤销证据；
