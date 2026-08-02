@@ -179,6 +179,17 @@ def test_relation_dashboard_exports_local_model_with_optional_report_slot(
     assert dashboard["projection_into_local_relations"] is False
     assert dashboard["authorization_effect"] == "none"
 
+    assert main(
+        [
+            "--home",
+            str(home),
+            "relation-dashboard",
+            "--series",
+            "rdsr_" + "a" * 32,
+        ]
+    ) == 1
+    assert "--series requires --reported" in capsys.readouterr().err
+
 
 def test_relationship_book_keeps_actor_facts_and_subject_hypotheses_separate(
     tmp_path,

@@ -848,6 +848,8 @@ def cmd_relation_reported_view(args: argparse.Namespace) -> int:
 def cmd_relation_dashboard(args: argparse.Namespace) -> int:
     """Export one local model and optionally one separately attributed report."""
 
+    if args.series and not args.reported:
+        raise ValueError("--series requires --reported")
     config = NodeConfig.load(args.home)
     identity = Identity.load(config.identity_path)
     reported_view = None

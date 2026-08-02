@@ -870,9 +870,15 @@ export function SocialCircleDemo() {
       setSelectedId(projected.subjects[0].id);
       setStep(Math.max(0, projected.activities.length - 1));
       setFriendAdded(false);
-      if (dashboard?.reported_view) {
-        setImportedReportedView(projectReportedView(dashboard.reported_view));
-        setReportedViewpoint("reported");
+      if (dashboard) {
+        setImportedReportedView(
+          dashboard.reported_view
+            ? projectReportedView(dashboard.reported_view)
+            : null,
+        );
+        if (dashboard.reported_view) {
+          setReportedViewpoint("reported");
+        }
       }
       setImportError("");
     } catch (error) {
