@@ -183,6 +183,19 @@ def platform_software(page: dict[str, Any], platform_name: str) -> dict[str, Any
     return merged
 
 
+def repository_source(
+    page: dict[str, Any], software: dict[str, Any], control_url: str
+) -> str:
+    """Return the effective repository source for an initial install."""
+
+    source = str(
+        software.get("repo_url", "")
+        or page.get("repo_url", "")
+        or page.get("anet_repo", "")
+    ).strip()
+    return resolve_reference(control_url, source) if source else ""
+
+
 def string_list(value: Any, label: str) -> list[str]:
     if not isinstance(value, list):
         raise DeploymentError(f"{label} must be a list")
@@ -666,22 +679,29 @@ def main(platform_name: str, default_root: Path) -> int:
         raise DeploymentError("control page software.version is required")
 
     wheel_path = args.wheel.expanduser().resolve() if args.wheel else None
+    source_url = ""
     with tempfile.TemporaryDirectory(prefix="anet-oneclick-") as temporary:
         if wheel_path is None:
             wheel_url = str(software.get("wheel_url", "")).strip()
-            if not wheel_url:
-                raise DeploymentError(
-                    "control page software.wheel_url is required for initial install"
-                )
-            wheel_path = Path(temporary) / f"anet-fabric-{version}.whl"
-            download(resolve_reference(args.control_url, wheel_url), wheel_path)
-        if not wheel_path.is_file():
-            raise DeploymentError(f"wheel does not exist: {wheel_path}")
-        wheel_hash = str(
-            args.wheel_sha256 or software.get("sha256", "")
-        ).strip()
-        if not wheel_hash:
-            wheel_hash = sha256(wheel_path)
+            if wheel_url:
+                wheel_path = Path(temporary) / f"anet-fabric-{version}.whl"
+                download(resolve_reference(args.control_url, wheel_url), wheel_path)
+            else:
+                source_url = repository_source(page, software, args.control_url)
+                if not source_url:
+                    raise DeploymentError(
+                        "control page software.wheel_url or software.repo_url "
+                        "is required for initial install"
+                    )
+        wheel_hash = ""
+        if wheel_path is not None:
+            if not wheel_path.is_file():
+                raise DeploymentError(f"wheel does not exist: {wheel_path}")
+            wheel_hash = str(
+                args.wheel_sha256 or software.get("sha256", "")
+            ).strip()
+            if not wheel_hash:
+                wheel_hash = sha256(wheel_path)
 
         try:
             runtime = install_runtime(
@@ -691,6 +711,7 @@ def main(platform_name: str, default_root: Path) -> int:
                 wheel_sha256=wheel_hash,
                 root=root,
                 feature=args.feature,
+                source_url=source_url,
             )
         except InstallError as exc:
             raise DeploymentError(str(exc)) from exc

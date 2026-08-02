@@ -28,6 +28,7 @@ from posix_oneclick import (
     download,
     platform_config,
     platform_software,
+    repository_source,
     read_json_url,
     resolve_reference,
     run,
@@ -276,19 +277,26 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="anet-termux-") as temporary:
         wheel = args.wheel.expanduser().resolve() if args.wheel else None
+        source_url = ""
         if wheel is None:
             wheel_url = str(software.get("wheel_url", "")).strip()
-            if not wheel_url:
-                raise DeploymentError(
-                    "control page software.wheel_url is required for initial install"
-                )
-            wheel = Path(temporary) / f"anet-fabric-{version}.whl"
-            download(resolve_reference(args.control_url, wheel_url), wheel)
-        if not wheel.is_file():
-            raise DeploymentError(f"wheel does not exist: {wheel}")
-        wheel_hash = str(args.wheel_sha256 or software.get("sha256", "")).strip()
-        if not wheel_hash:
-            wheel_hash = sha256(wheel)
+            if wheel_url:
+                wheel = Path(temporary) / f"anet-fabric-{version}.whl"
+                download(resolve_reference(args.control_url, wheel_url), wheel)
+            else:
+                source_url = repository_source(page, software, args.control_url)
+                if not source_url:
+                    raise DeploymentError(
+                        "control page software.wheel_url or software.repo_url "
+                        "is required for initial install"
+                    )
+        wheel_hash = ""
+        if wheel is not None:
+            if not wheel.is_file():
+                raise DeploymentError(f"wheel does not exist: {wheel}")
+            wheel_hash = str(args.wheel_sha256 or software.get("sha256", "")).strip()
+            if not wheel_hash:
+                wheel_hash = sha256(wheel)
         try:
             runtime = install_runtime(
                 platform_name="termux",
@@ -301,6 +309,7 @@ def main() -> int:
                 install_dependencies=False,
                 use_uv=False,
                 verify_feature="core",
+                source_url=source_url,
             )
         except InstallError as exc:
             raise DeploymentError(str(exc)) from exc

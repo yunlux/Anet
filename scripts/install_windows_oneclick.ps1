@@ -537,29 +537,34 @@ if ($LASTEXITCODE -ne 0) {
 $preflight = $preflightOutput | ConvertFrom-Json
 
 if (-not $Version) {
-    $Version = [string]$software.version
+    $Version = Get-OptionalProperty $software "version"
 }
 if (-not $Version) {
     throw "control page software.version is required"
 }
+$sourceUrl = ""
 if (-not $Wheel) {
-    $wheelUrl = [string]$software.wheel_url
-    if (-not $wheelUrl) {
-        throw "control page software.wheel_url is required for one-click installation"
-    }
-    $wheelUrl = Resolve-ControlReference $ControlUrl $wheelUrl
-    $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
-        "anet-install-" + [Guid]::NewGuid().ToString("N")
-    )
-    New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
-    $Wheel = Join-Path $tempRoot ("anet-fabric-" + $Version + ".whl")
-    Invoke-WebRequest -Uri $wheelUrl -OutFile $Wheel -UseBasicParsing
-}
-$wheelPath = (Resolve-Path -LiteralPath $Wheel).Path
-if (-not $WheelSha256) {
-    $WheelSha256 = Get-OptionalProperty $software "sha256"
-    if (-not $WheelSha256) {
-        $WheelSha256 = (Get-FileHash -LiteralPath $wheelPath -Algorithm SHA256).Hash
+    $wheelUrl = Get-OptionalProperty $software "wheel_url"
+    if ($wheelUrl) {
+        $wheelUrl = Resolve-ControlReference $ControlUrl $wheelUrl
+        $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
+            "anet-install-" + [Guid]::NewGuid().ToString("N")
+        )
+        New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
+        $Wheel = Join-Path $tempRoot ("anet-fabric-" + $Version + ".whl")
+        Invoke-WebRequest -Uri $wheelUrl -OutFile $Wheel -UseBasicParsing
+    } else {
+        $sourceUrl = Get-OptionalProperty $software "repo_url"
+        if (-not $sourceUrl) {
+            $sourceUrl = Get-OptionalProperty $page "repo_url"
+        }
+        if (-not $sourceUrl) {
+            $sourceUrl = Get-OptionalProperty $page "anet_repo"
+        }
+        if (-not $sourceUrl) {
+            throw "control page software.wheel_url or software.repo_url is required for one-click installation"
+        }
+        $sourceUrl = Resolve-ControlReference $ControlUrl $sourceUrl
     }
 }
 
@@ -597,12 +602,27 @@ if ($localInstaller -and (Test-Path -LiteralPath $localInstaller -PathType Leaf)
     $installer = Join-Path $helperRoot "install_windows.ps1"
     Invoke-WebRequest -Uri $RuntimeInstallerUrl -OutFile $installer -UseBasicParsing
 }
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer `
-    -Version $Version `
-    -Wheel $wheelPath `
-    -WheelSha256 $WheelSha256 `
-    -Feature $Feature `
-    -Root $rootPath
+$runtimeArguments = @(
+    "-Version", $Version,
+    "-Feature", $Feature,
+    "-Root", $rootPath
+)
+if ($sourceUrl) {
+    $runtimeArguments += @("-SourceUrl", $sourceUrl)
+} else {
+    $wheelPath = (Resolve-Path -LiteralPath $Wheel).Path
+    if (-not $WheelSha256) {
+        $WheelSha256 = Get-OptionalProperty $software "sha256"
+        if (-not $WheelSha256) {
+            $WheelSha256 = (Get-FileHash -LiteralPath $wheelPath -Algorithm SHA256).Hash
+        }
+    }
+    $runtimeArguments += @(
+        "-Wheel", $wheelPath,
+        "-WheelSha256", $WheelSha256
+    )
+}
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer @runtimeArguments
 if ($LASTEXITCODE -ne 0) {
     throw "runtime installation failed with exit code $LASTEXITCODE"
 }

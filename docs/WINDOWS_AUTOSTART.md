@@ -111,10 +111,14 @@ for the helper scripts):
 The downloaded command above must also run from an elevated PowerShell when
 `-Admin` is used.
 
-The control page still needs a pinned `software.wheel_url` for the initial
-runtime installation, either in the common `software` object or in the
-selected `platforms.windows.software` overlay. `repo_url` is used for
-subsequent source-based updates when a wheel is not supplied.
+The control page needs `software.version` and either a
+`software.wheel_url` or `software.repo_url` for the initial runtime
+installation, either in the common `software` object or in the selected
+`platforms.windows.software` overlay. A top-level `repo_url` is also accepted.
+When a wheel is supplied, `software.sha256` pins it. When only `repo_url` is
+provided, the runtime installer passes the repository to pip as a Git source,
+so Git must be available on the device. The same `repo_url` is used for
+matching helper scripts and subsequent source-based updates.
 
 The initial installer accepts `config` or its equivalent `default_config`
 object, including the selected platform overlay. The running remote-control

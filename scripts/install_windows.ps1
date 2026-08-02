@@ -1,10 +1,9 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Version,
-    [Parameter(Mandatory = $true)]
     [string]$Wheel,
-    [Parameter(Mandatory = $true)]
     [string]$WheelSha256,
+    [string]$SourceUrl,
     [ValidateSet("core", "mcp", "full")]
     [string]$Feature = "core",
     [string]$Root = (Join-Path $env:LOCALAPPDATA "Anet")
@@ -12,6 +11,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+
+$hasWheel = -not [string]::IsNullOrWhiteSpace($Wheel)
+$hasSource = -not [string]::IsNullOrWhiteSpace($SourceUrl)
+if ($hasWheel -eq $hasSource) {
+    throw "provide exactly one of -Wheel or -SourceUrl"
+}
 
 function Invoke-Checked {
     param([string]$FilePath, [string[]]$Arguments)
@@ -22,10 +27,14 @@ function Invoke-Checked {
     return ($output -join "`n").Trim()
 }
 
-$wheelPath = (Resolve-Path -LiteralPath $Wheel).Path
-$observedHash = (Get-FileHash -LiteralPath $wheelPath -Algorithm SHA256).Hash
-if ($observedHash -ne $WheelSha256.Trim().ToUpperInvariant()) {
-    throw "wheel SHA256 mismatch"
+$wheelPath = ""
+$observedHash = ""
+if ($hasWheel) {
+    $wheelPath = (Resolve-Path -LiteralPath $Wheel).Path
+    $observedHash = (Get-FileHash -LiteralPath $wheelPath -Algorithm SHA256).Hash
+    if ($observedHash -ne $WheelSha256.Trim().ToUpperInvariant()) {
+        throw "wheel SHA256 mismatch"
+    }
 }
 
 $rootPath = [System.IO.Path]::GetFullPath($Root)
@@ -63,8 +72,12 @@ if (Test-Path -LiteralPath $destination) {
         throw "existing version directory has no release manifest"
     }
     $release = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
-    if ($release.wheel_sha256 -ne $observedHash) {
-        throw "existing version has a different wheel hash"
+    if ($hasWheel) {
+        if ($release.wheel_sha256 -ne $observedHash) {
+            throw "existing version has a different wheel hash"
+        }
+    } elseif ($release.source_url -ne $SourceUrl) {
+        throw "existing version has a different repository source"
     }
     $installedFeature = if ($release.PSObject.Properties["feature"]) {
         [string]$release.feature
@@ -84,11 +97,24 @@ if (Test-Path -LiteralPath $destination) {
             "mcp" { "mcp" }
             "full" { "mcp,ahub,qr" }
         }
-        $wheelUri = ([System.Uri]$wheelPath).AbsoluteUri
-        $requirement = if ($extras) {
-            "anet-fabric[$extras] @ $wheelUri"
+        if ($hasSource) {
+            $gitSource = if ($SourceUrl.StartsWith("git+")) {
+                $SourceUrl
+            } else {
+                "git+$SourceUrl"
+            }
+            $requirement = if ($extras) {
+                "anet-fabric[$extras] @ $gitSource"
+            } else {
+                $gitSource
+            }
         } else {
-            $wheelPath
+            $wheelUri = ([System.Uri]$wheelPath).AbsoluteUri
+            $requirement = if ($extras) {
+                "anet-fabric[$extras] @ $wheelUri"
+            } else {
+                $wheelPath
+            }
         }
         if ($uv) {
             Invoke-Checked $uv.Source @(
@@ -110,13 +136,18 @@ if (Test-Path -LiteralPath $destination) {
         if ($observedVersion -ne $Version) {
             throw "runtime version mismatch"
         }
-        @{
+        $release = @{
             schema_version = 1
             platform = "windows"
             version = $Version
             feature = $Feature
-            wheel_sha256 = $observedHash
-        } | ConvertTo-Json | Set-Content -LiteralPath $manifest -Encoding utf8
+        }
+        if ($hasSource) {
+            $release.source_url = $SourceUrl
+        } else {
+            $release.wheel_sha256 = $observedHash
+        }
+        $release | ConvertTo-Json | Set-Content -LiteralPath $manifest -Encoding utf8
     } catch {
         if (Test-Path -LiteralPath $destination) {
             Remove-Item -LiteralPath $destination -Recurse -Force
@@ -146,9 +177,13 @@ $current = @{
     platform = "windows"
     version = $Version
     feature = $Feature
-    wheel_sha256 = $observedHash
     runtime = $venv
     cli = $cli
+}
+if ($hasSource) {
+    $current.source_url = $SourceUrl
+} else {
+    $current.wheel_sha256 = $observedHash
 }
 $currentJson = Join-Path $rootPath "current.json"
 $pendingJson = "$currentJson.new"

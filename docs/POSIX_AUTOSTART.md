@@ -19,10 +19,13 @@ python3 scripts/install_macos_oneclick.py \
   --control-url https://example.invalid/anet/control.json
 ```
 
-The control page must contain `software.version` and an initial
-`software.wheel_url`, either at the root or in the selected platform overlay.
-If `software.sha256` is absent, the prototype computes the local wheel hash
-after downloading it. The rest of the page uses the same format as the
+The control page must contain `software.version` and either an initial
+`software.wheel_url` or `software.repo_url` (a top-level `repo_url` is also
+accepted), either at the root or in the selected platform overlay. If a wheel
+is supplied, `software.sha256` pins it; when the hash is absent, the prototype
+computes the local wheel hash after downloading it. Without a wheel, the
+installer passes the repository URL to pip as a Git source, so Git must be
+available on the device. The rest of the page uses the same format as the
 Windows deployment prototype: default `config`, Peer Cards, `repo_url`,
 `pages`, and `kv` JSON sources.
 `default_config` is accepted as an alias for `config`, including inside a

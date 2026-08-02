@@ -5,9 +5,7 @@
   "repo_url": "https://github.com/yunlux/Anet",
   "poll_seconds": 300,
   "software": {
-    "version": "0.12.1",
-    "wheel_url": "https://example.invalid/releases/anet-fabric-0.12.1.whl",
-    "sha256": "REPLACE_WITH_SHA256"
+    "version": "0.12.1"
   },
   "config": {
     "sync_interval": 2.0,

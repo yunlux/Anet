@@ -58,6 +58,8 @@ def test_windows_oneclick_is_an_explicit_supervised_deployment_layer() -> None:
     assert "restartcount 99" in installer
     assert "executiontimelimit" in installer
     assert 'get-optionalproperty $software "sha256"' in installer
+    assert 'software.wheel_url or software.repo_url' in installer
+    assert '"-sourceurl", $sourceurl' in installer
     assert "stop-managedsupervisortask" in installer
     assert "did not stop within 30 seconds" in installer
     assert "wait-managedsupervisortask" in installer
@@ -90,6 +92,8 @@ def test_posix_oneclick_is_an_explicit_native_service_layer() -> None:
     assert "install_runtime" in text
     assert "validate_cross_platform_ports" in text
     assert "platform_software" in text
+    assert "repository_source" in text
+    assert "software.wheel_url or software.repo_url" in text
 
 
 def test_wsl_host_keepalive_is_an_explicit_user_scoped_bridge() -> None:
@@ -121,6 +125,17 @@ def test_termux_oneclick_uses_termux_native_service_layer() -> None:
     assert "platform_software" in text
     assert "existing node listens on port" in text
     assert '"restart", termux_service' in text
+    assert "repository_source" in text
+    assert "software.wheel_url or software.repo_url" in text
+
+
+def test_runtime_installers_record_wheel_or_repository_source() -> None:
+    windows = source("install_windows.ps1")
+    posix = source("posix_runtime_installer.py")
+    assert "provide exactly one of -wheel or -sourceurl" in windows
+    assert "source_url" in windows
+    assert "provide either a wheel or repository source url" in posix
+    assert "source_requirement" in posix
 
 
 def test_windows_preflight_is_bounded_and_distinguishes_ahub() -> None:

@@ -15,9 +15,11 @@ v0.12.1 现在以“一键部署”为新设备的默认路径：它在 Windows�
 
 ## 新设备一条命令安装
 
-控制页至少需要提供 `software.version` 和首次安装用的
-`software.wheel_url`；建议同时提供 `software.sha256`，
-并提供 `software.repo_url` 以便远程入口下载匹配的辅助脚本和后续源码更新。
+控制页至少需要提供 `software.version`，以及首次安装用的
+`software.wheel_url` 或 `software.repo_url`（顶层 `repo_url` 也可以）。
+wheel 加 `software.sha256` 是可重复的安装路径；如果只提供仓库地址，
+安装器会让 pip 通过 Git 安装，因此设备需要有 Git。相同的 `repo_url` 还用于
+远程入口下载匹配的辅助脚本，以及 supervisor 后续的源码更新。
 页面格式见 [控制页示例](docs/windows-control-page.example.json) 和
 [Windows 自动启动文档](docs/WINDOWS_AUTOSTART.md)。
 
@@ -87,7 +89,8 @@ Linux    skills/install-anet/scripts/install.py
 
 ~~~text
 从 https://github.com/yunlux/Anet 安装并部署 Anet。使用这个控制页 URL：
-<CONTROL_URL>（执行前替换占位符）。本请求已授权创建一个独立持久节点、服务/自启动
+<CONTROL_URL>（执行前替换占位符）。控制页必须提供 `software.version` 以及
+`software.wheel_url` 或 `software.repo_url`。本请求已授权创建一个独立持久节点、服务/自启动
 以及 supervisor 对远程控制页的轮询。自动检测平台并调用对应的 one-click 入口；
 原生 Windows 使用 PowerShell 一条命令，只有需要整机启动时才加入 -Admin；WSL、Linux、
 macOS、Termux 使用 checkout 中对应的一键脚本。如果 WSL 还必须在 Windows 重启后恢复，

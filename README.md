@@ -28,10 +28,13 @@ runtime, registers the auto-start task, and starts the supervisor plus its
 anet serve child. The supervisor then polls the control page and can apply
 software, default configuration, Peer Cards, and nested pages/kv sources.
 
-The control page must provide software.version and an initial software.wheel_url.
-Add software.sha256 for a pinned package hash and software.repo_url so a
-downloaded entry point can fetch matching helper scripts and later source
-updates. See docs/windows-control-page.example.json and
+The control page must provide software.version and either an initial
+software.wheel_url or a repository source in software.repo_url (the top-level
+repo_url is also accepted). A wheel plus software.sha256 is the reproducible
+package path. With only repo_url, the installer passes the repository to pip as
+a Git source, so Git must be available on the device. The same repo_url lets a
+downloaded entry point fetch matching helper scripts and lets the supervisor
+apply later source updates. See docs/windows-control-page.example.json and
 docs/WINDOWS_AUTOSTART.md.
 
 Run this in an ordinary PowerShell window for a current-user installation:
@@ -112,7 +115,8 @@ from another device:
 
 ~~~text
 Install and deploy Anet from https://github.com/yunlux/Anet. Use this control
-page URL: <CONTROL_URL> (replace the placeholder before running). This request
+page URL: <CONTROL_URL> (replace the placeholder before running). The page
+must provide software.version plus software.wheel_url or repo_url. This request
 authorizes one independent persistent node, its service/autostart integration,
 and the supervisor's remote control-page polling. Detect the platform and use
 its one-click deployment entry point; on native Windows use the PowerShell

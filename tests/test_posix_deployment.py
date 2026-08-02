@@ -15,10 +15,12 @@ from posix_oneclick import (  # noqa: E402
     launchd_plist,
     platform_config,
     platform_software,
+    repository_source,
     systemd_unit,
     validate_cross_platform_locators,
     validate_cross_platform_ports,
 )
+from posix_runtime_installer import source_requirement  # noqa: E402
 
 
 def test_systemd_unit_runs_the_remote_supervisor() -> None:
@@ -83,6 +85,32 @@ def test_platform_software_selects_the_platform_specific_artifact() -> None:
     }
     assert platform_software(page, "termux")["wheel_url"] == "termux.whl"
     assert platform_software(page, "linux")["wheel_url"] == "common.whl"
+
+
+def test_repository_source_falls_back_to_the_page_repo_url() -> None:
+    page = {"repo_url": "https://github.com/yunlux/Anet"}
+    assert repository_source(
+        page,
+        {"version": "0.12.1"},
+        "https://example.test/control.json",
+    ) == "https://github.com/yunlux/Anet"
+
+
+def test_repository_source_resolves_relative_repo_urls() -> None:
+    assert repository_source(
+        {},
+        {"repo_url": "../Anet"},
+        "https://example.test/config/control.json",
+    ) == "https://example.test/Anet"
+
+
+def test_source_requirement_preserves_feature_extras() -> None:
+    assert source_requirement("https://github.com/yunlux/Anet", "core") == (
+        "git+https://github.com/yunlux/Anet"
+    )
+    assert source_requirement("https://github.com/yunlux/Anet", "mcp") == (
+        "anet-fabric[mcp] @ git+https://github.com/yunlux/Anet"
+    )
 
 
 def test_cross_platform_host_locators_cannot_use_loopback() -> None:
