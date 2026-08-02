@@ -1106,6 +1106,38 @@ def cmd_relation_trust(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_relation_end(args: argparse.Namespace) -> int:
+    subject_ref = str(args.subject).strip()
+    if args.confirm != subject_ref:
+        raise ValueError("--confirm must exactly match the Subject reference")
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    relationships = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=identity.node_id,
+    )
+    existing = relationships.relationship(subject_ref)
+    if existing is None:
+        raise ValueError("Subject hypothesis is not present in this local relationship book")
+    relationship = relationships.end_relationship(
+        subject_ref,
+        evidence_ref=args.reason,
+    )
+    _print_json(
+        {
+            "relationship": relationship.to_dict(),
+            "already_ended": existing.state == "ended",
+            "subject_changed": False,
+            "actors_changed": False,
+            "claims_changed": False,
+            "trust_changed": False,
+            "peerbook_changed": False,
+            "authorization_effect": "none",
+        }
+    )
+    return 0
+
+
 def cmd_relation_propose(args: argparse.Namespace) -> int:
     config = NodeConfig.load(args.home)
     identity = Identity.load(config.identity_path)
@@ -3492,6 +3524,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="bounded local evidence reference; not raw private content",
     )
     relation_trust.set_defaults(func=cmd_relation_trust)
+
+    relation_end = sub.add_parser(
+        "relation-end",
+        help="end one observer-local relationship estimate without revoking Actors",
+    )
+    relation_end.add_argument("subject", help="observer-local subj_ reference")
+    relation_end.add_argument(
+        "--confirm",
+        required=True,
+        help="repeat the complete Subject reference",
+    )
+    relation_end.add_argument(
+        "--reason",
+        required=True,
+        help="bounded local reason or evidence reference; not raw private content",
+    )
+    relation_end.set_defaults(func=cmd_relation_end)
 
     relation_propose = sub.add_parser(
         "relation-propose",

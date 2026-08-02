@@ -64,6 +64,7 @@ RELATION_EVENT_DETAIL_FIELDS = {
     "relationship.context-trust-set": frozenset(
         {"context", "estimate", "confidence"}
     ),
+    "relationship.ended": frozenset({"state"}),
     "relationship.mutual-claim-withdrawn": frozenset(
         {"claim_id", "withdrawing_actor_id", "relationship_changed"}
     ),
@@ -2046,6 +2047,56 @@ class RelationshipBook:
         )
         self.save()
         return updated
+
+    def end_relationship(
+        self,
+        subject_ref: str,
+        *,
+        evidence_ref: str,
+        now: int | None = None,
+    ) -> RelationshipEstimate:
+        """End one local relationship estimate without rewriting its Subject."""
+
+        subject_key = _bounded_text(
+            subject_ref,
+            label="Subject reference",
+            maximum=128,
+        )
+        relationship = self._relationships.get(subject_key)
+        if relationship is None:
+            raise KeyError(f"unknown Subject hypothesis: {subject_key}")
+        if relationship.state == "ended":
+            return relationship
+        evidence = _bounded_text(
+            evidence_ref,
+            label="relationship end evidence reference",
+            maximum=MAX_EVIDENCE_LENGTH,
+        )
+        current = _now_ms(now)
+        ended = RelationshipEstimate(
+            subject_ref=relationship.subject_ref,
+            circle=relationship.circle,
+            state="ended",
+            relationship_labels=relationship.relationship_labels,
+            relationship_confidence=relationship.relationship_confidence,
+            context_trust=relationship.context_trust,
+            evidence_refs=_unique_text(
+                (*relationship.evidence_refs, evidence),
+                label="relationship evidence reference",
+                maximum=MAX_EVIDENCE_LENGTH,
+            ),
+            updated_ms=current,
+        )
+        self._relationships[subject_key] = ended
+        self._append_event(
+            "relationship.ended",
+            subject_ref=subject_key,
+            evidence_ref=evidence,
+            now=current,
+            details={"state": "ended"},
+        )
+        self.save()
+        return ended
 
     def suggestion_decision(
         self,

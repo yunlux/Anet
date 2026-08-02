@@ -361,6 +361,19 @@ anet --home <HOME> relation-trust <SUBJECT_REF> code.review \
   --estimate 88 --confidence 76 --evidence "task:review-42"
 ```
 
+End one observer-local relationship estimate with an exact confirmation:
+
+```text
+anet --home <HOME> relation-end <SUBJECT_REF> --confirm <SUBJECT_REF> \
+  --reason "operator:relationship-ended"
+```
+
+This records `relationship.ended` in local history. It does not revoke linked
+Actors, delete the Subject hypothesis, erase contextual trust, alter mutual
+relationship claims, modify PeerBook, or change authorization. Repeating the
+same command is idempotent. A later explicit `relation-circle` action reopens
+the local relationship as `active`; setting contextual trust alone does not.
+
 Revise one hypothesis one-to-one while inheriting its relationship:
 
 ```text

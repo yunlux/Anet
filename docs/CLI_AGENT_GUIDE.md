@@ -236,6 +236,20 @@ anet --home <HOME> relation-actor-revoke act_local_<32-hex> \
 This only changes the local Actor state to `revoked`; it does not remove a
 Subject, change a circle or trust estimate, modify PeerBook, or grant/revoke
 authorization. Do not use it for an `an1...` Node; use `peer-revoke` there.
+
+To end the observer's relationship with a local Subject while retaining the
+Subject hypothesis, linked Actors, evidence history, contextual trust, and
+claims for later review, use an exact confirmation:
+
+```text
+anet --home <HOME> relation-end <SUBJECT_REF> --confirm <SUBJECT_REF> \
+  --reason "operator:relationship-ended"
+```
+
+The command is idempotent and changes no PeerBook or authorization state. It
+sets only the local relationship state to `ended`; a later explicit
+`relation-circle` reopens it as `active`.
+
 For a stopped Discord-enabled runtime, replay any already durable source events
 after relationship-state repair with:
 

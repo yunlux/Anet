@@ -67,6 +67,31 @@ def test_cli_observes_an_opaque_operator_attested_external_actor(
     assert NodeConfig.load(home).peers_path.exists()
     assert json.loads(NodeConfig.load(home).peers_path.read_text(encoding="utf-8"))["peers"] == []
 
+    end = [
+        "--home",
+        str(home),
+        "relation-end",
+        observed["subject"]["subject_ref"],
+        "--confirm",
+        observed["subject"]["subject_ref"],
+        "--reason",
+        "operator:relationship-ended",
+    ]
+    assert main(end) == 0
+    ended = json.loads(capsys.readouterr().out)
+    assert ended["relationship"]["state"] == "ended"
+    assert ended["relationship"]["circle"] == "public"
+    assert ended["subject_changed"] is False
+    assert ended["actors_changed"] is False
+    assert ended["claims_changed"] is False
+    assert ended["trust_changed"] is False
+    assert ended["peerbook_changed"] is False
+    assert ended["authorization_effect"] == "none"
+
+    assert main(end) == 0
+    repeated_end = json.loads(capsys.readouterr().out)
+    assert repeated_end["already_ended"] is True
+
     revoke = [
         "--home",
         str(home),
@@ -95,6 +120,7 @@ def test_cli_observes_an_opaque_operator_attested_external_actor(
     ).snapshot()
     assert [item["event_type"] for item in snapshot["events"]] == [
         "actor.observed",
+        "relationship.ended",
         "actor.revoked",
     ]
 
@@ -168,6 +194,70 @@ def test_relationship_book_keeps_actor_facts_and_subject_hypotheses_separate(
     reloaded = RelationshipBook(path, own_actor_id=observer.node_id)
     assert reloaded.snapshot() == snapshot
     assert reloaded.get(second.node_id).subject_ref == first_subject.subject_ref
+
+
+def test_ended_relationship_keeps_local_history_and_circle_reopens_it(tmp_path) -> None:
+    observer = Identity.generate("observer")
+    peer = Identity.generate("peer")
+    path = tmp_path / "relationships.json"
+    book = RelationshipBook(path, own_actor_id=observer.node_id)
+    subject = book.observe_actor(
+        peer.card(),
+        evidence_ref="packet:peer",
+        now=1_800_000_000_001,
+    )
+    book.set_circle(
+        subject.subject_ref,
+        "close",
+        confidence=72,
+        evidence_ref="relationship:confirmed",
+        labels=("research-partner",),
+        now=1_800_000_000_002,
+    )
+    trusted = book.set_context_trust(
+        subject.subject_ref,
+        "code.review",
+        estimate=88,
+        confidence=76,
+        evidence_ref="task:review-42",
+        now=1_800_000_000_003,
+    )
+
+    ended = book.end_relationship(
+        subject.subject_ref,
+        evidence_ref="operator:relationship-ended",
+        now=1_800_000_000_004,
+    )
+    assert ended.state == "ended"
+    assert ended.circle == "close"
+    assert ended.context_trust == trusted.context_trust
+    assert book.subject(subject.subject_ref) is not None
+    assert book.actor(peer.node_id) is not None
+
+    assert (
+        book.end_relationship(
+            subject.subject_ref,
+            evidence_ref="operator:relationship-ended",
+            now=1_800_000_000_005,
+        )
+        == ended
+    )
+    reopened = book.set_circle(
+        subject.subject_ref,
+        "known",
+        confidence=60,
+        evidence_ref="operator:relationship-reopened",
+        now=1_800_000_000_006,
+    )
+    assert reopened.state == "active"
+    assert reopened.circle == "known"
+    assert [item["event_type"] for item in book.snapshot()["events"]] == [
+        "actor.observed",
+        "relationship.circle-set",
+        "relationship.context-trust-set",
+        "relationship.ended",
+        "relationship.circle-set",
+    ]
 
 
 def test_actor_revocation_does_not_rewrite_the_social_relationship(tmp_path) -> None:

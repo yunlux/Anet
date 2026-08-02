@@ -131,6 +131,7 @@ type SubjectModel = {
   rel: number;
   confidence: number;
   summary: string;
+  relationshipState?: "active" | "dormant" | "ended";
   labels: string[];
   actors: { name: string; proof: string; confidence: number }[];
   trust: { label: string; value: number }[];
@@ -245,20 +246,38 @@ function projectSnapshot(value: unknown): {
         ? relationship.relationship_labels
         : []),
     ];
+    const relationshipState =
+      relationship?.state === "ended"
+        ? "ended"
+        : relationship?.state === "dormant"
+          ? "dormant"
+          : "active";
     return {
       id: subject.subject_ref,
       name: String(index + 1).padStart(2, "0"),
       mark: String(index + 1),
       accent: importAccents[index % importAccents.length],
       kind:
-        subject.state === "superseded"
+        relationshipState === "ended"
+          ? "本地关系已结束；Subject 假设仍保留"
+          : relationshipState === "dormant"
+            ? "本地关系暂不活跃；Subject 假设仍保留"
+          : subject.state === "superseded"
           ? "已被新证据取代的假设"
           : "本地 Subject 假设",
       circle,
       rel: Number(relationship?.relationship_confidence ?? 0),
       confidence: Number(subject.confidence ?? 0),
       summary: `${links.length} 个 Actor 链接到这个推测主体。该归并只在当前观察者的本地模型中成立。`,
-      labels: labels.length ? [...new Set(labels)] : ["主体待观察"],
+      relationshipState,
+      labels: [
+        ...(relationshipState === "ended"
+          ? ["关系已结束"]
+          : relationshipState === "dormant"
+            ? ["关系暂不活跃"]
+            : []),
+        ...(labels.length ? [...new Set(labels)] : ["主体待观察"]),
+      ],
       actors: links.map((link) => {
         const actor = actors.get(link.actor_id);
         return {
@@ -709,7 +728,9 @@ export function SocialCircleDemo() {
     () =>
       subjects.reduce<Record<Circle, number>>(
         (result, subject) => {
-          result[subject.id === "b" ? demoCircle : subject.circle] += 1;
+          if (subject.relationshipState !== "ended") {
+            result[subject.id === "b" ? demoCircle : subject.circle] += 1;
+          }
           return result;
         },
         { family: 0, close: 0, friend: 0, collab: 0, known: 0 },
