@@ -48,6 +48,10 @@ After installation:
 - A changed wheel or repository is applied even when its package version is
   unchanged; only the first sync of the already-installed initial version is
   skipped.
+- Before a package update, the active Anet package and metadata are snapshotted
+  when they belong to the managed runtime. A pip/CLI verification failure
+  restores that snapshot; this is local package rollback, not full dependency
+  or signed-manifest rollback.
 - For host-scoped Windows/WSL overlays, the remote-control client rejects equal
   listener ports and loopback locators. Changes to listener or advertised
   address fields regenerate the local signed Card before restart.

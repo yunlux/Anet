@@ -448,6 +448,56 @@ def test_same_version_software_change_is_not_silently_skipped(
     assert state["software_key"] != "previous-page"
 
 
+def test_failed_software_update_restores_the_active_package(
+    tmp_path: Path, monkeypatch
+) -> None:
+    runtime = tmp_path / "runtime"
+    package = runtime / "site-packages" / "anet"
+    metadata = runtime / "site-packages" / "anet_fabric-0.12.1.dist-info"
+    monkeypatch.setattr(remote_control.sys, "prefix", str(runtime))
+    package.mkdir(parents=True)
+    metadata.mkdir(parents=True)
+    (package / "marker.py").write_text("old", encoding="utf-8")
+    (metadata / "METADATA").write_text("old", encoding="utf-8")
+    monkeypatch.setattr(
+        remote_control,
+        "_installed_package_paths",
+        lambda: (package, metadata),
+    )
+    monkeypatch.setattr(remote_control, "_current_version", lambda: "0.12.1")
+
+    def fake_download(url: str, destination: Path, *, timeout: float) -> None:
+        del url, timeout
+        destination.write_bytes(b"wheel")
+
+    monkeypatch.setattr(remote_control, "_download", fake_download)
+
+    def fail_install(command: list[str], check: bool) -> None:
+        del command, check
+        (package / "marker.py").write_text("new", encoding="utf-8")
+        (metadata / "METADATA").write_text("new", encoding="utf-8")
+        new_metadata = metadata.parent / "anet_fabric-0.12.2.dist-info"
+        new_metadata.mkdir()
+        (new_metadata / "METADATA").write_text("new", encoding="utf-8")
+        raise RuntimeError("pip failed")
+
+    monkeypatch.setattr(remote_control.subprocess, "run", fail_install)
+
+    with pytest.raises(RuntimeError, match="pip failed"):
+        remote_control._install_software(
+            tmp_path / "node",
+            {
+                "version": "0.12.2",
+                "wheel_url": "https://example.invalid/new.whl",
+            },
+            {"software_key": "previous-page"},
+        )
+
+    assert (package / "marker.py").read_text(encoding="utf-8") == "old"
+    assert (metadata / "METADATA").read_text(encoding="utf-8") == "old"
+    assert not (metadata.parent / "anet_fabric-0.12.2.dist-info").exists()
+
+
 def test_initial_same_version_software_is_recorded_without_reinstall(
     tmp_path: Path, monkeypatch
 ) -> None:

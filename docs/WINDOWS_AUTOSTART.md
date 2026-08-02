@@ -141,7 +141,10 @@ repository URL to `pip` as a `git+` package source. The active virtual
 environment is updated in place and the supervisor re-executes itself after a
 successful update. The first sync records an already-installed matching
 version without reinstalling it; a later changed wheel/repository is applied
-even when its package version is unchanged.
+even when its package version is unchanged. Before the update, package files
+and metadata inside the managed runtime are snapshotted; a pip or CLI
+verification failure restores them. This local rollback does not replace a
+signed manifest, dependency rollback, or publisher policy.
 
 The supervisor keeps the last local configuration when a page is unavailable.
 Use one bounded sync with:

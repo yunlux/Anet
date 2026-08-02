@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import importlib.metadata
+import importlib.util
 import ipaddress
 import json
 import logging
@@ -707,6 +708,148 @@ def _current_version() -> str:
         return ""
 
 
+def _is_within(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+    except ValueError:
+        return False
+    return True
+
+
+def _installed_package_paths() -> tuple[Path, ...]:
+    """Return package files that belong to the active runtime, if discoverable."""
+
+    try:
+        spec = importlib.util.find_spec("anet")
+        locations = list(spec.submodule_search_locations or ()) if spec else []
+        distribution = importlib.metadata.distribution("anet-fabric")
+        metadata_path = Path(str(getattr(distribution, "_path", ""))).resolve()
+    except (ImportError, OSError, ValueError):
+        return ()
+    prefix = Path(sys.prefix).resolve()
+    candidates: list[Path] = []
+    if locations:
+        candidates.append(Path(locations[0]).resolve())
+    if str(metadata_path) and metadata_path.exists():
+        candidates.append(metadata_path)
+    result: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate.exists() or not _is_within(candidate, prefix):
+            continue
+        key = str(candidate)
+        if key not in seen:
+            seen.add(key)
+            result.append(candidate)
+    return tuple(result)
+
+
+def _remove_path(path: Path) -> None:
+    if path.is_symlink() or path.is_file():
+        path.unlink(missing_ok=True)
+    elif path.is_dir():
+        shutil.rmtree(path)
+
+
+def _snapshot_installed_package(home: Path) -> Path | None:
+    paths = _installed_package_paths()
+    if not paths:
+        return None
+    rollback_root = Path(home) / "control-cache" / "rollback"
+    rollback_root.mkdir(parents=True, exist_ok=True)
+    snapshot = rollback_root / f"snapshot-{_now_ms()}-{os.getpid()}"
+    snapshot.mkdir()
+    entries: list[dict[str, str]] = []
+    try:
+        for index, target in enumerate(paths):
+            backup = snapshot / f"entry-{index}-{target.name}"
+            if target.is_dir():
+                shutil.copytree(target, backup, symlinks=True)
+            else:
+                shutil.copy2(target, backup)
+            entries.append({"target": str(target), "backup": backup.name})
+        atomic_json(
+            snapshot / "manifest.json",
+            {"version": 1, "entries": entries},
+            private=True,
+        )
+    except BaseException:
+        shutil.rmtree(snapshot, ignore_errors=True)
+        raise
+    return snapshot
+
+
+def _restore_package_snapshot(snapshot: Path) -> None:
+    manifest_path = Path(snapshot) / "manifest.json"
+    value = json.loads(manifest_path.read_text(encoding="utf-8"))
+    entries = value.get("entries") if isinstance(value, dict) else None
+    if not isinstance(entries, list):
+        raise RemoteControlError("rollback snapshot manifest is invalid")
+    targets: list[tuple[Path, Path]] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise RemoteControlError("rollback snapshot entry is invalid")
+        raw_target = str(entry.get("target", "")).strip()
+        raw_backup = str(entry.get("backup", "")).strip()
+        if not raw_target or not raw_backup:
+            raise RemoteControlError("rollback snapshot entry is incomplete")
+        target = Path(raw_target).resolve()
+        backup = (Path(snapshot) / raw_backup).resolve()
+        if (
+            not _is_within(target, Path(sys.prefix))
+            or not _is_within(backup, Path(snapshot))
+            or not backup.exists()
+        ):
+            raise RemoteControlError("rollback snapshot entry is outside its boundary")
+        targets.append((target, backup))
+    metadata_parents = {target.parent for target, _backup in targets}
+    for parent in metadata_parents:
+        for candidate in parent.glob("anet_fabric-*.dist-info"):
+            _remove_path(candidate)
+        for candidate in parent.glob("anet_fabric.egg-info"):
+            _remove_path(candidate)
+    for target, _backup in targets:
+        _remove_path(target)
+    for target, backup in targets:
+        if backup.is_dir():
+            shutil.copytree(backup, target, symlinks=True)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(backup, target)
+
+
+def _prune_rollback_snapshots(home: Path, *, keep: int = 2) -> None:
+    root = Path(home) / "control-cache" / "rollback"
+    if not root.is_dir():
+        return
+    snapshots = sorted(
+        (
+            item
+            for item in root.iterdir()
+            if item.is_dir() and item.name.startswith("snapshot-")
+        ),
+        key=lambda item: item.name,
+        reverse=True,
+    )
+    for old in snapshots[max(0, keep) :]:
+        shutil.rmtree(old, ignore_errors=True)
+
+
+def _verify_software(software: dict[str, Any]) -> None:
+    expected_version = str(software.get("version", "")).strip()
+    if expected_version and _current_version() != expected_version:
+        raise RemoteControlError(
+            "installed Anet version does not match the control page"
+        )
+    try:
+        subprocess.run(
+            [sys.executable, "-m", "anet", "--version"],
+            check=True,
+        )
+    except Exception as exc:
+        raise RemoteControlError("installed Anet CLI verification failed") from exc
+
+
 def _download(url: str, destination: Path, *, timeout: float) -> None:
     parsed = urllib.parse.urlparse(url)
     if not parsed.scheme or _is_windows_path(url):
@@ -785,7 +928,23 @@ def _install_software(home: Path, software: dict[str, Any], state: dict[str, Any
     else:
         command = [sys.executable, "-m", "pip", *package_arguments]
     LOGGER.info("installing remote Anet software from %s", source)
-    subprocess.run(command, check=True)
+    snapshot = _snapshot_installed_package(home)
+    try:
+        subprocess.run(command, check=True)
+        _verify_software(software)
+    except Exception:
+        if snapshot is not None:
+            try:
+                _restore_package_snapshot(snapshot)
+                LOGGER.warning("restored Anet package after failed software update")
+            except Exception as rollback_exc:
+                raise RemoteControlError(
+                    "software update failed and package rollback failed"
+                ) from rollback_exc
+        raise
+    if snapshot is not None:
+        state["rollback_path"] = str(snapshot)
+        _prune_rollback_snapshots(home)
     state["software_key"] = software_key
     return True
 
