@@ -151,6 +151,10 @@ and metadata inside the managed runtime are snapshotted; a pip or CLI
 verification failure restores them. This local rollback does not replace a
 signed manifest, dependency rollback, or publisher policy.
 
+Each page application also snapshots `config.json`, the local signed
+`card.json`, and `peers.json`; a configuration, Card, or software failure
+restores those node-control files before the failed sequence is retried.
+
 The supervisor keeps the last local configuration when a page is unavailable.
 Use one bounded sync with:
 

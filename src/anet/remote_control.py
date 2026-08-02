@@ -612,6 +612,38 @@ def _load_state(home: Path) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def _snapshot_control_files(home: Path) -> dict[Path, bytes | None]:
+    """Capture the node files changed by one remote-control sync."""
+
+    paths = (
+        Path(home) / "config.json",
+        Path(home) / "card.json",
+        Path(home) / "peers.json",
+    )
+    snapshot: dict[Path, bytes | None] = {}
+    for path in paths:
+        try:
+            snapshot[path] = path.read_bytes() if path.exists() else None
+        except OSError as exc:
+            raise RemoteControlError(
+                f"cannot snapshot node control file: {path}"
+            ) from exc
+    return snapshot
+
+
+def _restore_control_files(snapshot: dict[Path, bytes | None]) -> None:
+    """Restore a failed sync without exposing an intermediate JSON file."""
+
+    try:
+        for path, data in snapshot.items():
+            if data is None:
+                path.unlink(missing_ok=True)
+            else:
+                atomic_write(path, data, private=path.name != "card.json")
+    except OSError as exc:
+        raise RemoteControlError("failed to roll back remote control files") from exc
+
+
 def _apply_config(
     home: Path,
     patch: dict[str, Any],
@@ -991,18 +1023,28 @@ def sync_remote_control(
             "poll_seconds": document["poll_seconds"],
         }
 
-    config_changed = _apply_config(
-        home,
-        document["config"],
-        cross_platform_windows_wsl=bool(
-            document.get("cross_platform_windows_wsl", False)
-        ),
-    )
-    nodes_added, nodes_updated = _apply_nodes(home, document["nodes"])
-    nodes_changed = nodes_added + nodes_updated
-    software_updated = False
-    if apply_software:
-        software_updated = _install_software(home, document["software"], state)
+    control_snapshot = _snapshot_control_files(home)
+    try:
+        config_changed = _apply_config(
+            home,
+            document["config"],
+            cross_platform_windows_wsl=bool(
+                document.get("cross_platform_windows_wsl", False)
+            ),
+        )
+        nodes_added, nodes_updated = _apply_nodes(home, document["nodes"])
+        nodes_changed = nodes_added + nodes_updated
+        software_updated = False
+        if apply_software:
+            software_updated = _install_software(home, document["software"], state)
+    except Exception:
+        try:
+            _restore_control_files(control_snapshot)
+        except Exception as rollback_exc:
+            raise RemoteControlError(
+                "remote control sync failed and node-file rollback failed"
+            ) from rollback_exc
+        raise
     state.update(
         {
             "version": CONTROL_VERSION,

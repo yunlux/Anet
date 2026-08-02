@@ -54,6 +54,9 @@ After installation:
   when they belong to the managed runtime. A pip/CLI verification failure
   restores that snapshot; this is local package rollback, not full dependency
   or signed-manifest rollback.
+- Each page application snapshots `config.json`, the local signed `card.json`,
+  and `peers.json`; a configuration, Card, or software failure restores those
+  node-control files before the failed sequence is retried.
 - For host-scoped Windows/WSL overlays, the remote-control client rejects equal
   listener ports and loopback locators. Changes to listener or advertised
   address fields regenerate the local signed Card before restart.
