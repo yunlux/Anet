@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import ipaddress
 import json
 import os
@@ -34,6 +35,22 @@ AHUB_MARKERS = ("ahub.sqlite3", "control.sqlite3")
 
 class BootstrapError(RuntimeError):
     pass
+
+
+def load_preflight() -> tuple[Any, Any]:
+    path = Path(__file__).with_name("install_preflight.py")
+    spec = importlib.util.spec_from_file_location(
+        "anet_skill_install_preflight",
+        path,
+    )
+    if spec is None or spec.loader is None:
+        raise BootstrapError("Skill preflight module is missing")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.collect, module.emit
+
+
+collect, emit = load_preflight()
 
 
 def run(
@@ -518,6 +535,14 @@ def main() -> int:
         raise BootstrapError("host bootstrap is supported only inside WSL")
     if fcntl is None:
         raise BootstrapError("POSIX file locking is unavailable")
+    preflight = collect(
+        "wsl",
+        Path.home() / ".local" / "anet",
+        extra_ahub_roots=[
+            args.state_root.expanduser().resolve() / "ahub",
+        ],
+    )
+    emit(preflight)
     agent_id = validate_agent_id(args.agent_id)
     systemd_user_available()
 
@@ -536,6 +561,23 @@ def main() -> int:
         os.chmod(lock_path, 0o600)
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
         registry = load_registry(registry_path)
+        known_node_services = {
+            str(item.get("service", ""))
+            for item in registry.get("nodes", {}).values()
+        }
+        unknown_node_services = [
+            str(item.get("name"))
+            for item in preflight.get("services", [])
+            if str(item.get("kind")) == "anet"
+            and str(item.get("name", "")).startswith("anet-node-")
+            and str(item.get("name")) not in known_node_services
+        ]
+        if unknown_node_services:
+            raise BootstrapError(
+                "another WSL Anet node service already exists outside the "
+                "bootstrap registry: "
+                + ", ".join(sorted(set(unknown_node_services)))
+            )
         explicit_ahub = bool(
             args.ahub_root or args.ahub_url or args.ahub_service
         )
@@ -783,6 +825,7 @@ def main() -> int:
                 config_root / "agents" / agent_id / "mcp-stdio.json"
             ),
             "identity_files": 1,
+            "preflight": preflight,
         }
         print(json.dumps(result, separators=(",", ":")))
     return 0

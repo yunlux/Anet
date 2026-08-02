@@ -39,6 +39,94 @@ def test_platform_defaults_are_platform_owned() -> None:
     assert 'join-path $env:localappdata "anet"' in source(
         "install_windows.ps1"
     )
+    assert "windows_install_preflight.ps1" in source("install_windows.ps1")
+
+
+def test_windows_oneclick_is_an_explicit_supervised_deployment_layer() -> None:
+    installer = source("install_windows_oneclick.ps1")
+    launcher = source("run-supervisor.ps1")
+    assert "-controlurl" in installer
+    assert "register-scheduledtask" in installer
+    assert "start-scheduledtask" in installer
+    assert "-admin" in installer
+    assert "env:programdata" in installer
+    assert "-atstartup" in installer
+    assert '"system"' in installer
+    assert "serviceaccount" in installer
+    assert "windows-machine-scheduled-task" in installer
+    assert "new-scheduledtasksettingsset" in installer
+    assert "restartcount" in installer
+    assert "executiontimelimit" in installer
+    assert "stop-managedsupervisortask" in installer
+    assert "did not stop within 30 seconds" in installer
+    assert "-port" in installer
+    assert "-listenhost" in installer
+    assert "locatorcontext" in installer
+    assert "-advertise" in installer
+    assert "preflight" in installer
+    assert "allowexisting" in installer
+    assert "host-scoped locators must not advertise" in installer
+    assert "must use distinct listener ports" in installer
+    assert "supervisor" in installer
+    assert "-m" in launcher
+    assert "supervisor" in launcher
+    assert "supervisor.log" in launcher
+
+
+def test_posix_oneclick_is_an_explicit_native_service_layer() -> None:
+    text = source("posix_oneclick.py")
+    assert "systemd" in text
+    assert "launchctl" in text
+    assert "anet-supervisor.service" in text
+    assert "net.anet.supervisor" in text
+    assert '"restart", systemd_service' in text
+    assert "--control-url" in text
+    assert "install_runtime" in text
+    assert "validate_cross_platform_ports" in text
+
+
+def test_wsl_host_keepalive_is_an_explicit_user_scoped_bridge() -> None:
+    text = source("register_wsl_keepalive.ps1")
+    assert "wsl.exe" in text
+    assert "systemctl --user start" in text
+    assert "sleep 3600" in text
+    assert "-atlogon" in text
+    assert "interactiveToken".lower() in text
+    assert "windows-user-wsl-keepalive" in text
+
+
+def test_termux_oneclick_uses_termux_native_service_layer() -> None:
+    text = source("install_termux_oneclick.py")
+    assert "python-cryptography" in text
+    assert "python-msgpack" in text
+    assert "termux-services" in text
+    assert "start-anet-services" in text
+    assert "--control-url" in text
+    assert "install_preflight" in text
+    assert "allow-existing" in text
+    assert "--listen-host" in text
+    assert "apply_locator_config" in text
+    assert "existing node listens on port" in text
+    assert '"restart", termux_service' in text
+
+
+def test_windows_preflight_is_bounded_and_distinguishes_ahub() -> None:
+    text = source("windows_install_preflight.ps1")
+    assert "localappdata" in text
+    assert "programdata" in text
+    assert "ahub.sqlite3" in text
+    assert "scheduled-task" in text
+    assert "windows-service" in text
+    assert "deployment" in text
+    assert "wsl[-_ ]?keepalive" in text
+
+
+def test_legacy_macos_bootstrap_has_duplicate_preflight() -> None:
+    text = source("bootstrap-macos.sh")
+    assert "allow-existing" in text
+    assert "install preflight" in text
+    assert "ahub.sqlite3" in text
+    assert "pgrep" in text
 
 
 def test_multi_node_gate_is_explicit_optional_deployment_layer() -> None:

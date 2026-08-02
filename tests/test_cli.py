@@ -490,6 +490,22 @@ def test_cli_locator_config_updates_contexts_signed_card_and_config(
     assert config["locator_contexts"] == [f"lan:{lan_zone}"]
 
 
+def test_doctor_warns_about_cross_runtime_loopback_host_locator(
+    tmp_path, capsys
+) -> None:
+    home = tmp_path / "loopback-host"
+    zone = "opaqueZone123"
+    locator = f"tls://127.0.0.1:4242?scope=host&zone={zone}&priority=0"
+    assert main([
+        "--home", str(home), "init", "--label", "loopback-host",
+        "--locator-context", f"host:{zone}", "--advertise", locator,
+    ]) == 0
+    last_json(capsys)
+    assert main(["--home", str(home), "doctor"]) == 0
+    doctor = last_json(capsys)
+    assert any("host-scoped loopback" in item for item in doctor["locators"]["warnings"])
+
+
 def test_cli_materializes_raw_and_proxy_dialers_without_printing_secrets(
     tmp_path, capsys, monkeypatch
 ) -> None:

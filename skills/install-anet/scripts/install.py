@@ -5,13 +5,14 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import shutil
 import subprocess
 import sys
 from pathlib import Path
-
+from typing import Any
 
 VERSION = "0.12.1"
 DEFAULT_FEATURE = "mcp"
@@ -23,6 +24,22 @@ WHEEL_SHA256 = (
 
 class InstallError(RuntimeError):
     pass
+
+
+def load_preflight() -> tuple[Any, Any]:
+    path = Path(__file__).with_name("install_preflight.py")
+    spec = importlib.util.spec_from_file_location(
+        "anet_skill_install_preflight",
+        path,
+    )
+    if spec is None or spec.loader is None:
+        raise InstallError("Skill preflight module is missing")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.collect, module.emit
+
+
+collect, emit = load_preflight()
 
 
 def run(command: list[str], *, timeout: int = 300) -> str:
@@ -103,6 +120,14 @@ def main() -> int:
     root = (Path.home() / ".local" / "anet").resolve()
     if root in {Path("/"), Path.home().resolve()}:
         raise InstallError("install root is too broad")
+    preflight = collect(
+        "linux",
+        root,
+        include_services=False,
+        include_processes=False,
+        include_persistent_markers=False,
+    )
+    emit(preflight)
     versions = root / "versions"
     destination = versions / f"{VERSION}-{feature}"
     venv = destination / "venv"
@@ -199,6 +224,7 @@ def main() -> int:
         "identity_files": identity_files,
         "mcp_import": "ok",
         "ahub_import": "ok" if feature == "full" else "not-installed",
+        "preflight": preflight,
     }
     print(json.dumps(result, separators=(",", ":")))
     return 0

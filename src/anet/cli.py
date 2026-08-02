@@ -78,6 +78,7 @@ from .relationship_disclosure_recovery import (
 from .reported_relationship_views import (
     ReportedRelationshipViewProjector,
 )
+from .remote_control import run_supervisor, sync_remote_control
 from .relationship_claims import (
     MutualRelationshipClaim,
     RelationshipClaimBook,
@@ -2577,6 +2578,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
                 is_loopback = ipaddress.ip_address(locator.host).is_loopback
             except ValueError:
                 is_loopback = locator.host.lower() == "localhost"
+            if locator.scope == "host" and is_loopback:
+                locator_warnings.append(
+                    "host-scoped loopback locator is local to this runtime; "
+                    "do not use it for Windows/WSL direct connectivity"
+                )
             if locator.scope == "legacy" and is_loopback:
                 locator_warnings.append(
                     "legacy loopback locator has no host zone; physical peers may "
@@ -2630,6 +2636,32 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     from .mcp_server import run_mcp
 
     run_mcp()
+    return 0
+
+
+def cmd_control_sync(args: argparse.Namespace) -> int:
+    _print_json(
+        sync_remote_control(
+            args.home,
+            url=args.url,
+            apply_software=not args.no_software,
+        )
+    )
+    return 0
+
+
+def cmd_supervisor(args: argparse.Namespace) -> int:
+    result = asyncio.run(
+        run_supervisor(
+            args.home,
+            url=args.url,
+            interval=args.interval,
+            once=args.once,
+            apply_software=not args.no_software,
+        )
+    )
+    if result is not None:
+        _print_json(result)
     return 0
 
 
@@ -4297,6 +4329,36 @@ def build_parser() -> argparse.ArgumentParser:
         "serve", help="run the peer listener and continuous synchronization"
     )
     serve.set_defaults(func=cmd_serve)
+
+    control_sync = sub.add_parser(
+        "control-sync",
+        help="fetch and apply one remote JSON control page",
+    )
+    control_sync.add_argument("--url", help="control page URL; otherwise use node settings")
+    control_sync.add_argument(
+        "--no-software",
+        action="store_true",
+        help="apply config and peers but do not install a package update",
+    )
+    control_sync.set_defaults(func=cmd_control_sync)
+
+    supervisor = sub.add_parser(
+        "supervisor",
+        help="run the remote control client and supervise an Anet server child",
+    )
+    supervisor.add_argument("--url", help="control page URL; otherwise use node settings")
+    supervisor.add_argument("--interval", type=float)
+    supervisor.add_argument(
+        "--no-software",
+        action="store_true",
+        help="supervise the node but do not install package updates",
+    )
+    supervisor.add_argument(
+        "--once",
+        action="store_true",
+        help="sync once and exit without starting the server child",
+    )
+    supervisor.set_defaults(func=cmd_supervisor)
 
     wake_bridge = sub.add_parser(
         "wake-bridge",

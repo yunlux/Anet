@@ -12,6 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from install_preflight import collect_preflight, emit_preflight
+
 
 class InstallError(RuntimeError):
     pass
@@ -82,6 +84,10 @@ def install_runtime(
     wheel_sha256: str,
     root: Path,
     feature: str,
+    system_site_packages: bool = False,
+    install_dependencies: bool = True,
+    use_uv: bool = True,
+    verify_feature: str | None = None,
 ) -> dict[str, str]:
     wheel = wheel.expanduser().resolve()
     if not wheel.is_file():
@@ -108,13 +114,15 @@ def install_runtime(
             raise InstallError("existing version has a different wheel hash")
         if current.get("feature", "core") != feature:
             raise InstallError("existing version has a different feature set")
-        verify_runtime(destination / "venv", version, feature)
+        if bool(current.get("system_site_packages", False)) != system_site_packages:
+            raise InstallError("existing version has a different site-package mode")
+        verify_runtime(destination / "venv", version, verify_feature or feature)
         outcome = "reused"
     else:
         try:
             destination.mkdir()
             venv = destination / "venv"
-            uv = shutil.which("uv")
+            uv = shutil.which("uv") if use_uv else None
             extras = {
                 "core": "",
                 "mcp": "mcp",
@@ -125,31 +133,34 @@ def install_runtime(
                 if not extras
                 else f"anet-fabric[{extras}] @ {wheel.as_uri()}"
             )
+            venv_arguments = ["venv"]
+            if system_site_packages:
+                venv_arguments.append("--system-site-packages")
             if uv:
-                run([uv, "venv", "--python", sys.executable, str(venv)])
-                run(
-                    [
-                        uv,
-                        "pip",
-                        "install",
-                        "--python",
-                        str(python_in(venv)),
-                        requirement,
-                    ]
-                )
+                run([uv, *venv_arguments, "--python", sys.executable, str(venv)])
+                install_arguments = [
+                    uv,
+                    "pip",
+                    "install",
+                    "--python",
+                    str(python_in(venv)),
+                ]
+                if not install_dependencies:
+                    install_arguments.append("--no-deps")
+                run([*install_arguments, requirement])
             else:
-                run([sys.executable, "-m", "venv", str(venv)])
-                run(
-                    [
-                        str(python_in(venv)),
-                        "-m",
-                        "pip",
-                        "install",
-                        "--disable-pip-version-check",
-                        requirement,
-                    ]
-                )
-            verify_runtime(venv, version, feature)
+                run([sys.executable, "-m", *venv_arguments, str(venv)])
+                install_arguments = [
+                    str(python_in(venv)),
+                    "-m",
+                    "pip",
+                    "install",
+                    "--disable-pip-version-check",
+                ]
+                if not install_dependencies:
+                    install_arguments.append("--no-deps")
+                run([*install_arguments, requirement])
+            verify_runtime(venv, version, verify_feature or feature)
             manifest.write_text(
                 json.dumps(
                     {
@@ -158,6 +169,7 @@ def install_runtime(
                         "version": version,
                         "feature": feature,
                         "wheel_sha256": expected_hash,
+                        "system_site_packages": system_site_packages,
                     },
                     indent=2,
                     sort_keys=True,
@@ -207,6 +219,15 @@ def parser(default_root: Path) -> argparse.ArgumentParser:
 
 def main(platform_name: str, default_root: Path) -> int:
     args = parser(default_root).parse_args()
+    root = args.root.expanduser().resolve()
+    preflight = collect_preflight(
+        platform_name,
+        root,
+        include_services=False,
+        include_processes=False,
+        include_persistent_markers=False,
+    )
+    emit_preflight(preflight)
     result = install_runtime(
         platform_name=platform_name,
         version=args.version,
@@ -215,5 +236,6 @@ def main(platform_name: str, default_root: Path) -> int:
         root=args.root,
         feature=args.feature,
     )
+    result["preflight"] = preflight
     print(json.dumps(result, separators=(",", ":")))
     return 0

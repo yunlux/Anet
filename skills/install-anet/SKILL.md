@@ -19,6 +19,10 @@ an unverified wheel.
    python3 <SKILL_DIR>/scripts/install.py
    ```
 
+   The entry point emits a bounded, read-only preflight on stderr before it
+   mutates the runtime. It reports an existing Anet/Ahub location so the
+   result can distinguish reuse from a fresh runtime.
+
 4. Parse the JSON result. Require:
    - `outcome` is `installed` or `reused`;
    - `version` is `0.12.1`;
@@ -73,6 +77,9 @@ detected, it stops instead of starting a second service. With no Ahub, it
 creates one user service and registers the current node as the first allowed
 node. Later Agents receive distinct homes and identities, are explicitly
 paired with bootstrap-managed local nodes, and use the same Ahub.
+The WSL bootstrap also runs the same bounded preflight before installing the
+runtime and stops when an unregistered `anet-node-*.service` is already
+present.
 
 ## Boundaries
 

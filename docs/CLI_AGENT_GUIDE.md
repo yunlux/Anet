@@ -63,6 +63,58 @@ idempotent.
 Read `%LOCALAPPDATA%\Anet\current.json` to discover the selected absolute
 `runtime` and `cli` paths. Do not guess a Python installation.
 
+When the operator explicitly requests a self-starting Windows node and has
+provided a remote control page, use the separate deployment prototype:
+
+```powershell
+.\scripts\install_windows_oneclick.ps1 `
+  -ControlUrl https://example.invalid/anet/control.json
+```
+
+This path creates or reuses one node home after its preflight, imports the
+page's default configuration and Peer Cards, registers the current-user `Anet\Supervisor`
+scheduled task, and starts the supervisor with an `anet serve` child. For a
+machine-wide Windows deployment, run PowerShell as administrator and add
+`-Admin`; this uses `%ProgramData%\Anet`, the `SYSTEM` task principal, and an
+`AtStartup` trigger. Use explicit `-Port`, `-LocatorContext`, and `-Advertise`
+values when this Windows node must coexist with a WSL node. It is not the clean runtime install above. The prototype
+page is unsigned and can install a wheel or Git source; see
+[`WINDOWS_AUTOSTART.md`](WINDOWS_AUTOSTART.md) before using it.
+
+For direct Windows/WSL connectivity, port numbers only isolate listeners. Bind
+both nodes to a non-loopback shared host address (or `0.0.0.0` plus an explicit
+advertised address), use different ports, and never publish `127.0.0.1` under a
+shared `host:` locator context.
+
+The equivalent explicit POSIX deployment paths are:
+
+```bash
+python3 scripts/install_wsl_oneclick.py --control-url <CONTROL_URL>
+python3 scripts/install_linux_oneclick.py --control-url <CONTROL_URL>
+python3 scripts/install_macos_oneclick.py --control-url <CONTROL_URL>
+```
+
+The first two create and enable `anet-supervisor.service` as a systemd user
+unit; macOS creates and loads `net.anet.supervisor` as a LaunchAgent. These
+paths also create one new node home and are separate from the runtime-only
+installers. See [`POSIX_AUTOSTART.md`](POSIX_AUTOSTART.md).
+
+For WSL on Windows, `systemd --user` does not itself launch the distribution
+after a Windows reboot. After the WSL node is installed, the optional host
+bridge can be registered with
+`scripts/register_wsl_keepalive.ps1 -Distribution <DISTRO> -LinuxUser <USER>`.
+
+For Android inside Termux, use the separate Termux entry point:
+
+```bash
+python3 scripts/install_termux_oneclick.py --control-url <CONTROL_URL>
+```
+
+It uses Termux-native packages, `termux-services`/runit, and a
+`~/.termux/boot` script. The Termux:Boot add-on is an explicit external
+prerequisite; it cannot be installed by the Python runtime installer. See
+[`TERMUX_AUTOSTART.md`](TERMUX_AUTOSTART.md).
+
 ### WSL
 
 ```bash
@@ -74,6 +126,16 @@ python3 scripts/install_wsl.py \
 ```
 
 The selected CLI is `~/.local/anet/current/venv/bin/anet`.
+
+The platform install entry points above emit an `Anet install preflight` report on stderr
+before changing local state. Runtime-only installers use it to report an
+existing runtime/Ahub location and retain their versioned-runtime semantics;
+the one-click deployment installers also inspect their platform service/task
+and process markers and stop before mutation when another same-platform
+persistent deployment is found. The target deployment is idempotently reused.
+Use `-AllowExisting` on Windows or `--allow-existing` on POSIX/Termux only as
+an explicit override. Windows and WSL are separate preflight boundaries and
+must not share a node home or identity.
 
 ### macOS
 
