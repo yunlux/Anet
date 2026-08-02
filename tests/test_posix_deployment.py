@@ -47,6 +47,20 @@ def test_platform_config_selects_the_platform_specific_node_settings() -> None:
     assert platform_config(page, "linux") == {"sync_interval": 1.0}
 
 
+def test_platform_config_accepts_default_config_alias() -> None:
+    page = {
+        "default_config": {"sync_interval": 1.0},
+        "platforms": {
+            "wsl": {"default_config": {"listen_port": 43112}},
+        },
+    }
+
+    assert platform_config(page, "wsl") == {
+        "sync_interval": 1.0,
+        "listen_port": 43112,
+    }
+
+
 def test_platform_software_selects_the_platform_specific_artifact() -> None:
     page = {
         "software": {

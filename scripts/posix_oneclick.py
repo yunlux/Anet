@@ -124,7 +124,7 @@ def read_json_url(url: str) -> dict[str, Any]:
 
 
 def platform_config(page: dict[str, Any], platform_name: str) -> dict[str, Any]:
-    common = page.get("config", {})
+    common = page.get("config", page.get("default_config", {}))
     if common is None:
         common = {}
     if not isinstance(common, dict):
@@ -141,7 +141,7 @@ def platform_config(page: dict[str, Any], platform_name: str) -> dict[str, Any]:
         raise DeploymentError(
             f"control page platforms.{platform_name} must be an object"
         )
-    config = overlay.get("config", {})
+    config = overlay.get("config", overlay.get("default_config", {}))
     if config is None:
         return {}
     if not isinstance(config, dict):

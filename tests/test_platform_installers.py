@@ -70,6 +70,7 @@ def test_windows_oneclick_is_an_explicit_supervised_deployment_layer() -> None:
     assert "must use distinct listener ports" in installer
     assert "host scope must be declared on both enabled overlays" in installer
     assert "get-effectiveplatformsoftware" in installer
+    assert "default_config" in installer
     assert "supervisor" in installer
     assert "-m" in launcher
     assert "supervisor" in launcher

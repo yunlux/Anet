@@ -131,6 +131,14 @@ function Get-EffectivePlatformConfig {
                 $values[$property.Name] = $property.Value
             }
         }
+    } elseif ($null -ne $overlay -and
+        $overlay.PSObject.Properties["default_config"]) {
+        $config = $overlay.default_config
+        if ($null -ne $config) {
+            foreach ($property in $config.PSObject.Properties) {
+                $values[$property.Name] = $property.Value
+            }
+        }
     }
     return [pscustomobject]$values
 }
@@ -397,6 +405,9 @@ $platformConfig = $null
 $commonConfig = $null
 if ($page.PSObject.Properties["config"]) {
     $commonConfig = $page.config
+    $platformConfig = $commonConfig
+} elseif ($page.PSObject.Properties["default_config"]) {
+    $commonConfig = $page.default_config
     $platformConfig = $commonConfig
 }
 if ($page.PSObject.Properties["platforms"]) {

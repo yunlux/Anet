@@ -113,6 +113,11 @@ runtime installation, either in the common `software` object or in the
 selected `platforms.windows.software` overlay. `repo_url` is used for
 subsequent source-based updates when a wheel is not supplied.
 
+The initial installer accepts `config` or its equivalent `default_config`
+object, including the selected platform overlay. The running remote-control
+client uses the same precedence, so initial deployment and later sync do not
+interpret the page differently.
+
 The page may contain a `platforms` object with `windows`, `wsl`, `linux`,
 `macos`, or `termux` overlays. The selected overlay is merged after the common
 document, so one control URL can share common software and community peers

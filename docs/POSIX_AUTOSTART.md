@@ -25,6 +25,8 @@ If `software.sha256` is absent, the prototype computes the local wheel hash
 after downloading it. The rest of the page uses the same format as the
 Windows deployment prototype: default `config`, Peer Cards, `repo_url`,
 `pages`, and `kv` JSON sources.
+`default_config` is accepted as an alias for `config`, including inside a
+platform overlay.
 
 After installation:
 
