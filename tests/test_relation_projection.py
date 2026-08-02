@@ -92,6 +92,63 @@ def test_projector_is_idempotent_and_never_promotes_a_friendship(tmp_path) -> No
     assert "another private message" not in serialized
 
 
+def test_projection_records_activity_without_reactivating_paused_or_ended_relation(
+    tmp_path,
+) -> None:
+    observer = Identity.generate("observer")
+    peer = Identity.generate("peer")
+    book = RelationshipBook(
+        tmp_path / "relationships.json",
+        own_actor_id=observer.node_id,
+    )
+    subject = book.observe_actor(
+        peer.card(),
+        evidence_ref="packet:initial",
+        now=1_800_000_000_001,
+    )
+    projector = RelationshipProjector(book)
+
+    book.pause_relationship(
+        subject.subject_ref,
+        evidence_ref="operator:relationship-inactive",
+        now=1_800_000_000_002,
+    )
+    paused = projector.project_packet(
+        peer.card(),
+        packet_id="c" * 32,
+        kind="file.share",
+        body={"filename": "private-name.txt"},
+        direction="incoming",
+        occurred_ms=1_800_000_000_003,
+    )
+    assert paused is not None and paused.recorded is True
+    relationship = book.relationship(subject.subject_ref)
+    assert relationship is not None
+    assert relationship.state == "dormant"
+    assert relationship.circle == "public"
+    assert book.snapshot()["interactions"][0]["facets"] == ["artifact", "message"]
+
+    book.end_relationship(
+        subject.subject_ref,
+        evidence_ref="operator:relationship-ended",
+        now=1_800_000_000_004,
+    )
+    ended = projector.project_packet(
+        peer.card(),
+        packet_id="d" * 32,
+        kind="skill.offer",
+        body={"private": "body"},
+        direction="incoming",
+        occurred_ms=1_800_000_000_005,
+    )
+    assert ended is not None and ended.recorded is True
+    relationship = book.relationship(subject.subject_ref)
+    assert relationship is not None
+    assert relationship.state == "ended"
+    assert relationship.circle == "public"
+    assert len(book.snapshot()["interactions"]) == 2
+
+
 def test_node_projects_sent_and_received_metadata_but_not_receipts(tmp_path) -> None:
     a = AnetNode(initialize_node(tmp_path / "a", label="a"))
     b = AnetNode(initialize_node(tmp_path / "b", label="b"))

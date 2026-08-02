@@ -154,7 +154,10 @@ class RelationshipProjector:
         relationship = self.book.relationship(subject.subject_ref)
         if relationship is None:
             raise RuntimeError("observed Subject has no relationship estimate")
-        if relationship.circle == RELATION_CIRCLES[0]:
+        if (
+            relationship.state == "active"
+            and relationship.circle == RELATION_CIRCLES[0]
+        ):
             relationship = self.book.set_circle(
                 subject.subject_ref,
                 "known",

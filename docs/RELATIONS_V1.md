@@ -389,6 +389,9 @@ This records `relationship.paused` and sets the relationship state to
 `dormant`; it is excluded from active circle counts and from relationship
 suggestions. It retains the same local Subject, Actor, evidence, contextual
 trust and claim boundaries. An explicit `relation-circle` reactivates it.
+Verified packet metadata may still be recorded as content-free interaction
+evidence after a pause or end, but it never automatically reactivates the
+relationship or advances its circle.
 
 Revise one hypothesis one-to-one while inheriting its relationship:
 
