@@ -51,6 +51,8 @@ into its private `relationships.json` model:
 - every new Actor begins with a separate, revisable Subject hypothesis.
 
 A mention or reply may move the fresh hypothesis from `public` to `known`.
+It cannot reactivate an observer-local relationship that is already `dormant`
+or `ended`; that requires an explicit `relation-circle` action.
 Nothing in Discord score, labels, volume, or bridge trust creates a closer
 circle, contextual trust, PeerBook entry, capability, or authorization. The
 relationship file receives event references and coarse facets only; raw

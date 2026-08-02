@@ -175,6 +175,61 @@ def test_undirected_discord_observation_remains_public(tmp_path) -> None:
     assert relationship.context_trust == ()
 
 
+def test_directed_discord_event_does_not_reactivate_paused_or_ended_subject(
+    tmp_path,
+) -> None:
+    observer = Identity.generate("observer")
+    book = RelationshipBook(
+        tmp_path / "relationships.json",
+        own_actor_id=observer.node_id,
+    )
+    projector = DiscordRelationshipProjector(book)
+    first = projector.project_local_event(
+        {
+            "actor_key": "e" * 64,
+            "event_key": "f" * 32,
+            "created_ms": 1_800_000_000_001,
+            "event_labels": ["platform:discord"],
+        }
+    )
+    book.pause_relationship(
+        first.subject_ref,
+        evidence_ref="operator:relationship-inactive",
+        now=1_800_000_000_002,
+    )
+    paused = projector.project_local_event(
+        {
+            "actor_key": "e" * 64,
+            "event_key": "a" * 32,
+            "created_ms": 1_800_000_000_003,
+            "event_labels": ["interaction:mention", "platform:discord"],
+        }
+    )
+    relationship = book.relationship(paused.subject_ref)
+    assert relationship is not None
+    assert relationship.state == "dormant"
+    assert relationship.circle == "public"
+
+    book.end_relationship(
+        first.subject_ref,
+        evidence_ref="operator:relationship-ended",
+        now=1_800_000_000_004,
+    )
+    ended = projector.project_local_event(
+        {
+            "actor_key": "e" * 64,
+            "event_key": "b" * 32,
+            "created_ms": 1_800_000_000_005,
+            "event_labels": ["interaction:reply", "platform:discord"],
+        }
+    )
+    relationship = book.relationship(ended.subject_ref)
+    assert relationship is not None
+    assert relationship.state == "ended"
+    assert relationship.circle == "public"
+    assert len(book.snapshot()["interactions"]) == 3
+
+
 def test_node_projects_signed_discord_signal_as_separate_actor(tmp_path) -> None:
     bridge = AnetNode(initialize_node(tmp_path / "bridge", label="bridge"))
     observer = AnetNode(initialize_node(tmp_path / "observer", label="observer"))

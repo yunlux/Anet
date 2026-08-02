@@ -119,6 +119,8 @@ class DiscordRelationshipProjector:
         if relationship is None:
             raise RuntimeError("Discord Actor Subject has no relationship estimate")
         if (
+            relationship.state == "active"
+            and
             relationship.circle == "public"
             and {"interaction:mention", "interaction:reply"}.intersection(labels)
         ):
