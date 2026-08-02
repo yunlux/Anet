@@ -688,17 +688,11 @@ def _apply_nodes(home: Path, nodes: list[Any]) -> tuple[int, int]:
     config = NodeConfig.load(Path(home))
     identity = Identity.load(config.identity_path)
     peers = PeerBook(config.peers_path, own_node_id=identity.node_id)
-    added = 0
-    updated = 0
-    for item in nodes:
-        card = PeerCard.from_dict(_card_value(item, base_url=""))
-        before = peers.get(card.node_id)
-        peers.add(card)
-        if before is None:
-            added += 1
-        elif before.to_dict() != card.to_dict():
-            updated += 1
-    return added, updated
+    try:
+        cards = [PeerCard.from_dict(_card_value(item, base_url="")) for item in nodes]
+        return peers.add_many(cards)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RemoteControlError("remote control page contains an invalid Peer Card") from exc
 
 
 def _current_version() -> str:

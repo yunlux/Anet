@@ -63,6 +63,48 @@ def test_control_page_applies_config_and_peer_cards(tmp_path: Path) -> None:
     assert (local.home / "remote-control-state.json").exists()
 
 
+def test_invalid_peer_card_does_not_partially_apply_the_control_page(
+    tmp_path: Path,
+) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43103,
+    )
+    remote = initialize_node(
+        tmp_path / "remote",
+        label="remote",
+        listen_host="127.0.0.1",
+        listen_port=43104,
+    )
+    remote_card = Identity.load(remote.identity_path).card(
+        addresses=remote.effective_addresses(),
+        capabilities=remote.capabilities,
+    )
+    page = _write_page(
+        tmp_path / "control.json",
+        {
+            "version": 1,
+            "sequence": 1,
+            "nodes": [
+                remote_card.to_dict(),
+                {"node_id": "malformed-card"},
+            ],
+        },
+    )
+
+    with pytest.raises(RemoteControlError, match="invalid Peer Card"):
+        sync_remote_control(local.home, url=page, apply_software=False)
+
+    peers = PeerBook(
+        local.peers_path,
+        own_node_id=Identity.load(local.identity_path).node_id,
+    )
+    assert peers.all() == []
+    assert not (local.home / "remote-control-state.json").exists()
+
+
 def test_platform_overlay_is_applied_only_to_matching_runtime(
     tmp_path: Path, monkeypatch
 ) -> None:
