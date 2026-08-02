@@ -179,6 +179,17 @@ type ReportedRelationshipView = {
   authorization_effect: "none";
 };
 
+type RelationshipDashboard = {
+  version: number;
+  type: "anet.relationship-dashboard.v1";
+  observer_actor_id: string;
+  local_model: RelationSnapshot;
+  reported_view: unknown | null;
+  privacy: "local-dashboard-file";
+  projection_into_local_relations: false;
+  authorization_effect: "none";
+};
+
 const circleMeta: Record<Circle, { label: string; index: string }> = {
   family: { label: "家人", index: "01" },
   close: { label: "亲密", index: "02" },
@@ -417,6 +428,26 @@ function projectReportedView(value: unknown): ReportedRelationshipView {
     throw new Error("仅支持 relation-reported-view 的 sender-reported 输出");
   }
   return view as ReportedRelationshipView;
+}
+
+function projectDashboard(value: unknown): RelationshipDashboard | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const dashboard = value as Partial<RelationshipDashboard>;
+  if (dashboard.type !== "anet.relationship-dashboard.v1") {
+    return null;
+  }
+  if (
+    dashboard.version !== 1 ||
+    !dashboard.local_model ||
+    dashboard.privacy !== "local-dashboard-file" ||
+    dashboard.projection_into_local_relations !== false ||
+    dashboard.authorization_effect !== "none"
+  ) {
+    throw new Error("关系仪表板文件缺少本地边界声明");
+  }
+  return dashboard as RelationshipDashboard;
 }
 
 const baseSubjects: SubjectModel[] = [
@@ -829,7 +860,9 @@ export function SocialCircleDemo() {
       return;
     }
     try {
-      const projected = projectSnapshot(JSON.parse(await file.text()));
+      const value = JSON.parse(await file.text());
+      const dashboard = projectDashboard(value);
+      const projected = projectSnapshot(dashboard?.local_model ?? value);
       setImportedSubjects(projected.subjects);
       setImportedObserver(projected.observer);
       setImportedActivity(projected.activities);
@@ -837,6 +870,10 @@ export function SocialCircleDemo() {
       setSelectedId(projected.subjects[0].id);
       setStep(Math.max(0, projected.activities.length - 1));
       setFriendAdded(false);
+      if (dashboard?.reported_view) {
+        setImportedReportedView(projectReportedView(dashboard.reported_view));
+        setReportedViewpoint("reported");
+      }
       setImportError("");
     } catch (error) {
       setImportError(error instanceof Error ? error.message : "无法读取关系模型");
@@ -988,7 +1025,7 @@ export function SocialCircleDemo() {
           <span><i className={styles.guessDot} /> 推测</span>
         </div>
         <label className={styles.importButton}>
-          <span>↥</span> 导入本地模型
+          <span>↥</span> 导入本地模型 / 仪表板
           <input
             type="file"
             accept="application/json,.json"

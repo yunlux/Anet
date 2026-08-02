@@ -392,6 +392,21 @@ circle view instead of raw disclosure envelopes. The result is explicitly
 `sender-reported` and `partial-unknown`; provenance and missing-coverage
 warnings must remain visible. Use `--subject` to select one remote hypothesis
 and `--include-activities` only when source-event inspection is needed.
+
+For one human-visible local file that combines this node's model with at most
+one separately attributed sender report, use:
+
+```text
+anet --home <B_HOME> relation-dashboard > relation-dashboard.json
+anet --home <B_HOME> relation-dashboard --reported <A_NODE_ID> \
+  > relation-dashboard.json
+```
+
+The dashboard file is a local convenience envelope: `local_model` remains B's
+private model and `reported_view` remains A's sender-reported view. `/social`
+can import it in one step, but neither view is uploaded, merged, or granted
+authorization.
+
 When scheduled v2 disclosures expose more than one `rdsr_` series, use
 `--series <RDSR_ID>` before treating a segment as ordered. Only
 `proven-continuous-segment` establishes cursor continuity; `gap-detected`

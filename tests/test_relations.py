@@ -151,6 +151,35 @@ def test_cli_observes_an_opaque_operator_attested_external_actor(
     ]
 
 
+def test_relation_dashboard_exports_local_model_with_optional_report_slot(
+    tmp_path,
+    capsys,
+) -> None:
+    home = tmp_path / "observer"
+    assert main(
+        [
+            "--home",
+            str(home),
+            "init",
+            "--label",
+            "observer",
+            "--port",
+            "48602",
+        ]
+    ) == 0
+    initialized = json.loads(capsys.readouterr().out)
+
+    assert main(["--home", str(home), "relation-dashboard"]) == 0
+    dashboard = json.loads(capsys.readouterr().out)
+    assert dashboard["type"] == "anet.relationship-dashboard.v1"
+    assert dashboard["observer_actor_id"] == initialized["node_id"]
+    assert dashboard["local_model"]["observer_actor_id"] == initialized["node_id"]
+    assert dashboard["reported_view"] is None
+    assert dashboard["privacy"] == "local-dashboard-file"
+    assert dashboard["projection_into_local_relations"] is False
+    assert dashboard["authorization_effect"] == "none"
+
+
 def test_relationship_book_keeps_actor_facts_and_subject_hypotheses_separate(
     tmp_path,
 ) -> None:

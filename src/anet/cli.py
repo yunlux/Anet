@@ -478,17 +478,17 @@ def cmd_friend_scan(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_relation_list(args: argparse.Namespace) -> int:
-    config = NodeConfig.load(args.home)
-    identity = Identity.load(config.identity_path)
+def _local_relation_model(
+    config: NodeConfig,
+    identity: Identity,
+) -> dict[str, Any]:
     relationships = RelationshipBook(
         config.relationships_path,
         own_actor_id=identity.node_id,
     )
-    if args.model:
-        model = relationships.snapshot()
-        claims = RelationshipClaimBook(config.relationship_claims_path)
-        model["mutual_relationship_claims"] = [
+    model = relationships.snapshot()
+    claims = RelationshipClaimBook(config.relationship_claims_path)
+    model["mutual_relationship_claims"] = [
             {
                 "claim_id": claim.claim_id,
                 "participant_actor_ids": [
@@ -522,18 +522,29 @@ def cmd_relation_list(args: argparse.Namespace) -> int:
                 ],
                 "authorization_effect": "none",
             }
-            for claim in claims.all()
-        ]
-        model["relationship_suggestions"] = [
-            item.to_dict() for item in RelationshipAdvisor.advise(model)
-        ]
-        model["relationship_activity"] = RelationshipActivityFeed.read(
-            model,
-            limit=500,
-            tail=True,
-        ).to_dict()
-        _print_json(model)
+        for claim in claims.all()
+    ]
+    model["relationship_suggestions"] = [
+        item.to_dict() for item in RelationshipAdvisor.advise(model)
+    ]
+    model["relationship_activity"] = RelationshipActivityFeed.read(
+        model,
+        limit=500,
+        tail=True,
+    ).to_dict()
+    return model
+
+
+def cmd_relation_list(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    if args.model:
+        _print_json(_local_relation_model(config, identity))
     else:
+        relationships = RelationshipBook(
+            config.relationships_path,
+            own_actor_id=identity.node_id,
+        )
         _print_json([record.to_dict() for record in relationships.all()])
     return 0
 
@@ -830,6 +841,38 @@ def cmd_relation_reported_view(args: argparse.Namespace) -> int:
             include_activities=args.include_activities,
             activity_limit=args.limit,
         )
+    )
+    return 0
+
+
+def cmd_relation_dashboard(args: argparse.Namespace) -> int:
+    """Export one local model and optionally one separately attributed report."""
+
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    reported_view = None
+    if args.reported:
+        disclosures = RelationshipDisclosureBook(
+            config.relationship_disclosures_path,
+            own_actor_id=identity.node_id,
+        )
+        reported_view = ReportedRelationshipViewProjector.project(
+            disclosures,
+            sender_actor_id=args.reported,
+            series_id=args.series or "",
+            include_activities=False,
+        )
+    _print_json(
+        {
+            "version": 1,
+            "type": "anet.relationship-dashboard.v1",
+            "observer_actor_id": identity.node_id,
+            "local_model": _local_relation_model(config, identity),
+            "reported_view": reported_view,
+            "privacy": "local-dashboard-file",
+            "projection_into_local_relations": False,
+            "authorization_effect": "none",
+        }
     )
     return 0
 
@@ -3273,6 +3316,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="maximum source activities when included (1-500; default: 100)",
     )
     relation_reported_view.set_defaults(func=cmd_relation_reported_view)
+
+    relation_dashboard = sub.add_parser(
+        "relation-dashboard",
+        help="export one local model and an optional sender-attributed reported view",
+    )
+    relation_dashboard.add_argument(
+        "--reported",
+        help="complete Actor ID of one reporting observer to include separately",
+    )
+    relation_dashboard.add_argument(
+        "--series",
+        help="select one continuity-proven rdsr_ series for --reported",
+    )
+    relation_dashboard.set_defaults(func=cmd_relation_dashboard)
 
     relation_schedule_add = sub.add_parser(
         "relation-disclosure-schedule-add",

@@ -310,6 +310,19 @@ anet --home <HOME> relation-list --model > relation-model.json
 Choose **导入本地模型** on the demo page. The file is parsed in the browser and
 is not uploaded by the static demo.
 
+For an observation dashboard that also includes one separately attributed
+remote view, export one local-only envelope instead:
+
+```text
+anet --home <HOME> relation-dashboard > relation-dashboard.json
+anet --home <HOME> relation-dashboard --reported <REPORTING_ACTOR_ID> \
+  > relation-dashboard.json
+```
+
+The envelope keeps `local_model` and optional `reported_view` as separate
+fields. `/social` imports both locally in one step but never merges the report
+into the local relationship model.
+
 Add a competing Actor-to-Subject link (Node or typed opaque Actor ID):
 
 ```text
