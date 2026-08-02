@@ -449,6 +449,7 @@ Wants=network-online.target
 Type=simple
 UMask=0077
 Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-%h/.config/anet/discord-social.env
 WorkingDirectory={systemd_quote(home)}
 ExecStart={systemd_quote(python)} -m anet --home {systemd_quote(home)} supervisor
 Restart=on-failure

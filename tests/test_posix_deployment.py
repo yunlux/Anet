@@ -28,6 +28,7 @@ def test_systemd_unit_runs_the_remote_supervisor() -> None:
     )
     assert SYSTEMD_SERVICE == "anet-supervisor.service"
     assert "ExecStart=" in unit
+    assert "EnvironmentFile=-%h/.config/anet/discord-social.env" in unit
     assert " -m anet --home " in unit
     assert " supervisor" in unit
     assert "Restart=on-failure" in unit
