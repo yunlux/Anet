@@ -161,6 +161,24 @@ type TimelineEvent = {
 
 type MutualClaimModel = NonNullable<RelationSnapshot["mutual_relationship_claims"]>[number];
 
+type ReportedRelationshipView = {
+  version: number;
+  type: "anet.reported-relationship-view.v1";
+  observer_actor_id: string;
+  audience_actor_id: string;
+  viewpoint: "sender-reported";
+  completeness: "partial-unknown" | "proven-continuous-segment" | "gap-detected";
+  subjects: {
+    subject_ref: string;
+    reported_state: string;
+    reported_circle: { circle: string | null; confidence: number | null } | null;
+  }[];
+  provenance: { authenticated_disclosures: number; unique_activities: number };
+  warnings: string[];
+  projection_into_local_relations: false;
+  authorization_effect: "none";
+};
+
 const circleMeta: Record<Circle, { label: string; index: string }> = {
   family: { label: "家人", index: "01" },
   close: { label: "亲密", index: "02" },
@@ -378,6 +396,27 @@ function projectSnapshot(value: unknown): {
       ? snapshot.mutual_relationship_claims
       : [],
   };
+}
+
+function projectReportedView(value: unknown): ReportedRelationshipView {
+  if (!value || typeof value !== "object") {
+    throw new Error("报告视图必须是 JSON 对象");
+  }
+  const view = value as Partial<ReportedRelationshipView>;
+  if (
+    view.type !== "anet.reported-relationship-view.v1" ||
+    view.viewpoint !== "sender-reported" ||
+    view.projection_into_local_relations !== false ||
+    view.authorization_effect !== "none" ||
+    !Array.isArray(view.subjects) ||
+    !Array.isArray(view.warnings) ||
+    !view.provenance ||
+    typeof view.observer_actor_id !== "string" ||
+    typeof view.audience_actor_id !== "string"
+  ) {
+    throw new Error("仅支持 relation-reported-view 的 sender-reported 输出");
+  }
+  return view as ReportedRelationshipView;
 }
 
 const baseSubjects: SubjectModel[] = [
@@ -692,6 +731,10 @@ export function SocialCircleDemo() {
   const [reportedViewpoint, setReportedViewpoint] = useState<
     "local" | "reported"
   >("reported");
+  const [importedReportedView, setImportedReportedView] = useState<
+    ReportedRelationshipView | null
+  >(null);
+  const [reportedImportError, setReportedImportError] = useState("");
   const [seriesGap, setSeriesGap] = useState(false);
   const [gapRecovery, setGapRecovery] = useState<
     "idle" | "noticed" | "retransmitted"
@@ -811,6 +854,25 @@ export function SocialCircleDemo() {
     setDemoDecisions({});
     setDisclosureSent(false);
     setClaimWithdrawn(false);
+    setImportedReportedView(null);
+    setReportedImportError("");
+  }
+
+  async function importReportedView(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+    try {
+      setImportedReportedView(projectReportedView(JSON.parse(await file.text())));
+      setReportedViewpoint("reported");
+      setReportedImportError("");
+      setSeriesGap(false);
+      setGapRecovery("idle");
+    } catch (error) {
+      setReportedImportError(
+        error instanceof Error ? error.message : "无法读取报告视图",
+      );
+    }
   }
 
   function decideDemoSuggestion(
@@ -871,6 +933,9 @@ export function SocialCircleDemo() {
   const actorCount = new Set(
     subjects.flatMap((subject) => subject.actors.map((actor) => actor.name)),
   ).size;
+  const reportedGap = importedReportedView
+    ? importedReportedView.completeness === "gap-detected"
+    : seriesGap;
 
   return (
     <div className={styles.demo}>
@@ -1274,6 +1339,30 @@ export function SocialCircleDemo() {
             </button>
           </div>
 
+          <div className={styles.importControls}>
+            <label className={styles.importButton}>
+              导入报告视图
+              <input
+                type="file"
+                accept="application/json,.json"
+                onChange={(event) => void importReportedView(event.target.files?.[0])}
+              />
+            </label>
+            {importedReportedView && (
+              <button
+                type="button"
+                className={styles.resetButton}
+                onClick={() => setImportedReportedView(null)}
+              >
+                返回示例报告
+              </button>
+            )}
+            <small>
+              导入 `relation-reported-view` 输出；仅在当前浏览器解析，不写入本地关系模型。
+            </small>
+          </div>
+          {reportedImportError && <p className={styles.importError}>{reportedImportError}</p>}
+
           <div className={styles.scheduleConsole}>
             <div>
               <small>OBSERVER-LOCAL DISCLOSURE SCHEDULE</small>
@@ -1386,6 +1475,7 @@ export function SocialCircleDemo() {
                   A 报告的判断
                 </button>
                 {reportedViewpoint === "reported" && (
+                  !importedReportedView && (
                   <button
                     type="button"
                     className={seriesGap ? styles.gapButton : ""}
@@ -1396,6 +1486,7 @@ export function SocialCircleDemo() {
                   >
                     {seriesGap ? "补回缺页" : "模拟缺页"}
                   </button>
+                  )
                 )}
               </div>
             </div>
@@ -1404,21 +1495,30 @@ export function SocialCircleDemo() {
               <>
                 <div className={styles.reportedMeta}>
                   <span><b>VIEWPOINT</b> SENDER-REPORTED</span>
-                  <span><b>OBSERVER</b> ACTOR A</span>
+                  <span><b>OBSERVER</b> {importedReportedView ? `${importedReportedView.observer_actor_id.slice(0, 18)}…` : "ACTOR A"}</span>
                   <span>
                     <b>COMPLETENESS</b>
-                    {seriesGap
-                      ? "GAP-DETECTED"
-                      : "PROVEN-CONTINUOUS-SEGMENT"}
+                    {importedReportedView
+                      ? importedReportedView.completeness.toUpperCase()
+                      : seriesGap
+                        ? "GAP-DETECTED"
+                        : "PROVEN-CONTINUOUS-SEGMENT"}
                   </span>
                   <span><b>LOCAL PROJECTION</b> NONE</span>
                 </div>
                 <div className={styles.reportedSubjects}>
-                  {[
-                    ["subj_8f2…", "亲密", "研究伙伴", "78"],
-                    ["subj_21a…", "朋友", "创作伙伴", "66"],
-                    ["subj_c40…", "协作", "远端 Agent", "54"],
-                  ].map(([id, circle, label, score]) => (
+                  {(importedReportedView
+                    ? importedReportedView.subjects.map((subject) => [
+                        `${subject.subject_ref.slice(0, 13)}…`,
+                        String(subject.reported_circle?.circle ?? "未报告"),
+                        `报告状态：${subject.reported_state}`,
+                        String(subject.reported_circle?.confidence ?? "—"),
+                      ])
+                    : [
+                        ["subj_8f2…", "亲密", "研究伙伴", "78"],
+                        ["subj_21a…", "朋友", "创作伙伴", "66"],
+                        ["subj_c40…", "协作", "远端 Agent", "54"],
+                      ]).map(([id, circle, label, score]) => (
                     <article key={id}>
                       <small>{id} · A&apos;S HYPOTHESIS</small>
                       <strong>{label}</strong>
@@ -1429,23 +1529,25 @@ export function SocialCircleDemo() {
                 </div>
                 <div
                   className={`${styles.coverageWarning} ${
-                    seriesGap ? styles.coverageGap : styles.coverageVerified
+                    reportedGap ? styles.coverageGap : styles.coverageVerified
                   }`}
                 >
                   <b>
-                    {seriesGap ? "GAP DETECTED" : "CONTINUITY VERIFIED"}
+                    {reportedGap ? "GAP DETECTED" : "CONTINUITY VERIFIED"}
                   </b>
-                  {seriesGap
-                    ? "missing-series-sequence: 01"
-                    : "rdsr_7c1… · seq 00 → 02 · cursor links verified"}
-                  <span>3 authenticated Packets · 11 unique activities</span>
+                  {importedReportedView
+                    ? importedReportedView.warnings.join(" · ") || "no coverage warnings"
+                    : seriesGap
+                      ? "missing-series-sequence: 01"
+                      : "rdsr_7c1… · seq 00 → 02 · cursor links verified"}
+                  <span>{importedReportedView ? `${importedReportedView.provenance.authenticated_disclosures} authenticated Packets · ${importedReportedView.provenance.unique_activities} unique activities` : "3 authenticated Packets · 11 unique activities"}</span>
                 </div>
                 <div className={styles.realityLimit}>
                   <b>REALITY LIMIT</b>
                   current-state-after-last-cursor-not-proven ·
                   history-before-declared-baseline-not-covered
                 </div>
-                <div className={styles.gapRecovery}>
+                {!importedReportedView && <div className={styles.gapRecovery}>
                   <div>
                     <small>01 · AUDIENCE G</small>
                     <strong>检测缺口，不推断原因</strong>
@@ -1497,7 +1599,7 @@ export function SocialCircleDemo() {
                       <b>模拟缺页后可演练恢复协议</b>
                     )}
                   </span>
-                </div>
+                </div>}
               </>
             ) : (
               <div className={styles.localViewEmpty}>

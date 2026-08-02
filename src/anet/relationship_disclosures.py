@@ -65,6 +65,7 @@ _DETAIL_FIELDS = frozenset(
         "proposed_circle",
         "proposed_estimate",
         "applied",
+        "state",
     }
 )
 _LIST_DETAIL_FIELDS = frozenset(

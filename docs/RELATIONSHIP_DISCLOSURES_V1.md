@@ -112,10 +112,18 @@ anet --home <B_HOME> relation-reported-view <A_NODE_ID> \
 
 The derived view folds repeated structural reports into reported Subject
 states, Actor links, circles, contextual trust estimates, transition lineage,
-and interaction counts. Every value remains attributed to A. It reports
+and interaction counts. An observed `relationship.paused` or
+`relationship.ended` event folds to the sender-reported `dormant` or `ended`
+state; a later explicit `relationship.circle-set` folds back to `active`.
+Every value remains attributed to A. It reports
 `completeness: partial-unknown` because v1 does not prove a historical baseline
 or cross-Packet append continuity. Packet and disclosure provenance, receive
 times, cursor heads, and coverage warnings remain visible.
+
+For human inspection, save this output and use **导入报告视图** in `/social`.
+The browser renders it as `sender-reported` with its completeness and warnings;
+it does not upload the file or create a local Actor, Subject, circle, trust
+estimate, PeerBook entry, capability, or authorization.
 
 For v2, select one series when several exist:
 

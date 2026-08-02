@@ -138,6 +138,17 @@
 }
 .importButton span { margin-right: 6px; color: #d9ff43; font-size: 13px; }
 .importButton:hover span { color: #151613; }
+.importControls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0 0;
+}
+.importControls small {
+  color: #74766d;
+  font: 8px/1.45 var(--font-mono);
+}
 .importError {
   width: min(1280px, calc(100% - 48px));
   margin: 12px auto 0;

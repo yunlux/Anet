@@ -405,7 +405,8 @@ class ReportedRelationshipViewProjector:
             and subject is not None
             and activity.actor_id
         ):
-            subject["reported_state"] = "active"
+            if subject["reported_state"] == "unknown":
+                subject["reported_state"] = "active"
             subject["actor_links"][activity.actor_id] = {
                 "confidence": details.get("confidence"),
                 "source_activity_id": activity.activity_id,
@@ -436,6 +437,18 @@ class ReportedRelationshipViewProjector:
                     "source_activity_id": activity.activity_id,
                     "reported_ms": activity.occurred_ms,
                 }
+
+        if (
+            activity.activity_type == "relationship.paused"
+            and subject is not None
+        ):
+            subject["reported_state"] = "dormant"
+
+        if (
+            activity.activity_type == "relationship.ended"
+            and subject is not None
+        ):
+            subject["reported_state"] = "ended"
 
         if (
             activity.activity_type == "interaction.observed"

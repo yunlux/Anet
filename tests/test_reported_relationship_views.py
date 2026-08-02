@@ -162,6 +162,90 @@ def test_reported_view_deduplicates_overlapping_activity_pages(
     assert view["subjects"][0]["interaction_stats"][0]["incoming"] == 1
 
 
+def test_reported_view_replays_pause_end_and_explicit_reactivation(
+    tmp_path,
+) -> None:
+    observer, audience, _observed, subject, _disclosure, received = (
+        _reported_book(tmp_path)
+    )
+    relations = RelationshipBook(
+        tmp_path / "source-relationships.json",
+        own_actor_id=observer.node_id,
+    )
+    relations.pause_relationship(
+        subject.subject_ref,
+        evidence_ref="operator:relationship-inactive",
+        now=NOW + 70,
+    )
+    paused = RelationshipDisclosure.create(
+        RelationshipActivityFeed.read(relations.snapshot()),
+        audience_actor_id=audience.node_id,
+        now=NOW + 80,
+    )
+    received.add(
+        paused,
+        packet_id="44" * 16,
+        sender_actor_id=observer.node_id,
+        received_ms=NOW + 90,
+    )
+    view = ReportedRelationshipViewProjector.project(
+        received,
+        sender_actor_id=observer.node_id,
+    )
+    projected = view["subjects"][0]
+    assert projected["reported_state"] == "dormant"
+    assert projected["reported_circle"]["circle"] == "friend"
+
+    relations.end_relationship(
+        subject.subject_ref,
+        evidence_ref="operator:relationship-ended",
+        now=NOW + 100,
+    )
+    ended = RelationshipDisclosure.create(
+        RelationshipActivityFeed.read(relations.snapshot()),
+        audience_actor_id=audience.node_id,
+        now=NOW + 110,
+    )
+    received.add(
+        ended,
+        packet_id="55" * 16,
+        sender_actor_id=observer.node_id,
+        received_ms=NOW + 120,
+    )
+    assert ReportedRelationshipViewProjector.project(
+        received,
+        sender_actor_id=observer.node_id,
+    )["subjects"][0]["reported_state"] == "ended"
+
+    relations.set_circle(
+        subject.subject_ref,
+        "known",
+        confidence=55,
+        evidence_ref="operator:relationship-reopened",
+        now=NOW + 130,
+    )
+    reopened = RelationshipDisclosure.create(
+        RelationshipActivityFeed.read(relations.snapshot()),
+        audience_actor_id=audience.node_id,
+        now=NOW + 140,
+    )
+    received.add(
+        reopened,
+        packet_id="66" * 16,
+        sender_actor_id=observer.node_id,
+        received_ms=NOW + 150,
+    )
+    view = ReportedRelationshipViewProjector.project(
+        received,
+        sender_actor_id=observer.node_id,
+    )
+    projected = view["subjects"][0]
+    assert projected["reported_state"] == "active"
+    assert projected["reported_circle"]["circle"] == "known"
+    assert view["projection_into_local_relations"] is False
+    assert view["authorization_effect"] == "none"
+
+
 def test_reported_view_subject_filter_and_cli(tmp_path, capsys) -> None:
     config = initialize_node(
         tmp_path / "audience-home",
