@@ -32,6 +32,7 @@ test("renders the Anet product homepage", async () => {
   assert.match(html, /bounded duplicate preflight/);
   assert.match(html, /software\.wheel_url/);
   assert.match(html, /software\.repo_url/);
+  assert.match(html, /repo_ref/);
   assert.match(html, /Git source/);
   assert.match(html, /Git 源/);
   assert.match(html, /用户已授权创建一个独立持久节点/);

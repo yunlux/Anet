@@ -119,6 +119,8 @@ When a wheel is supplied, `software.sha256` pins it. When only `repo_url` is
 provided, the runtime installer passes the repository to pip as a Git source,
 so Git must be available on the device. The same `repo_url` is used for
 matching helper scripts and subsequent source-based updates.
+Optional `software.repo_ref` (or top-level `repo_ref`) pins the helper scripts,
+initial runtime, and later source updates to one Git branch, tag, or commit.
 
 The initial installer accepts `config` or its equivalent `default_config`
 object, including the selected platform overlay. The running remote-control
@@ -128,7 +130,7 @@ interpret the page differently.
 The page may contain a `platforms` object with `windows`, `wsl`, `linux`,
 `macos`, or `termux` overlays. The selected overlay is merged after the common
 document, so one control URL can share common software and community peers
-while overriding the wheel, hash, listen ports, and advertised addresses for
+while overriding the wheel, hash, repository reference, listen ports, and advertised addresses for
 one platform. See
 [`windows-control-page.example.json`](windows-control-page.example.json).
 
@@ -147,7 +149,9 @@ The local `remote-control.json` `interval` is used when the composed page and
 its child pages omit `poll_seconds`; an explicit page value overrides it. This
 keeps a device's polling cadence configurable without changing the page.
 
-`repo_url` is recorded as the advertised project source. A package update is
+`repo_url` is recorded as the advertised project source. When `repo_ref` is
+present, it is recorded and passed to Git for the initial and subsequent source
+installations. A package update is
 performed from `wheel_url` when present; otherwise the prototype passes the
 repository URL to `pip` as a `git+` package source. The active virtual
 environment is updated in place and the supervisor re-executes itself after a

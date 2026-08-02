@@ -3,6 +3,7 @@
   "sequence": 1,
   "network": "community",
   "repo_url": "https://github.com/yunlux/Anet",
+  "repo_ref": "main",
   "poll_seconds": 300,
   "software": {
     "version": "0.12.1"

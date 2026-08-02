@@ -493,6 +493,14 @@ Assert-CrossPlatformPorts `
 $helperRoot = ""
 $preflight = $null
 $preflightScript = ""
+$sourceRef = Get-OptionalProperty $software "repo_ref"
+if (-not $sourceRef) {
+    $sourceRef = Get-OptionalProperty $page "repo_ref"
+}
+if (-not $sourceRef) {
+    $sourceRef = Get-OptionalProperty $page "anet_repo_ref"
+}
+$helperBranch = if ($sourceRef) { $sourceRef } else { $GitHubBranch }
 if ($PSScriptRoot) {
     $localPreflight = Join-Path $PSScriptRoot "windows_install_preflight.ps1"
     if (Test-Path -LiteralPath $localPreflight -PathType Leaf) {
@@ -513,7 +521,7 @@ if (-not $preflightScript) {
         }
         $repoUrl = Resolve-ControlReference $ControlUrl $repoUrl
         $PreflightScriptUrl = Get-GitHubScriptUrl `
-            $repoUrl $GitHubBranch "windows_install_preflight.ps1"
+            $repoUrl $helperBranch "windows_install_preflight.ps1"
     }
     $helperRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
         "anet-bootstrap-" + [Guid]::NewGuid().ToString("N")
@@ -591,7 +599,7 @@ if ($localInstaller -and (Test-Path -LiteralPath $localInstaller -PathType Leaf)
         }
         $repoUrl = Resolve-ControlReference $ControlUrl $repoUrl
         $RuntimeInstallerUrl = Get-GitHubScriptUrl `
-            $repoUrl $GitHubBranch "install_windows.ps1"
+            $repoUrl $helperBranch "install_windows.ps1"
     }
     if (-not $helperRoot) {
         $helperRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
@@ -608,7 +616,10 @@ $runtimeArguments = @(
     "-Root", $rootPath
 )
 if ($sourceUrl) {
-    $runtimeArguments += @("-SourceUrl", $sourceUrl)
+    $runtimeArguments += @(
+        "-SourceUrl", $sourceUrl,
+        "-SourceRef", $sourceRef
+    )
 } else {
     $wheelPath = (Resolve-Path -LiteralPath $Wheel).Path
     if (-not $WheelSha256) {
@@ -709,7 +720,7 @@ if ($localLauncher -and (Test-Path -LiteralPath $localLauncher -PathType Leaf)) 
         }
         $repoUrl = Resolve-ControlReference $ControlUrl $repoUrl
         $SupervisorScriptUrl = Get-GitHubScriptUrl `
-            $repoUrl $GitHubBranch "run-supervisor.ps1"
+            $repoUrl $helperBranch "run-supervisor.ps1"
     }
     if (-not $helperRoot) {
         $helperRoot = Join-Path ([System.IO.Path]::GetTempPath()) (

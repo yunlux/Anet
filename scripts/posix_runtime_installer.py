@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -17,6 +18,26 @@ from install_preflight import collect_preflight, emit_preflight
 
 class InstallError(RuntimeError):
     pass
+
+
+_REPOSITORY_REF_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+
+
+def normalize_repository_ref(value: str) -> str:
+    """Validate the optional Git branch, tag, or commit reference."""
+
+    reference = str(value).strip()
+    if not reference:
+        return ""
+    if (
+        not _REPOSITORY_REF_PATTERN.fullmatch(reference)
+        or ".." in reference
+        or "//" in reference
+        or "@{" in reference
+        or reference.endswith((".", "/"))
+    ):
+        raise InstallError("repository ref contains an invalid Git reference")
+    return reference
 
 
 def sha256(path: Path) -> str:
@@ -49,7 +70,11 @@ def cli_in(venv: Path) -> Path:
     return venv / "bin" / "anet"
 
 
-def source_requirement(source_url: str, feature: str) -> str:
+def source_requirement(
+    source_url: str,
+    feature: str,
+    source_ref: str = "",
+) -> str:
     """Build the pip requirement used for a repository-based installation."""
 
     source = str(source_url).strip()
@@ -61,6 +86,12 @@ def source_requirement(source_url: str, feature: str) -> str:
         package = f"git+{source}"
     else:
         package = f"git+{Path(source).expanduser().resolve().as_uri()}"
+    reference = normalize_repository_ref(source_ref)
+    if reference:
+        base, separator, fragment = package.partition("#")
+        package = f"{base}@{reference}"
+        if separator:
+            package += f"#{fragment}"
     extras = {
         "core": "",
         "mcp": "mcp",
@@ -105,12 +136,14 @@ def install_runtime(
     root: Path,
     feature: str,
     source_url: str = "",
+    source_ref: str = "",
     system_site_packages: bool = False,
     install_dependencies: bool = True,
     use_uv: bool = True,
     verify_feature: str | None = None,
 ) -> dict[str, str]:
     source_url = str(source_url).strip()
+    source_ref = normalize_repository_ref(source_ref)
     if wheel is None and not source_url:
         raise InstallError("provide a wheel or repository source URL")
     if wheel is not None and source_url:
@@ -139,7 +172,10 @@ def install_runtime(
             raise InstallError("existing version directory has no release manifest")
         current = json.loads(manifest.read_text(encoding="utf-8"))
         if source_url:
-            if current.get("source_url") != source_url:
+            if (
+                current.get("source_url") != source_url
+                or str(current.get("source_ref", "")) != source_ref
+            ):
                 raise InstallError("existing version has a different repository source")
         elif current.get("wheel_sha256") != expected_hash:
             raise InstallError("existing version has a different wheel hash")
@@ -155,7 +191,7 @@ def install_runtime(
             venv = destination / "venv"
             uv = shutil.which("uv") if use_uv else None
             if source_url:
-                requirement = source_requirement(source_url, feature)
+                requirement = source_requirement(source_url, feature, source_ref)
             else:
                 extras = {
                     "core": "",
@@ -204,6 +240,7 @@ def install_runtime(
             }
             if source_url:
                 release["source_url"] = source_url
+                release["source_ref"] = source_ref
             else:
                 release["wheel_sha256"] = expected_hash
             manifest.write_text(

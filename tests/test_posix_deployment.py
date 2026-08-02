@@ -15,6 +15,7 @@ from posix_oneclick import (  # noqa: E402
     launchd_plist,
     platform_config,
     platform_software,
+    repository_ref,
     repository_source,
     systemd_unit,
     validate_cross_platform_locators,
@@ -104,6 +105,13 @@ def test_repository_source_resolves_relative_repo_urls() -> None:
     ) == "https://example.test/Anet"
 
 
+def test_repository_ref_falls_back_to_the_page_ref() -> None:
+    assert repository_ref(
+        {"repo_ref": "v0.12.1"},
+        {"version": "0.12.1"},
+    ) == "v0.12.1"
+
+
 def test_source_requirement_preserves_feature_extras() -> None:
     assert source_requirement("https://github.com/yunlux/Anet", "core") == (
         "git+https://github.com/yunlux/Anet"
@@ -111,6 +119,11 @@ def test_source_requirement_preserves_feature_extras() -> None:
     assert source_requirement("https://github.com/yunlux/Anet", "mcp") == (
         "anet-fabric[mcp] @ git+https://github.com/yunlux/Anet"
     )
+    assert source_requirement(
+        "https://github.com/yunlux/Anet",
+        "core",
+        "v0.12.1",
+    ) == "git+https://github.com/yunlux/Anet@v0.12.1"
 
 
 def test_cross_platform_host_locators_cannot_use_loopback() -> None:

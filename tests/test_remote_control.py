@@ -555,6 +555,45 @@ def test_same_version_software_change_is_not_silently_skipped(
     assert state["software_key"] != "previous-page"
 
 
+def test_repository_software_update_uses_the_declared_ref(
+    tmp_path: Path, monkeypatch
+) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        remote_control.subprocess,
+        "run",
+        lambda command, check: calls.append(list(command)),
+    )
+    state: dict[str, object] = {}
+
+    assert remote_control._install_software(
+        tmp_path,
+        {
+            "repo_url": "https://github.com/yunlux/Anet",
+            "repo_ref": "v0.12.1",
+        },
+        state,
+    ) is True
+
+    assert calls
+    assert "git+https://github.com/yunlux/Anet@v0.12.1" in calls[0]
+    assert state["software_key"]
+
+
+def test_repository_software_update_rejects_an_invalid_ref(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(RemoteControlError, match="invalid Git reference"):
+        remote_control._install_software(
+            tmp_path,
+            {
+                "repo_url": "https://github.com/yunlux/Anet",
+                "repo_ref": "../../main",
+            },
+            {},
+        )
+
+
 def test_failed_software_update_restores_the_active_package(
     tmp_path: Path, monkeypatch
 ) -> None:

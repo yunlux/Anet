@@ -28,6 +28,7 @@ from posix_oneclick import (
     download,
     platform_config,
     platform_software,
+    repository_ref,
     repository_source,
     read_json_url,
     resolve_reference,
@@ -278,6 +279,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="anet-termux-") as temporary:
         wheel = args.wheel.expanduser().resolve() if args.wheel else None
         source_url = ""
+        source_ref = ""
         if wheel is None:
             wheel_url = str(software.get("wheel_url", "")).strip()
             if wheel_url:
@@ -285,6 +287,7 @@ def main() -> int:
                 download(resolve_reference(args.control_url, wheel_url), wheel)
             else:
                 source_url = repository_source(page, software, args.control_url)
+                source_ref = repository_ref(page, software)
                 if not source_url:
                     raise DeploymentError(
                         "control page software.wheel_url or software.repo_url "
@@ -310,6 +313,7 @@ def main() -> int:
                 use_uv=False,
                 verify_feature="core",
                 source_url=source_url,
+                source_ref=source_ref,
             )
         except InstallError as exc:
             raise DeploymentError(str(exc)) from exc

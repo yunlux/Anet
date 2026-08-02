@@ -30,6 +30,9 @@ Windows deployment prototype: default `config`, Peer Cards, `repo_url`,
 `pages`, and `kv` JSON sources.
 `default_config` is accepted as an alias for `config`, including inside a
 platform overlay.
+When a repository source is used, optional `software.repo_ref` (or top-level
+`repo_ref`) pins a Git branch, tag, or commit for the initial runtime and later
+source updates.
 
 After installation:
 
@@ -50,7 +53,7 @@ After installation:
   the updated runtime.
 - A home-level OS lock prevents a second supervisor from operating the same
   node home concurrently.
-- A changed wheel or repository is applied even when its package version is
+- A changed wheel, repository, or repository reference is applied even when its package version is
   unchanged; only the first sync of the already-installed initial version is
   skipped.
 - Before a package update, the active Anet package and metadata are snapshotted

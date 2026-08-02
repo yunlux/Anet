@@ -16,6 +16,7 @@ import ipaddress
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -50,6 +51,7 @@ _NETWORK_CONFIG_KEYS = frozenset(
         "capabilities",
     }
 )
+_REPOSITORY_REF_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 
 
 class RemoteControlError(RuntimeError):
@@ -135,6 +137,32 @@ def _json_digest(value: Any) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
+
+
+def _normalize_repository_ref(value: Any) -> str:
+    reference = str(value or "").strip()
+    if not reference:
+        return ""
+    if (
+        not _REPOSITORY_REF_PATTERN.fullmatch(reference)
+        or ".." in reference
+        or "//" in reference
+        or "@{" in reference
+        or reference.endswith((".", "/"))
+    ):
+        raise RemoteControlError("software repo_ref contains an invalid Git reference")
+    return reference
+
+
+def _git_source(source: str, reference: str) -> str:
+    package = source if source.startswith("git+") else f"git+{source}"
+    if not reference:
+        return package
+    base, separator, fragment = package.partition("#")
+    package = f"{base}@{reference}"
+    if separator:
+        package += f"#{fragment}"
+    return package
 
 
 def _is_windows_path(value: str) -> bool:
@@ -370,6 +398,7 @@ def _empty_document(
         "sequence": 0,
         "network": "",
         "repo_url": "",
+        "repo_ref": "",
         "poll_seconds": poll_seconds,
         "config": {},
         "software": {},
@@ -502,6 +531,10 @@ def _normalise_document(
             result["repo_url"] = _resolve_reference(
                 source_url, str(document["anet_repo"])
             )
+        if document.get("repo_ref"):
+            result["repo_ref"] = str(document["repo_ref"]).strip()
+        if document.get("anet_repo_ref"):
+            result["repo_ref"] = str(document["anet_repo_ref"]).strip()
         if "poll_seconds" in document:
             result["poll_seconds"] = _bounded_interval(
                 document.get("poll_seconds"),
@@ -521,6 +554,8 @@ def _normalise_document(
             result["software"] = _deep_merge(result["software"], software)
         if result["repo_url"] and "repo_url" not in result["software"]:
             result["software"]["repo_url"] = result["repo_url"]
+        if result["repo_ref"] and "repo_ref" not in result["software"]:
+            result["software"]["repo_ref"] = result["repo_ref"]
         for key in ("nodes", "peers"):
             values = document.get(key, [])
             if isinstance(values, list):
@@ -557,6 +592,8 @@ def _normalise_document(
                     result["network"] = child["network"]
                 if child["repo_url"]:
                     result["repo_url"] = child["repo_url"]
+                if child["repo_ref"]:
+                    result["repo_ref"] = child["repo_ref"]
                 result["poll_seconds"] = min(
                     result["poll_seconds"], child["poll_seconds"]
                 )
@@ -906,6 +943,7 @@ def _install_software(home: Path, software: dict[str, Any], state: dict[str, Any
     source = str(software.get("wheel_url", "") or software.get("repo_url", "")).strip()
     if not source:
         return False
+    source_ref = _normalize_repository_ref(software.get("repo_ref", ""))
     software_key = _json_digest(software)
     if state.get("software_key") == software_key:
         return False
@@ -941,7 +979,7 @@ def _install_software(home: Path, software: dict[str, Any], state: dict[str, Any
             str(wheel),
         ]
     else:
-        package = source if source.startswith("git+") else f"git+{source}"
+        package = _git_source(source, source_ref)
         package_arguments = [
             "install",
             "--disable-pip-version-check",

@@ -196,6 +196,16 @@ def repository_source(
     return resolve_reference(control_url, source) if source else ""
 
 
+def repository_ref(page: dict[str, Any], software: dict[str, Any]) -> str:
+    """Return the optional Git branch, tag, or commit for the source."""
+
+    return str(
+        software.get("repo_ref", "")
+        or page.get("repo_ref", "")
+        or page.get("anet_repo_ref", "")
+    ).strip()
+
+
 def string_list(value: Any, label: str) -> list[str]:
     if not isinstance(value, list):
         raise DeploymentError(f"{label} must be a list")
@@ -680,6 +690,7 @@ def main(platform_name: str, default_root: Path) -> int:
 
     wheel_path = args.wheel.expanduser().resolve() if args.wheel else None
     source_url = ""
+    source_ref = ""
     with tempfile.TemporaryDirectory(prefix="anet-oneclick-") as temporary:
         if wheel_path is None:
             wheel_url = str(software.get("wheel_url", "")).strip()
@@ -688,6 +699,7 @@ def main(platform_name: str, default_root: Path) -> int:
                 download(resolve_reference(args.control_url, wheel_url), wheel_path)
             else:
                 source_url = repository_source(page, software, args.control_url)
+                source_ref = repository_ref(page, software)
                 if not source_url:
                     raise DeploymentError(
                         "control page software.wheel_url or software.repo_url "
@@ -712,6 +724,7 @@ def main(platform_name: str, default_root: Path) -> int:
                 root=root,
                 feature=args.feature,
                 source_url=source_url,
+                source_ref=source_ref,
             )
         except InstallError as exc:
             raise DeploymentError(str(exc)) from exc

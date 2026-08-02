@@ -34,7 +34,9 @@ repo_url is also accepted). A wheel plus software.sha256 is the reproducible
 package path. With only repo_url, the installer passes the repository to pip as
 a Git source, so Git must be available on the device. The same repo_url lets a
 downloaded entry point fetch matching helper scripts and lets the supervisor
-apply later source updates. See docs/windows-control-page.example.json and
+apply later source updates. Set optional software.repo_ref (or top-level
+repo_ref) to pin a Git branch, tag, or commit; helper scripts and runtime
+updates use that same reference. See docs/windows-control-page.example.json and
 docs/WINDOWS_AUTOSTART.md.
 
 Run this in an ordinary PowerShell window for a current-user installation:
@@ -116,7 +118,8 @@ from another device:
 ~~~text
 Install and deploy Anet from https://github.com/yunlux/Anet. Use this control
 page URL: <CONTROL_URL> (replace the placeholder before running). The page
-must provide software.version plus software.wheel_url or repo_url. This request
+must provide software.version plus software.wheel_url or repo_url; when using
+repo_url, an optional repo_ref can pin a branch, tag, or commit. This request
 authorizes one independent persistent node, its service/autostart integration,
 and the supervisor's remote control-page polling. Detect the platform and use
 its one-click deployment entry point; on native Windows use the PowerShell

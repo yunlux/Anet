@@ -4,6 +4,7 @@ param(
     [string]$Wheel,
     [string]$WheelSha256,
     [string]$SourceUrl,
+    [string]$SourceRef,
     [ValidateSet("core", "mcp", "full")]
     [string]$Feature = "core",
     [string]$Root = (Join-Path $env:LOCALAPPDATA "Anet")
@@ -12,10 +13,58 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+function Get-OptionalProperty {
+    param([object]$Object, [string]$Name)
+    if ($null -eq $Object) {
+        return ""
+    }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) {
+        return ""
+    }
+    return [string]$property.Value
+}
+
+function Normalize-RepositoryRef {
+    param([string]$Value)
+    $reference = if ($null -eq $Value) { "" } else { $Value.Trim() }
+    if (-not $reference) {
+        return ""
+    }
+    if (
+        $reference -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]*$' -or
+        $reference.Contains("..") -or
+        $reference.Contains("//") -or
+        $reference.Contains("@{") -or
+        $reference.EndsWith(".") -or
+        $reference.EndsWith("/")
+    ) {
+        throw "repository ref contains an invalid Git reference"
+    }
+    return $reference
+}
+
+function Add-GitSourceRef {
+    param([string]$Source, [string]$Reference)
+    if (-not $Reference) {
+        return $Source
+    }
+    $parts = $Source.Split("#", 2)
+    $result = "$($parts[0])@$Reference"
+    if ($parts.Count -eq 2) {
+        $result += "#$($parts[1])"
+    }
+    return $result
+}
+
 $hasWheel = -not [string]::IsNullOrWhiteSpace($Wheel)
 $hasSource = -not [string]::IsNullOrWhiteSpace($SourceUrl)
+$SourceRef = Normalize-RepositoryRef $SourceRef
 if ($hasWheel -eq $hasSource) {
     throw "provide exactly one of -Wheel or -SourceUrl"
+}
+if ($SourceRef -and -not $hasSource) {
+    throw "-SourceRef requires -SourceUrl"
 }
 
 function Invoke-Checked {
@@ -76,7 +125,10 @@ if (Test-Path -LiteralPath $destination) {
         if ($release.wheel_sha256 -ne $observedHash) {
             throw "existing version has a different wheel hash"
         }
-    } elseif ($release.source_url -ne $SourceUrl) {
+    } elseif (
+        (Get-OptionalProperty $release "source_url") -ne $SourceUrl -or
+        (Get-OptionalProperty $release "source_ref") -ne $SourceRef
+    ) {
         throw "existing version has a different repository source"
     }
     $installedFeature = if ($release.PSObject.Properties["feature"]) {
@@ -103,6 +155,7 @@ if (Test-Path -LiteralPath $destination) {
             } else {
                 "git+$SourceUrl"
             }
+            $gitSource = Add-GitSourceRef $gitSource $SourceRef
             $requirement = if ($extras) {
                 "anet-fabric[$extras] @ $gitSource"
             } else {
@@ -144,6 +197,7 @@ if (Test-Path -LiteralPath $destination) {
         }
         if ($hasSource) {
             $release.source_url = $SourceUrl
+            $release.source_ref = $SourceRef
         } else {
             $release.wheel_sha256 = $observedHash
         }
@@ -182,6 +236,7 @@ $current = @{
 }
 if ($hasSource) {
     $current.source_url = $SourceUrl
+    $current.source_ref = $SourceRef
 } else {
     $current.wheel_sha256 = $observedHash
 }
