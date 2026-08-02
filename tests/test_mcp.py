@@ -21,6 +21,7 @@ from anet.mcp_server import (
     anet_relation_activity,
     anet_relation_disclose,
     anet_relation_disclosures,
+    anet_relation_model,
     anet_relation_reported_view,
     anet_send,
     anet_settle,
@@ -67,6 +68,18 @@ def test_mcp_relationship_activity_is_disabled_by_default(
     async def scenario() -> None:
         with pytest.raises(PermissionError, match="outside"):
             await anet_relation_activity()
+
+    asyncio.run(scenario())
+
+
+def test_mcp_relationship_model_is_disabled_by_default(
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("ANET_MCP_ALLOW_RELATION_MODEL", raising=False)
+
+    async def scenario() -> None:
+        with pytest.raises(PermissionError, match="outside"):
+            await anet_relation_model()
 
     asyncio.run(scenario())
 
@@ -123,6 +136,74 @@ def test_mcp_relationship_activity_reads_scoped_local_feed(
             assert page["activities"][0]["activity_type"] == "actor.observed"
             assert "mcp-private-ref" not in json.dumps(page)
             assert page["authorization_effect"] == "none"
+
+    asyncio.run(scenario())
+
+
+def test_mcp_relationship_model_is_structural_and_content_free(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    config = initialize_node(
+        tmp_path / "node",
+        label="node",
+        listen_port=45110,
+    )
+    identity = Identity.load(config.identity_path)
+    peer = Identity.generate("sensitive-peer-label")
+    relationships = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=identity.node_id,
+    )
+    subject = relationships.observe_actor(
+        peer.card(),
+        evidence_ref="packet:mcp-model-private-ref",
+        now=1_800_000_000_001,
+    )
+    relationships.set_circle(
+        subject.subject_ref,
+        "friend",
+        confidence=77,
+        evidence_ref="relationship:mcp-model-private-ref",
+        labels=("private-relationship-label",),
+        now=1_800_000_000_002,
+    )
+    relationships.set_context_trust(
+        subject.subject_ref,
+        "code.review",
+        estimate=84,
+        confidence=70,
+        evidence_ref="trust:mcp-model-private-ref",
+        now=1_800_000_000_003,
+    )
+    monkeypatch.setenv("ANET_HOME", str(config.home))
+    monkeypatch.setenv("ANET_MCP_ALLOW_RELATION_MODEL", "1")
+
+    async def scenario() -> None:
+        async with anet_lifespan(server):
+            model = json.loads(await anet_relation_model())
+            rendered = json.dumps(model)
+            assert model["type"] == "anet.relation.model-projection.v1"
+            assert model["actors"] == [
+                {
+                    "actor_id": peer.node_id,
+                    "actor_kind": "anet.node",
+                    "state": "active",
+                    "proof_scopes": ["cryptographic"],
+                }
+            ]
+            assert model["relationships"][0]["circle"] == "friend"
+            assert model["relationships"][0]["context_trust"] == [
+                {"context": "code.review", "estimate": 84, "confidence": 70}
+            ]
+            assert model["mutual_relationship_claims"] == []
+            assert model["privacy"] == "observer-private-structural"
+            assert model["authorization_effect"] == "none"
+            assert "mcp-model-private-ref" not in rendered
+            assert "private-relationship-label" not in rendered
+            assert "sensitive-peer-label" not in rendered
+            assert "evidence_refs" not in rendered
+            assert "events" not in rendered
 
     asyncio.run(scenario())
 

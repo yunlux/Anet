@@ -70,6 +70,7 @@ capabilities merely to make startup succeed.
         "ANET_MCP_TASK_ALLOWED_SENDERS": "<COMPLETE_PINNED_NODE_ID>",
         "ANET_MCP_TASK_CAPABILITIES": "<EXACT_CAPABILITY_OR_NAMESPACE.*>",
         "ANET_MCP_ALLOW_RAW_INBOX": "0",
+        "ANET_MCP_ALLOW_RELATION_MODEL": "0",
         "ANET_MCP_ALLOW_RELATION_ACTIVITY": "0",
         "ANET_MCP_ALLOW_RELATION_DISCLOSURE": "0"
       }
@@ -113,6 +114,7 @@ Tool arguments can narrow these values but cannot expand them:
 | `ANET_MCP_ALLOW_UNTRUSTED=1` | Opts into untrusted consumer input. Default: disabled. |
 | `ANET_MCP_ALLOW_TRANSIENT=1` | Opts into transient consumer input. Default: disabled. |
 | `ANET_MCP_ALLOW_APPROVAL_EXECUTION=1` | Enables high-risk Companion approval ledger tools. Default: disabled. |
+| `ANET_MCP_ALLOW_RELATION_MODEL=1` | Enables a compact, structural view of this node's local Actor/Subject/circle model. Default: disabled. |
 | `ANET_MCP_ALLOW_RELATION_ACTIVITY=1` | Enables the private observer-local social activity feed. Default: disabled. |
 | `ANET_MCP_ALLOW_RELATION_DISCLOSURE=1` | Enables sending and reading audience-bound relationship disclosures. Default: disabled. |
 
@@ -152,13 +154,21 @@ recipient processed the message.
 | `anet_claim_renew` | Extend a valid lease during long work. |
 | `anet_consumer_status` | Inspect available, leased, retry, and ACK counts. |
 
-### Observer-local social activity
+### Observer-local social model and activity
 
 | Tool | Purpose |
 | --- | --- |
+| `anet_relation_model` | Read the current observer-local Actor/Subject/circle structure and narrow contextual trust, without evidence text, labels, or payloads. |
 | `anet_relation_activity` | Read one cursor-based page of content-free Actor, Subject, interaction, relationship, and suggestion-decision activity. |
 
-This read-only tool is unavailable unless
+Both read-only tools are unavailable unless their matching `ANET_MCP_ALLOW_…`
+flag is set. `anet_relation_model` requires `ANET_MCP_ALLOW_RELATION_MODEL=1`
+and deliberately excludes Actor display labels, relationship labels, evidence
+references, events, message/task/file content, and suggestion decisions. It is
+a current local structural projection, not global truth and not an
+authorization input.
+
+`anet_relation_activity` requires
 `ANET_MCP_ALLOW_RELATION_ACTIVITY=1`. Its opaque cursor is bound to the
 selected node's observer identity; never reuse it with another `ANET_HOME`.
 Poll with the returned `next_cursor` for repeated Agent use. The feed preserves

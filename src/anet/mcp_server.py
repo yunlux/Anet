@@ -32,6 +32,7 @@ from .relationship_disclosure_recovery import (
 from .reported_relationship_views import (
     ReportedRelationshipViewProjector,
 )
+from .relationship_claims import RelationshipClaimBook
 from .relations import RelationshipBook
 
 
@@ -161,11 +162,89 @@ def _require_relation_activity_enabled() -> None:
         )
 
 
+def _require_relation_model_enabled() -> None:
+    if not _enabled("ANET_MCP_ALLOW_RELATION_MODEL", default=False):
+        raise PermissionError(
+            "relationship model is outside the MCP process capability"
+        )
+
+
 def _require_relation_disclosure_enabled() -> None:
     if not _enabled("ANET_MCP_ALLOW_RELATION_DISCLOSURE", default=False):
         raise PermissionError(
             "relationship disclosure is outside the MCP process capability"
         )
+
+
+def _relation_model_projection(
+    book: RelationshipBook,
+    claims: RelationshipClaimBook,
+) -> dict[str, Any]:
+    """Return a structural observer-local view without private evidence text."""
+
+    snapshot = book.snapshot()
+    return {
+        "type": "anet.relation.model-projection.v1",
+        "observer_actor_id": snapshot["observer_actor_id"],
+        "actors": [
+            {
+                "actor_id": item["actor_id"],
+                "actor_kind": item["actor_kind"],
+                "state": item["state"],
+                "proof_scopes": sorted(
+                    {proof["scope"] for proof in item["proofs"]}
+                ),
+            }
+            for item in snapshot["actors"]
+        ],
+        "subjects": [
+            {
+                "subject_ref": item["subject_ref"],
+                "state": item["state"],
+                "confidence": item["confidence"],
+                "actor_links": [
+                    {
+                        "actor_id": link["actor_id"],
+                        "confidence": link["confidence"],
+                    }
+                    for link in item["actor_links"]
+                ],
+            }
+            for item in snapshot["subjects"]
+        ],
+        "relationships": [
+            {
+                "subject_ref": item["subject_ref"],
+                "circle": item["circle"],
+                "state": item["state"],
+                "relationship_confidence": item["relationship_confidence"],
+                "context_trust": [
+                    {
+                        "context": trust["context"],
+                        "estimate": trust["estimate"],
+                        "confidence": trust["confidence"],
+                    }
+                    for trust in item["context_trust"]
+                ],
+            }
+            for item in snapshot["relationships"]
+        ],
+        "mutual_relationship_claims": [
+            {
+                "claim_id": claim.claim_id,
+                "participant_actor_ids": [
+                    claim.proposal.proposer_card.node_id,
+                    claim.accepter_card.node_id,
+                ],
+                "circle": claim.circle,
+                "active": claims.is_active(claim.claim_id),
+                "withdrawal_count": len(claims.withdrawals_for(claim.claim_id)),
+            }
+            for claim in claims.all()
+        ],
+        "privacy": "observer-private-structural",
+        "authorization_effect": "none",
+    }
 
 
 def _queue_result(
@@ -235,6 +314,25 @@ async def anet_peers() -> str:
 )
 async def anet_card() -> str:
     return _dump(_require_node().local_card.to_dict())
+
+
+@server.tool(
+    name="anet_relation_model",
+    description=(
+        "Read a compact observer-local Actor/Subject/circle model without "
+        "evidence text, labels, or payloads. Disabled unless "
+        "ANET_MCP_ALLOW_RELATION_MODEL=1; never changes trust or authorization."
+    ),
+)
+async def anet_relation_model() -> str:
+    _require_relation_model_enabled()
+    node = _require_node()
+    book = RelationshipBook(
+        node.config.relationships_path,
+        own_actor_id=node.identity.node_id,
+    )
+    claims = RelationshipClaimBook(node.config.relationship_claims_path)
+    return _dump(_relation_model_projection(book, claims))
 
 
 @server.tool(
