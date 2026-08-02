@@ -13,6 +13,9 @@ deployment installer adds the behavior needed for a self-starting device:
 The supervisor holds an OS-level lock inside the node home, so a second
 supervisor for the same home exits instead of competing for updates or the
 listener port.
+The one-shot `anet control-sync` command uses the same lock, so it cannot race
+the persistent supervisor while applying configuration, Peer Cards, or a
+package update.
 
 Run it from a checkout that contains the Windows scripts:
 

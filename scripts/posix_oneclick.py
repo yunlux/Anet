@@ -560,6 +560,21 @@ def launchd_plist(python: Path, home: Path) -> bytes:
     return plistlib.dumps(value, fmt=plistlib.FMT_XML, sort_keys=False)
 
 
+def launchd_service_state(launchctl: str, target: str) -> str:
+    """Return the launchd state and fail when it cannot be observed."""
+
+    output = run([launchctl, "print", target])
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if line.startswith("state ="):
+            state = line.partition("=")[2].strip()
+            if state:
+                return state
+    raise DeploymentError(
+        f"launchd did not report a state for the Anet service: {target}"
+    )
+
+
 def install_launchd_service(python: Path, home: Path) -> dict[str, Any]:
     launchctl = shutil.which("launchctl")
     if not launchctl:
@@ -572,11 +587,16 @@ def install_launchd_service(python: Path, home: Path) -> dict[str, Any]:
     run([launchctl, "bootout", target], allow_failure=True)
     run([launchctl, "bootstrap", domain, str(plist_path)])
     run([launchctl, "kickstart", "-k", target])
+    state = launchd_service_state(launchctl, target)
+    if state != "running":
+        raise DeploymentError(
+            f"launchd service is not running: {target} (state: {state})"
+        )
     return {
         "kind": "launchd-user-agent",
         "name": LAUNCHD_LABEL,
         "plist": str(plist_path),
-        "state": "loaded",
+        "state": state,
     }
 
 

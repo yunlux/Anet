@@ -44,8 +44,9 @@ After installation:
   distribution is running; systemd alone does not start the WSL distribution
   after a Windows reboot.
 - macOS uses the current user's `net.anet.supervisor` LaunchAgent under
-  `~/Library/LaunchAgents`. It is loaded immediately and has `RunAtLoad` and
-  `KeepAlive` enabled.
+  `~/Library/LaunchAgents`. It is loaded immediately, has `RunAtLoad` and
+  `KeepAlive` enabled, and the installer verifies `launchctl print` reports
+  `state = running` before reporting success.
 - Each supervisor runs the remote control client and an `anet serve` child.
   Configuration or Peer Card changes restart the child; an unexpected child
   exit is noticed immediately instead of waiting for the next long control
@@ -53,6 +54,9 @@ After installation:
   the updated runtime.
 - A home-level OS lock prevents a second supervisor from operating the same
   node home concurrently.
+- One-shot `anet control-sync` uses the same home lock, so a manual sync cannot
+  race the persistent supervisor while it applies config, Peer Cards, or a
+  package update.
 - A changed wheel, repository, or repository reference is applied even when its package version is
   unchanged; only the first sync of the already-installed initial version is
   skipped.

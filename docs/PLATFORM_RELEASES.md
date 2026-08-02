@@ -132,6 +132,8 @@ be launched at Windows user logon. See [`POSIX_AUTOSTART.md`](POSIX_AUTOSTART.md
 for service names, locations, diagnostics, and the required systemd
 user-session precondition. POSIX one-click preflight stops on another known
 same-platform deployment; `--allow-existing` is the explicit override.
+The macOS installer also verifies the loaded LaunchAgent reports a running
+state before it reports a successful deployment.
 
 ## Android Termux automatic deployment prototype
 

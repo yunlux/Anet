@@ -89,6 +89,8 @@ def test_posix_oneclick_is_an_explicit_native_service_layer() -> None:
     text = source("posix_oneclick.py")
     assert "systemd" in text
     assert "launchctl" in text
+    assert "launchd_service_state" in text
+    assert 'state != "running"' in text
     assert "anet-supervisor.service" in text
     assert "net.anet.supervisor" in text
     assert '"restart", systemd_service' in text

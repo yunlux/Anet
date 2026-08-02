@@ -1013,13 +1013,13 @@ def _install_software(home: Path, software: dict[str, Any], state: dict[str, Any
     return True
 
 
-def sync_remote_control(
+def _sync_remote_control_unlocked(
     home: Path,
     *,
     url: str | None = None,
     apply_software: bool = True,
 ) -> dict[str, Any]:
-    """Fetch and apply one control page plus its nested pages."""
+    """Fetch and apply one control page while the caller owns the home lock."""
 
     home = Path(home).expanduser().resolve()
     settings = _load_control_settings(home, url)
@@ -1113,6 +1113,23 @@ def sync_remote_control(
     }
 
 
+def sync_remote_control(
+    home: Path,
+    *,
+    url: str | None = None,
+    apply_software: bool = True,
+) -> dict[str, Any]:
+    """Serialize one-shot control syncs with the persistent supervisor."""
+
+    home = Path(home).expanduser().resolve()
+    with SupervisorLock(home):
+        return _sync_remote_control_unlocked(
+            home,
+            url=url,
+            apply_software=apply_software,
+        )
+
+
 async def _wait_for_child_or_interval(
     child: asyncio.subprocess.Process | None,
     delay: float,
@@ -1186,7 +1203,7 @@ async def run_supervisor(
         while True:
             try:
                 result = await asyncio.to_thread(
-                    sync_remote_control,
+                    _sync_remote_control_unlocked,
                     home,
                     url=url,
                     apply_software=apply_software,

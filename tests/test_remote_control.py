@@ -512,6 +512,22 @@ def test_supervisor_lock_prevents_two_control_clients_for_one_home(
     second.release()
 
 
+def test_one_shot_control_sync_respects_supervisor_lock(tmp_path: Path) -> None:
+    node_home = tmp_path / "node"
+    node_home.mkdir()
+    owner = SupervisorLock(node_home)
+    owner.acquire()
+    try:
+        with pytest.raises(RemoteControlError, match="already owns node home"):
+            sync_remote_control(
+                node_home,
+                url=(tmp_path / "control.json").as_uri(),
+                apply_software=False,
+            )
+    finally:
+        owner.release()
+
+
 @pytest.mark.asyncio
 async def test_supervisor_wait_observes_child_exit_before_long_poll_interval() -> None:
     class FinishedProcess:

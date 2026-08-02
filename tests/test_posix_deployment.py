@@ -4,6 +4,8 @@ import plistlib
 import sys
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -13,6 +15,7 @@ from posix_oneclick import (  # noqa: E402
     LAUNCHD_LABEL,
     SYSTEMD_SERVICE,
     launchd_plist,
+    launchd_service_state,
     platform_config,
     platform_software,
     repository_ref,
@@ -270,6 +273,29 @@ def test_launchd_plist_runs_at_login_and_keeps_supervisor_alive() -> None:
     assert value["KeepAlive"] is True
     assert value["ProgramArguments"][-1] == "supervisor"
     assert value["ProgramArguments"][1:3] == ["-m", "anet"]
+
+
+def test_launchd_service_state_requires_an_observed_running_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "posix_oneclick.run",
+        lambda _command, **_kwargs: "state = running",
+    )
+    assert launchd_service_state("launchctl", "gui/501/net.anet.supervisor") == "running"
+
+    monkeypatch.setattr(
+        "posix_oneclick.run",
+        lambda _command, **_kwargs: "state = exited",
+    )
+    assert launchd_service_state("launchctl", "gui/501/net.anet.supervisor") == "exited"
+
+    monkeypatch.setattr(
+        "posix_oneclick.run",
+        lambda _command, **_kwargs: "path = /tmp/agent.plist",
+    )
+    with pytest.raises(DeploymentError, match="did not report a state"):
+        launchd_service_state("launchctl", "gui/501/net.anet.supervisor")
 
 
 def test_posix_entrypoints_and_documentation_are_packaged() -> None:

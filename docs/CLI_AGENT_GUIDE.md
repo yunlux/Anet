@@ -98,6 +98,8 @@ The first two create and enable `anet-supervisor.service` as a systemd user
 unit; macOS creates and loads `net.anet.supervisor` as a LaunchAgent. These
 paths also create one new node home and are separate from the runtime-only
 installers. See [`POSIX_AUTOSTART.md`](POSIX_AUTOSTART.md).
+The macOS entry point verifies the LaunchAgent reports `state = running`, and
+one-shot `anet control-sync` shares the node-home lock with the supervisor.
 
 For WSL on Windows, `systemd --user` does not itself launch the distribution
 after a Windows reboot. After the WSL node is installed, the optional host
