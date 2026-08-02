@@ -98,7 +98,9 @@ bridge from an ordinary Windows PowerShell window:
 This creates `\\Anet\\WSL-KeepAlive` as a current-user logon task. It does not
 create a node or copy any identity; it starts `anet-supervisor.service` inside
 the selected distribution and holds a small shell process open with no
-execution time limit. The task has bounded automatic retries if WSL exits. A
+execution time limit. The task has bounded automatic retries if WSL exits.
+The registration command waits up to 30 seconds for the task to enter
+`Running` and reports its last task result if startup fails. A
 WSL distro is user-scoped, so this bridge intentionally uses the same Windows
 user that owns the distro rather than the Windows Anet `SYSTEM` task.
 

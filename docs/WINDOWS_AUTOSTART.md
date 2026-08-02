@@ -46,6 +46,9 @@ the installer records the locally observed hash instead.
 When the installer explicitly reuses this target, it stops the managed task
 and waits for the old supervisor to release the node lock before starting the
 new task, so updated control-page settings take effect immediately.
+After registration it waits up to 30 seconds for the task to enter `Running`;
+a missing start is reported with the task's last result instead of being
+reported as a successful install.
 
 Every Windows entry point runs a read-only preflight before it downloads a
 wheel, creates a virtual environment, or registers a task. The clean runtime

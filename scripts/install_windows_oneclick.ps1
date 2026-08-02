@@ -380,6 +380,34 @@ function Stop-ManagedSupervisorTask {
     throw "managed Anet supervisor task did not stop within 30 seconds"
 }
 
+function Wait-ManagedSupervisorTask {
+    param(
+        [string]$TaskPath,
+        [string]$TaskName
+    )
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $task = Get-ScheduledTask `
+            -TaskPath $TaskPath `
+            -TaskName $TaskName `
+            -ErrorAction SilentlyContinue
+        if ($null -ne $task -and [string]$task.State -eq "Running") {
+            return
+        }
+        Start-Sleep -Milliseconds 200
+    }
+    $lastResult = "unknown"
+    try {
+        $lastResult = [string](Get-ScheduledTaskInfo `
+            -TaskPath $TaskPath `
+            -TaskName $TaskName
+        ).LastTaskResult
+    } catch {
+        $lastResult = "unavailable"
+    }
+    throw "managed Anet supervisor task did not start within 30 seconds (last task result: $lastResult)"
+}
+
 $requestedListenHost = $ListenHost
 if ($Admin -and -not (Test-IsAdministrator)) {
     throw "-Admin requires an elevated PowerShell window (Run as administrator)"
@@ -709,6 +737,7 @@ Register-ScheduledTask `
     -Settings $settings `
     -Force | Out-Null
 Start-ScheduledTask -TaskPath $taskPath -TaskName $taskName
+Wait-ManagedSupervisorTask $taskPath $taskName
 
 [ordered]@{
     ok = $true
