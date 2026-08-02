@@ -24,20 +24,21 @@ test("renders the Anet product homepage", async () => {
   assert.match(html, /Anet v0\.12\.1/);
   assert.match(html, /COPY → SEND TO YOUR AGENT/);
   assert.match(html, /复制 → 发送给你的 AGENT/);
-  assert.match(html, /WINDOWS.*WSL.*MACOS.*LINUX/s);
-  assert.match(html, /INSTALL-ANET/);
+  assert.match(html, /WINDOWS.*WSL.*MACOS.*LINUX.*TERMUX/s);
+  assert.match(html, /ONE-CLICK DEPLOYMENT/);
   assert.match(html, /https:\/\/github\.com\/yunlux\/Anet/);
-  assert.match(html, /\$install-anet Skill/);
-  assert.match(html, /Make safe routine decisions autonomously/);
-  assert.match(html, /do not ask me to choose paths, labels, ports/);
-  assert.match(html, /常规安全决策由你自主完成/);
-  assert.match(html, /first registered healthy host-local Ahub/);
-  assert.match(html, /never copy identity, start a second Ahub/);
+  assert.match(html, /scripts\/install_windows_oneclick\.ps1/);
+  assert.match(html, /matching install_\*_oneclick\.py/);
+  assert.match(html, /bounded duplicate preflight/);
+  assert.match(html, /用户已授权创建一个独立持久节点/);
+  assert.match(html, /Windows and WSL remain separate nodes/);
+  assert.match(html, /Windows 与 WSL 即使使用镜像网络也必须是不同/);
+  assert.match(html, /Never copy another device/);
+  assert.match(html, /禁止复制其他设备的 identity/);
   assert.match(html, /TLS 1\.3 \/ signed challenge/);
   assert.match(html, /SQLite WAL \/ durable queue/);
-  assert.match(html, /install_windows\.ps1/);
-  assert.match(html, /install_wsl\.py/);
-  assert.match(html, /skills\/install-anet/);
+  assert.match(html, /-Admin/);
+  assert.match(html, /&lt;CONTROL_URL&gt;/);
   assert.doesNotMatch(html, /asks for its URL|询问地址/);
   assert.ok(
     html.indexOf('id="install"') < html.indexOf("network-stage"),
