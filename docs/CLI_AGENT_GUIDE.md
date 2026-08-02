@@ -133,6 +133,8 @@ existing runtime/Ahub location and retain their versioned-runtime semantics;
 the one-click deployment installers also inspect their platform service/task
 and process markers and stop before mutation when another same-platform
 persistent deployment is found. The target deployment is idempotently reused.
+The installer also acquires a target-scoped lock before preflight, so concurrent
+invocations cannot both pass the report and create the same runtime or service.
 Use `-AllowExisting` on Windows or `--allow-existing` on POSIX/Termux only as
 an explicit override. Windows and WSL are separate preflight boundaries and
 must not share a node home or identity.

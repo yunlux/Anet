@@ -42,7 +42,7 @@ Windows 普通用户在 PowerShell 中直接执行这一条命令：
 管理员模式使用 `%ProgramData%\Anet`、`SYSTEM` 账户和
 `AtStartup` 计划任务。两种模式都会先执行有界的只读重复检测：发现已存在的
 Anet/Ahub runtime、服务、任务或进程时停止，不会静默创建第二套部署。明确需要第二套时才使用
-`-AllowExisting`。
+`-AllowExisting`。检测前还会取得按目标目录隔离的安装锁，避免两个并发命令同时通过检测并创建同一套 runtime 或服务。
 
 其他平台使用同一控制页和部署模型。以下入口需要在 Anet checkout 中运行（上面的
 Windows PowerShell 命令不需要先 checkout）：
@@ -100,7 +100,7 @@ macOS、Termux 使用 checkout 中对应的一键脚本。如果 WSL 还必须�
 且主机侧操作已获授权，再注册 WSL keepalive 任务。Windows 与 WSL 必须视为两个节点：
 使用不同 node home、identity、Node ID 和监听端口，不能把 127.0.0.1 作为 host-scoped
 peer 地址发布。最后报告 runtime、独立节点、服务/任务状态、节点 ID、node home 和控制页地址。
-遇到已有部署、身份、哈希、权限或控制页格式冲突时停止；只有明确要求第二套部署时才使用
+先取得按目标目录隔离的安装锁，再执行有界重复检测。遇到已有部署、身份、哈希、权限或控制页格式冲突时停止；只有明确要求第二套部署时才使用
 -AllowExisting/--allow-existing。禁止从其他设备复制 identity、TLS 私钥、SQLite 状态或整个
 node home。
 ~~~

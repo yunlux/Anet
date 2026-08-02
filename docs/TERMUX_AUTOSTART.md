@@ -18,6 +18,8 @@ The installer performs its read-only duplicate check before it runs `pkg`.
 It reuses the target runtime/node, reports known Ahub data roots, and stops if
 another Termux Anet deployment or supervisor is already present. Use
 `--allow-existing` only when a second explicit Termux deployment is intended.
+It also acquires a target-scoped install lock before that check, so two
+concurrent Termux commands cannot create the same runtime or supervisor twice.
 
 The selected Termux platform overlay can set `software`, `listen_host`,
 `listen_port`, `advertise`, and `locator_contexts`; a platform `software`

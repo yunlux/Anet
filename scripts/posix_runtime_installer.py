@@ -13,7 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from install_preflight import collect_preflight, emit_preflight
+from install_preflight import InstallationLock, collect_preflight, emit_preflight
 
 
 class InstallError(RuntimeError):
@@ -288,8 +288,11 @@ def parser(default_root: Path) -> argparse.ArgumentParser:
     return result
 
 
-def main(platform_name: str, default_root: Path) -> int:
-    args = parser(default_root).parse_args()
+def _main_unlocked(
+    platform_name: str,
+    default_root: Path,
+    args: argparse.Namespace,
+) -> int:
     root = args.root.expanduser().resolve()
     preflight = collect_preflight(
         platform_name,
@@ -310,3 +313,9 @@ def main(platform_name: str, default_root: Path) -> int:
     result["preflight"] = preflight
     print(json.dumps(result, separators=(",", ":")))
     return 0
+
+
+def main(platform_name: str, default_root: Path) -> int:
+    args = parser(default_root).parse_args()
+    with InstallationLock(args.root.expanduser().resolve()):
+        return _main_unlocked(platform_name, default_root, args)

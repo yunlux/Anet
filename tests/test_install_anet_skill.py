@@ -43,6 +43,7 @@ def test_install_anet_skill_bundled_wheel_is_pinned() -> None:
     )
     assert EXPECTED_SHA256 in installer
     assert "install_preflight" in installer
+    assert "InstallationLock" in installer
 
 
 def test_install_anet_skill_is_runtime_only_by_default() -> None:
@@ -65,6 +66,8 @@ def test_skill_exposes_explicit_full_runtime_for_wsl_bootstrap() -> None:
     assert '"full",' in bootstrap
     assert "second Ahub" in bootstrap
     assert "install_preflight" in bootstrap
+    assert "InstallationLock" in bootstrap
+    assert "PreflightConflict" in bootstrap
     assert "another WSL Anet node service" in bootstrap
     assert "registered Node ID does not match node home" in bootstrap
     assert "ANET_MCP_ALLOW_RAW_INBOX" in bootstrap

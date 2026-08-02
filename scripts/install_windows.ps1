@@ -92,6 +92,34 @@ if ($rootPath -eq [System.IO.Path]::GetPathRoot($rootPath) -or $rootPath -eq $us
     throw "install root is too broad"
 }
 
+function Enter-InstallMutex {
+    param(
+        [string]$Scope,
+        [string]$RootPath
+    )
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [Text.Encoding]::UTF8.GetBytes($RootPath.ToLowerInvariant())
+        $hex = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace("-", "")
+    } finally {
+        $sha.Dispose()
+    }
+    $mutex = [Threading.Mutex]::new($false, "Local\Anet-$Scope-$($hex.Substring(0, 32))")
+    $owned = $false
+    try {
+        $owned = $mutex.WaitOne(0)
+    } catch [Threading.AbandonedMutexException] {
+        $owned = $true
+    }
+    if (-not $owned) {
+        $mutex.Dispose()
+        throw "another Anet installer already owns the $Scope install lock for $RootPath"
+    }
+    return $mutex
+}
+
+$installMutex = Enter-InstallMutex "runtime" $rootPath
+
 $preflight = $null
 $preflightScript = ""
 if ($PSScriptRoot) {
@@ -246,4 +274,7 @@ $current | ConvertTo-Json | Set-Content -LiteralPath $pendingJson -Encoding utf8
 Move-Item -LiteralPath $pendingJson -Destination $currentJson -Force
 $current["outcome"] = $outcome
 $current["preflight"] = $preflight
-$current | ConvertTo-Json -Compress
+$result = $current | ConvertTo-Json -Compress
+$installMutex.ReleaseMutex()
+$installMutex.Dispose()
+$result

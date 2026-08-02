@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from install_preflight import (
+    InstallationLock,
     PreflightConflict,
     assert_no_duplicate,
     collect_preflight,
@@ -219,8 +220,7 @@ def parser() -> argparse.ArgumentParser:
     return result
 
 
-def main() -> int:
-    args = parser().parse_args()
+def _main_unlocked(args: argparse.Namespace) -> int:
     if not is_termux():
         raise DeploymentError("this entry point must run inside Termux on Android")
     prefix = termux_prefix()
@@ -426,6 +426,12 @@ def main() -> int:
     }
     print(json.dumps(result, separators=(",", ":")))
     return 0
+
+
+def main() -> int:
+    args = parser().parse_args()
+    with InstallationLock(args.root.expanduser().resolve()):
+        return _main_unlocked(args)
 
 
 if __name__ == "__main__":

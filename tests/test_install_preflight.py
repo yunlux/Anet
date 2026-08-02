@@ -3,15 +3,36 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from install_preflight import (  # noqa: E402
+    InstallationLock,
     PreflightConflict,
     assert_no_duplicate,
     collect_preflight,
 )
+
+
+def test_install_lock_serializes_same_target_without_creating_target_markers(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "runtime"
+    first = InstallationLock(target)
+    second = InstallationLock(target)
+    first.acquire()
+    try:
+        assert not first.path.is_relative_to(target)
+        with pytest.raises(PreflightConflict, match="install lock"):
+            second.acquire()
+    finally:
+        first.release()
+
+    second.acquire()
+    second.release()
 
 
 def test_runtime_preflight_reports_existing_runtime_and_ahub_without_nodes(

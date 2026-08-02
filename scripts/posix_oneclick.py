@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from install_preflight import (
+    InstallationLock,
     PreflightConflict,
     assert_no_duplicate,
     collect_preflight,
@@ -611,8 +612,11 @@ def parser(platform_name: str, default_root: Path) -> argparse.ArgumentParser:
     return result
 
 
-def main(platform_name: str, default_root: Path) -> int:
-    args = parser(platform_name, default_root).parse_args()
+def _main_unlocked(
+    platform_name: str,
+    default_root: Path,
+    args: argparse.Namespace,
+) -> int:
     if platform_name == "wsl" and not is_wsl():
         raise DeploymentError("this entry point must run inside WSL")
     if platform_name == "linux":
@@ -830,6 +834,13 @@ def main(platform_name: str, default_root: Path) -> int:
     }
     print(json.dumps(result, separators=(",", ":")))
     return 0
+
+
+def main(platform_name: str, default_root: Path) -> int:
+    args = parser(platform_name, default_root).parse_args()
+    root = args.root.expanduser().resolve()
+    with InstallationLock(root):
+        return _main_unlocked(platform_name, default_root, args)
 
 
 if __name__ == "__main__":

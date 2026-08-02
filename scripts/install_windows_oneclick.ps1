@@ -353,6 +353,32 @@ function Test-IsAdministrator {
     )
 }
 
+function Enter-InstallMutex {
+    param(
+        [string]$Scope,
+        [string]$RootPath
+    )
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [Text.Encoding]::UTF8.GetBytes($RootPath.ToLowerInvariant())
+        $hex = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace("-", "")
+    } finally {
+        $sha.Dispose()
+    }
+    $mutex = [Threading.Mutex]::new($false, "Local\Anet-$Scope-$($hex.Substring(0, 32))")
+    $owned = $false
+    try {
+        $owned = $mutex.WaitOne(0)
+    } catch [Threading.AbandonedMutexException] {
+        $owned = $true
+    }
+    if (-not $owned) {
+        $mutex.Dispose()
+        throw "another Anet installer already owns the $Scope install lock for $RootPath"
+    }
+    return $mutex
+}
+
 function Stop-ManagedSupervisorTask {
     param(
         [string]$TaskPath,
@@ -421,6 +447,7 @@ if (-not $Root) {
 }
 
 $rootPath = [System.IO.Path]::GetFullPath($Root)
+$installMutex = Enter-InstallMutex "deployment" $rootPath
 $page = Read-ControlPage $ControlUrl
 $commonSoftware = if ($page.PSObject.Properties["software"]) {
     $page.software
@@ -770,7 +797,7 @@ Register-ScheduledTask `
 Start-ScheduledTask -TaskPath $taskPath -TaskName $taskName
 Wait-ManagedSupervisorTask $taskPath $taskName
 
-[ordered]@{
+$result = [ordered]@{
     ok = $true
     runtime = [string]$current.runtime
     cli = [string]$current.cli
@@ -788,3 +815,6 @@ Wait-ManagedSupervisorTask $taskPath $taskName
     mode = $mode
     preflight = $preflight
 } | ConvertTo-Json -Depth 10 -Compress
+$installMutex.ReleaseMutex()
+$installMutex.Dispose()
+$result

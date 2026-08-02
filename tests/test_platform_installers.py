@@ -72,6 +72,8 @@ def test_windows_oneclick_is_an_explicit_supervised_deployment_layer() -> None:
     assert "-advertise" in installer
     assert "preflight" in installer
     assert "allowexisting" in installer
+    assert "enter-installmutex" in installer
+    assert "another anet installer already owns" in installer
     assert "host-scoped locators must not advertise" in installer
     assert "must use distinct listener ports" in installer
     assert "host scope must be declared on both enabled overlays" in installer
@@ -97,6 +99,7 @@ def test_posix_oneclick_is_an_explicit_native_service_layer() -> None:
     assert "repository_source" in text
     assert "repository_ref" in text
     assert "software.wheel_url or software.repo_url" in text
+    assert "installationlock" in text
 
 
 def test_wsl_host_keepalive_is_an_explicit_user_scoped_bridge() -> None:
@@ -131,6 +134,7 @@ def test_termux_oneclick_uses_termux_native_service_layer() -> None:
     assert "repository_source" in text
     assert "repository_ref" in text
     assert "software.wheel_url or software.repo_url" in text
+    assert "installationlock" in text
 
 
 def test_runtime_installers_record_wheel_or_repository_source() -> None:
@@ -141,6 +145,7 @@ def test_runtime_installers_record_wheel_or_repository_source() -> None:
     assert "provide either a wheel or repository source url" in posix
     assert "source_requirement" in posix
     assert "source_ref" in posix
+    assert "enter-installmutex" in windows
 
 
 def test_windows_preflight_is_bounded_and_distinguishes_ahub() -> None:

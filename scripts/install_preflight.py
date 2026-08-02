@@ -16,17 +16,90 @@ the filesystem, or another platform such as Windows from inside WSL.
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, TextIO
 
 
 class PreflightConflict(RuntimeError):
     """Raised when a deployment would create a second local installation."""
+
+
+class InstallationLock:
+    """Serialize installers targeting the same local runtime root.
+
+    The duplicate report is intentionally read-only, but a report alone cannot
+    prevent two installers started at the same time from both passing it.  The
+    lock lives in the OS temporary directory, keyed by the resolved target,
+    so acquiring it does not create an installation marker inside the target.
+    """
+
+    def __init__(self, target_root: Path) -> None:
+        self.target_root = _resolve(Path(target_root))
+        digest = hashlib.sha256(
+            str(self.target_root).encode("utf-8", errors="surrogateescape")
+        ).hexdigest()
+        self.path = Path(tempfile.gettempdir()) / f"anet-install-{digest}.lock"
+        self._handle: Any | None = None
+
+    def acquire(self) -> None:
+        if self._handle is not None:
+            return
+        handle = self.path.open("a+b")
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                handle.seek(0, os.SEEK_END)
+                if handle.tell() == 0:
+                    handle.write(b"\0")
+                    handle.flush()
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (OSError, IOError) as exc:
+            handle.close()
+            raise PreflightConflict(
+                "another Anet installer already owns the install lock for "
+                f"{self.target_root}"
+            ) from exc
+        self._handle = handle
+
+    def release(self) -> None:
+        handle = self._handle
+        self._handle = None
+        if handle is None:
+            return
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        except (OSError, IOError):
+            pass
+        finally:
+            handle.close()
+
+    def __enter__(self) -> "InstallationLock":
+        self.acquire()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.release()
 
 
 _ANET_ROOT_MARKERS = (

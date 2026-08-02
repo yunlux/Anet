@@ -87,7 +87,9 @@ another known Anet runtime/deployment in the same platform boundary stops a
 one-click install with the detected path. Pass `--allow-existing` only for an
 explicit second deployment. Known Ahub data roots and Ahub services/processes
 are reported separately and are not started or duplicated by this Anet node
-installer. When a WSL node is paired directly with native Windows, use a
+installer. A target-scoped temporary-file lock is acquired before the report,
+so concurrent commands cannot both pass preflight and mutate the same runtime
+or node deployment. When a WSL node is paired directly with native Windows, use a
 non-loopback shared host address and distinct ports; `127.0.0.1` is local to
 the runtime and is not a cross-platform locator.
 

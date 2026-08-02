@@ -58,6 +58,9 @@ one-click installer additionally checks native Windows Anet roots,
 existing target is reused; another known Windows deployment stops the install
 with its path instead of silently creating a second node. Use
 `-AllowExisting` only when an operator explicitly wants that second deployment.
+Each entry point also takes a target-scoped OS mutex before this preflight, so a
+concurrent install command cannot pass the same report and create a duplicate
+runtime or task during the same race window.
 The check is native-Windows scoped: it does not inspect WSL, whose Linux user
 home, node identity, and service manager are independent. Ahub findings are
 reported but this installer does not start a new Ahub merely because the

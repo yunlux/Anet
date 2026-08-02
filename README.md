@@ -57,7 +57,9 @@ mode uses %ProgramData%/Anet, the SYSTEM principal, and an AtStartup task.
 Both modes run a bounded duplicate preflight first; a known existing Anet/Ahub
 runtime, service, task, or process stops the install instead of silently
 creating a second deployment. Use -AllowExisting only when a second explicit
-deployment is intended.
+deployment is intended. A target-scoped install lock is acquired before the
+preflight, so concurrent commands cannot both pass the check and create the
+same runtime or service.
 
 The same deployment model is available on the other platforms. Run these
 entry points from an Anet checkout (the Windows command above is the only
@@ -130,7 +132,8 @@ that host-side action is authorized. Treat Windows and WSL as separate nodes:
 use separate homes, identities, Node IDs, and listener ports, and never publish
 127.0.0.1 as a host-scoped peer address. Report the installed runtime,
 independent node, auto-start service/task, node ID, node home, and control-page
-URL. Stop on an existing deployment, identity, hash, permission, or
+URL. Acquire the target-scoped install lock before the bounded duplicate
+preflight. Stop on an existing deployment, identity, hash, permission, or
 control-page conflict; use -AllowExisting/--allow-existing only when a second
 deployment is explicitly requested. Do not copy identity, TLS private keys,
 SQLite state, or an entire node home from another device.
