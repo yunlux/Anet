@@ -142,6 +142,13 @@ shared Subject identity, global social truth, reputation score, legal
 agreement, or authorization.
 _Avoid_: Relationship contract, identity link, capability grant
 
+**Mutual relationship claim withdrawal**:
+A portable statement signed by either participant that it no longer stands
+behind one exact Mutual relationship claim. It deactivates only that shared
+claim as portable evidence and does not automatically revise either observer's
+Subject hypothesis, circle, contextual trust, capability, or authorization.
+_Avoid_: Remote relationship deletion, forced breakup, authorization revocation
+
 **Abazr**:
 An independent Agent Bazaar product above Anet for discovering needs and
 offers, negotiating work, and recording fulfillment evidence.

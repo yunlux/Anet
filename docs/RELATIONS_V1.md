@@ -478,7 +478,7 @@ not inspect, calculate, or project the relationship.
 
 Relations v1 does not yet standardize:
 
-- mutual claim replacement, withdrawal, or jointly acknowledged ending;
+- mutual claim replacement or jointly acknowledged ending;
 - custom advisor policies and decision supersession;
 - standing subscriptions, withdrawal, or remote deletion for relationship
   disclosures;

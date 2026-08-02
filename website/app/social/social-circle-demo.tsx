@@ -636,6 +636,7 @@ export function SocialCircleDemo() {
   const [gapRecovery, setGapRecovery] = useState<
     "idle" | "noticed" | "retransmitted"
   >("idle");
+  const [claimWithdrawn, setClaimWithdrawn] = useState(false);
   const [demoDecisions, setDemoDecisions] = useState<
     Record<string, "accepted" | "rejected">
   >({});
@@ -745,6 +746,7 @@ export function SocialCircleDemo() {
     setImportError("");
     setDemoDecisions({});
     setDisclosureSent(false);
+    setClaimWithdrawn(false);
   }
 
   function decideDemoSuggestion(
@@ -1447,6 +1449,46 @@ export function SocialCircleDemo() {
             缺页通知只报告 G 看见的序号缺口，A 仍独立决定是否在原计划内补发。
             人类与 Agent 都可以处于 A 或 G 的位置，角色对调不改变协议。
           </p>
+        </section>
+
+        <section className={styles.claimLifecycle}>
+          <div>
+            <p className={styles.kicker}>MUTUAL RELATIONSHIP CLAIM / REVOCABLE</p>
+            <h3>共同声明可以撤回，A 的本地判断不会被 B 远程改写。</h3>
+            <p>
+              `family · mutual-guardian` 是 A 与 B 双方签名的 Actor-to-Actor 声明。
+              它不包含 Subject，也不授予监护、任务、文件或付款权限。
+            </p>
+          </div>
+          <div className={styles.claimStatus} data-withdrawn={claimWithdrawn}>
+            <div>
+              <small>PORTABLE CLAIM</small>
+              <strong>{claimWithdrawn ? "INACTIVE · SIGNED WITHDRAWAL" : "ACTIVE · MUTUALLY SIGNED"}</strong>
+              <span>mrel_guardian… · A ↔ B · family</span>
+            </div>
+            <i aria-hidden="true">→</i>
+            <div>
+              <small>A LOCAL RELATIONSHIP BOOK</small>
+              <strong>family · unchanged</strong>
+              <span>圈层、Subject 和 contextual trust 由 A 自己另行修订</span>
+            </div>
+          </div>
+          <div className={styles.claimActionRow}>
+            <p>
+              {claimWithdrawn
+                ? "B 的签名撤回已作为活动事实导入；它只使该共享声明失效。"
+                : "B 可撤回自己对这条共享声明的站台；A 收到后只记录事实。"}
+            </p>
+            <button
+              type="button"
+              onClick={() => setClaimWithdrawn((current) => !current)}
+            >
+              {claimWithdrawn ? "恢复演示" : "模拟 B 签名撤回 →"}
+            </button>
+          </div>
+          <b className={styles.claimBoundary}>
+            AUTHORIZATION EFFECT: NONE · NO FORCED CIRCLE CHANGE
+          </b>
         </section>
 
         <div className={styles.factBoundary}>

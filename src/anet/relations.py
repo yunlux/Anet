@@ -64,6 +64,9 @@ RELATION_EVENT_DETAIL_FIELDS = {
     "relationship.context-trust-set": frozenset(
         {"context", "estimate", "confidence"}
     ),
+    "relationship.mutual-claim-withdrawn": frozenset(
+        {"claim_id", "withdrawing_actor_id", "relationship_changed"}
+    ),
 }
 
 
@@ -2326,6 +2329,62 @@ class RelationshipBook:
         result = self.get(card.node_id)
         if result is None:
             raise RuntimeError("mutual relationship claim was not projected")
+        return result
+
+    def record_mutual_relationship_withdrawal(
+        self,
+        card: PeerCard,
+        *,
+        claim_id: str,
+        withdrawing_actor_id: str,
+        evidence_ref: str,
+        now: int | None = None,
+    ) -> RelationshipRecord:
+        """Record portable-claim withdrawal without rewriting this estimate.
+
+        A withdrawal is evidence that a participant no longer stands behind one
+        shared claim. The observer still decides its own circle and contextual
+        trust, so neither is changed here.
+        """
+        card.verify()
+        current = _now_ms(now)
+        evidence = _bounded_text(
+            evidence_ref,
+            label="relationship claim withdrawal evidence reference",
+            maximum=MAX_EVIDENCE_LENGTH,
+        )
+        subject = self.primary_subject(card.node_id)
+        if subject is None:
+            subject = self.observe_actor(
+                card,
+                evidence_ref=evidence,
+                now=current,
+            )
+        if any(
+            event.event_type == "relationship.mutual-claim-withdrawn"
+            and event.evidence_ref == evidence
+            for event in self._events
+        ):
+            result = self.get(card.node_id)
+            if result is None:
+                raise RuntimeError("relationship claim withdrawal projection is missing")
+            return result
+        self._append_event(
+            "relationship.mutual-claim-withdrawn",
+            actor_id=card.node_id,
+            subject_ref=subject.subject_ref,
+            evidence_ref=evidence,
+            now=current,
+            details={
+                "claim_id": str(claim_id),
+                "withdrawing_actor_id": str(withdrawing_actor_id),
+                "relationship_changed": 0,
+            },
+        )
+        self.save()
+        result = self.get(card.node_id)
+        if result is None:
+            raise RuntimeError("relationship claim withdrawal projection is missing")
         return result
 
     def revoke_actor(

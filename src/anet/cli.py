@@ -81,6 +81,7 @@ from .reported_relationship_views import (
 from .relationship_claims import (
     MutualRelationshipClaim,
     RelationshipClaimBook,
+    RelationshipClaimWithdrawal,
     RelationshipProposal,
 )
 from .relations import RELATION_CIRCLES, RelationshipBook
@@ -1062,9 +1063,107 @@ def cmd_relation_claim_list(args: argparse.Namespace) -> int:
                 "circle": claim.circle,
                 "labels": list(claim.labels),
                 "accepted_ms": claim.accepted_ms,
+                "active": claims.is_active(claim.claim_id),
+                "withdrawals": [
+                    {
+                        "withdrawal_id": withdrawal.withdrawal_id,
+                        "withdrawing_actor_id": withdrawal.withdrawing_card.node_id,
+                        "withdrawn_ms": withdrawal.withdrawn_ms,
+                    }
+                    for withdrawal in claims.withdrawals_for(claim.claim_id)
+                ],
             }
             for claim in claims.all()
         ]
+    )
+    return 0
+
+
+def _record_mutual_relationship_withdrawal(
+    config: NodeConfig,
+    identity: Identity,
+    claim: MutualRelationshipClaim,
+    withdrawal: RelationshipClaimWithdrawal,
+) -> dict[str, Any]:
+    claim_book = RelationshipClaimBook(config.relationship_claims_path)
+    stored = claim_book.add_withdrawal(withdrawal)
+    peer_card = claim.peer_card_for(identity.node_id)
+    relationship = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=identity.node_id,
+    ).record_mutual_relationship_withdrawal(
+        peer_card,
+        claim_id=claim.claim_id,
+        withdrawing_actor_id=withdrawal.withdrawing_card.node_id,
+        evidence_ref=f"mutual-withdrawal:{withdrawal.withdrawal_id}",
+    )
+    return {
+        "claim_id": claim.claim_id,
+        "withdrawal_id": withdrawal.withdrawal_id,
+        "stored": stored,
+        "active": claim_book.is_active(claim.claim_id),
+        "withdrawing_actor_id": withdrawal.withdrawing_card.node_id,
+        "peer_actor_id": peer_card.node_id,
+        "subject_ref": relationship.subject_ref,
+        "relationship_changed": False,
+        "trust_changed": False,
+        "capabilities_granted": [],
+        "authorization_effect": "none",
+    }
+
+
+def cmd_relation_claim_withdraw(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    claim_book = RelationshipClaimBook(config.relationship_claims_path)
+    claim = claim_book.claim(args.claim_id)
+    if claim is None:
+        raise ValueError("relationship claim is not stored locally")
+    withdrawal = next(
+        (
+            item
+            for item in claim_book.withdrawals_for(claim.claim_id)
+            if item.withdrawing_card.node_id == identity.node_id
+        ),
+        None,
+    )
+    if withdrawal is None:
+        withdrawal = RelationshipClaimWithdrawal.create(
+            claim,
+            identity,
+            identity.card(),
+        )
+    withdrawal.save(args.out)
+    result = _record_mutual_relationship_withdrawal(
+        config,
+        identity,
+        claim,
+        withdrawal,
+    )
+    result["path"] = str(Path(args.out).resolve())
+    _print_json(result)
+    return 0
+
+
+def cmd_relation_claim_withdraw_import(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    claim_book = RelationshipClaimBook(config.relationship_claims_path)
+    value = json.loads(Path(args.withdrawal).read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError("relationship claim withdrawal must be a JSON object")
+    claim_id = str(value.get("claim_id", ""))
+    claim = claim_book.claim(claim_id)
+    if claim is None:
+        raise ValueError("relationship claim withdrawal references an unknown local claim")
+    withdrawal = RelationshipClaimWithdrawal.load(args.withdrawal, claim)
+    _print_json(
+        _record_mutual_relationship_withdrawal(
+            config,
+            identity,
+            claim,
+            withdrawal,
+        )
     )
     return 0
 
@@ -3251,6 +3350,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="list stored mutually signed relationship claim summaries",
     )
     relation_claim_list.set_defaults(func=cmd_relation_claim_list)
+
+    relation_claim_withdraw = sub.add_parser(
+        "relation-claim-withdraw",
+        help="sign withdrawal of one locally stored mutual relationship claim",
+    )
+    relation_claim_withdraw.add_argument(
+        "claim_id",
+        help="locally stored mrel_ claim ID",
+    )
+    relation_claim_withdraw.add_argument(
+        "--out",
+        type=Path,
+        required=True,
+        help="path for the public signed withdrawal object",
+    )
+    relation_claim_withdraw.set_defaults(func=cmd_relation_claim_withdraw)
+
+    relation_claim_withdraw_import = sub.add_parser(
+        "relation-claim-withdraw-import",
+        help="verify a participant withdrawal for a locally stored relationship claim",
+    )
+    relation_claim_withdraw_import.add_argument("withdrawal", type=Path)
+    relation_claim_withdraw_import.set_defaults(func=cmd_relation_claim_withdraw_import)
 
     subject_supersede = sub.add_parser(
         "subject-supersede",

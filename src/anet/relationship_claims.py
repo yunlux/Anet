@@ -19,10 +19,13 @@ from .relations import MAX_LABEL_LENGTH, RELATION_CIRCLES
 RELATIONSHIP_CLAIM_VERSION = 1
 RELATIONSHIP_PROPOSAL_TYPE = "anet.relationship.proposal.v1"
 RELATIONSHIP_ACCEPTANCE_TYPE = "anet.relationship.acceptance.v1"
+RELATIONSHIP_WITHDRAWAL_TYPE = "anet.relationship.withdrawal.v1"
+RELATIONSHIP_CLAIM_BOOK_VERSION = 2
 MAX_CLOCK_SKEW_MS = 5 * 60 * 1000
 MAX_PROPOSAL_TTL_MS = 7 * 24 * 60 * 60 * 1000
 MAX_RELATIONSHIP_LABELS = 32
 _ACTOR_ID_RE = re.compile(r"^an1[a-z2-7]{32}$")
+_CLAIM_ID_RE = re.compile(r"^mrel_[0-9a-f]{64}$")
 
 
 def _now_ms(now: int | None = None) -> int:
@@ -69,6 +72,13 @@ def _actor_id(value: str) -> str:
     if not _ACTOR_ID_RE.fullmatch(actor_id):
         raise ValueError("invalid relationship claim Actor ID")
     return actor_id
+
+
+def _claim_id(value: str) -> str:
+    claim_id = str(value).strip().lower()
+    if not _CLAIM_ID_RE.fullmatch(claim_id):
+        raise ValueError("invalid mutual relationship claim ID")
+    return claim_id
 
 
 def _validate_window(
@@ -415,22 +425,176 @@ class MutualRelationshipClaim:
         atomic_json(Path(path), self.to_dict())
 
 
+@dataclass(frozen=True)
+class RelationshipClaimWithdrawal:
+    """A participant's signed withdrawal of a previous mutual claim.
+
+    Withdrawal changes only the portable claim's active status. It does not
+    assert an identity change or rewrite either observer's local relationship.
+    """
+
+    claim_id: str
+    withdrawing_card: PeerCard
+    withdrawn_ms: int
+    signature: bytes
+    version: int = RELATIONSHIP_CLAIM_VERSION
+    object_type: str = RELATIONSHIP_WITHDRAWAL_TYPE
+
+    def signing_fields(self) -> list[Any]:
+        return [
+            self.version,
+            self.object_type,
+            self.claim_id,
+            self.withdrawing_card.to_dict(),
+            self.withdrawn_ms,
+        ]
+
+    @property
+    def withdrawal_id(self) -> str:
+        digest = hashlib.sha256(
+            canonical_pack([self.signing_fields(), self.signature])
+        ).hexdigest()
+        return f"mrelw_{digest}"
+
+    def verify(
+        self,
+        claim: MutualRelationshipClaim,
+        *,
+        now: int | None = None,
+    ) -> None:
+        current = _now_ms(now)
+        if (
+            self.version != RELATIONSHIP_CLAIM_VERSION
+            or self.object_type != RELATIONSHIP_WITHDRAWAL_TYPE
+        ):
+            raise ValueError("unsupported relationship claim withdrawal")
+        if self.claim_id != _claim_id(self.claim_id):
+            raise ValueError("relationship claim withdrawal ID is not normalized")
+        claim.verify(now=current)
+        if self.claim_id != claim.claim_id:
+            raise ValueError("relationship claim withdrawal targets another claim")
+        self.withdrawing_card.verify()
+        participants = {
+            claim.proposal.proposer_card.node_id,
+            claim.accepter_card.node_id,
+        }
+        if self.withdrawing_card.node_id not in participants:
+            raise ValueError("relationship claim withdrawal came from another Actor")
+        if self.withdrawn_ms < claim.accepted_ms - MAX_CLOCK_SKEW_MS:
+            raise ValueError("relationship claim withdrawal predates acceptance")
+        if self.withdrawn_ms > current + MAX_CLOCK_SKEW_MS:
+            raise ValueError("relationship claim withdrawal was created too far in the future")
+        Ed25519PublicKey.from_public_bytes(
+            self.withdrawing_card.sign_public
+        ).verify(
+            self.signature,
+            canonical_pack(self.signing_fields()),
+        )
+
+    @classmethod
+    def create(
+        cls,
+        claim: MutualRelationshipClaim,
+        identity: Identity,
+        card: PeerCard,
+        *,
+        now: int | None = None,
+    ) -> "RelationshipClaimWithdrawal":
+        current = _now_ms(now)
+        claim.verify(now=current)
+        if card.node_id != identity.node_id:
+            raise ValueError("relationship claim withdrawal card is not local")
+        if card.node_id not in {
+            claim.proposal.proposer_card.node_id,
+            claim.accepter_card.node_id,
+        }:
+            raise ValueError("local Actor is not a participant in this relationship claim")
+        unsigned = cls(
+            claim_id=claim.claim_id,
+            withdrawing_card=card,
+            withdrawn_ms=current,
+            signature=b"",
+        )
+        withdrawal = cls(
+            **{
+                **unsigned.__dict__,
+                "signature": identity.sign(
+                    canonical_pack(unsigned.signing_fields())
+                ),
+            }
+        )
+        withdrawal.verify(claim, now=current)
+        return withdrawal
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "version": self.version,
+            "type": self.object_type,
+            "claim_id": self.claim_id,
+            "withdrawing_card": self.withdrawing_card.to_dict(),
+            "withdrawn_ms": self.withdrawn_ms,
+            "signature": b64e(self.signature),
+        }
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> "RelationshipClaimWithdrawal":
+        expected = {
+            "version",
+            "type",
+            "claim_id",
+            "withdrawing_card",
+            "withdrawn_ms",
+            "signature",
+        }
+        if set(value) != expected:
+            raise ValueError("relationship claim withdrawal has unexpected fields")
+        return cls(
+            version=int(value["version"]),
+            object_type=str(value["type"]),
+            claim_id=str(value["claim_id"]),
+            withdrawing_card=PeerCard.from_dict(dict(value["withdrawing_card"])),
+            withdrawn_ms=int(value["withdrawn_ms"]),
+            signature=b64d(str(value["signature"])),
+        )
+
+    @classmethod
+    def load(
+        cls,
+        path: Path,
+        claim: MutualRelationshipClaim,
+        *,
+        now: int | None = None,
+    ) -> "RelationshipClaimWithdrawal":
+        value = json.loads(Path(path).read_text(encoding="utf-8"))
+        if not isinstance(value, dict):
+            raise ValueError("relationship claim withdrawal must be a JSON object")
+        withdrawal = cls.from_dict(value)
+        withdrawal.verify(claim, now=now)
+        return withdrawal
+
+    def save(self, path: Path) -> None:
+        atomic_json(Path(path), self.to_dict())
+
+
 class RelationshipClaimBook:
     """Durable verified claim objects keyed by their signed digest."""
 
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
         self._claims: dict[str, MutualRelationshipClaim] = {}
+        self._withdrawals: dict[str, RelationshipClaimWithdrawal] = {}
         self.reload()
 
     def reload(self) -> None:
         if not self.path.exists():
             self._claims = {}
+            self._withdrawals = {}
             return
         value = json.loads(self.path.read_text(encoding="utf-8"))
         if not isinstance(value, dict):
             raise ValueError("relationship claim book must be a JSON object")
-        if int(value.get("version", 0)) != 1:
+        version = int(value.get("version", 0))
+        if version not in {1, RELATIONSHIP_CLAIM_BOOK_VERSION}:
             raise ValueError("unsupported relationship claim book version")
         raw_claims = value.get("claims", ())
         if not isinstance(raw_claims, list):
@@ -444,16 +608,36 @@ class RelationshipClaimBook:
             if claim.claim_id in claims:
                 raise ValueError("relationship claim book contains a duplicate")
             claims[claim.claim_id] = claim
+        raw_withdrawals = value.get("withdrawals", ()) if version >= 2 else ()
+        if not isinstance(raw_withdrawals, list):
+            raise ValueError("relationship claim book withdrawals must be a list")
+        withdrawals: dict[str, RelationshipClaimWithdrawal] = {}
+        for raw in raw_withdrawals:
+            if not isinstance(raw, dict):
+                raise ValueError("relationship claim book withdrawal must be an object")
+            withdrawal = RelationshipClaimWithdrawal.from_dict(dict(raw))
+            claim = claims.get(withdrawal.claim_id)
+            if claim is None:
+                raise ValueError("relationship claim withdrawal references an unknown claim")
+            withdrawal.verify(claim)
+            if withdrawal.withdrawal_id in withdrawals:
+                raise ValueError("relationship claim book contains a duplicate withdrawal")
+            withdrawals[withdrawal.withdrawal_id] = withdrawal
         self._claims = claims
+        self._withdrawals = withdrawals
 
     def save(self) -> None:
         atomic_json(
             self.path,
             {
-                "version": 1,
+                "version": RELATIONSHIP_CLAIM_BOOK_VERSION,
                 "claims": [
                     self._claims[key].to_dict()
                     for key in sorted(self._claims)
+                ],
+                "withdrawals": [
+                    self._withdrawals[key].to_dict()
+                    for key in sorted(self._withdrawals)
                 ],
             },
             private=True,
@@ -469,3 +653,33 @@ class RelationshipClaimBook:
 
     def all(self) -> tuple[MutualRelationshipClaim, ...]:
         return tuple(self._claims[key] for key in sorted(self._claims))
+
+    def claim(self, claim_id: str) -> MutualRelationshipClaim | None:
+        return self._claims.get(_claim_id(claim_id))
+
+    def add_withdrawal(self, withdrawal: RelationshipClaimWithdrawal) -> bool:
+        claim = self.claim(withdrawal.claim_id)
+        if claim is None:
+            raise ValueError("relationship claim withdrawal references an unknown claim")
+        withdrawal.verify(claim)
+        if withdrawal.withdrawal_id in self._withdrawals:
+            return False
+        self._withdrawals[withdrawal.withdrawal_id] = withdrawal
+        self.save()
+        return True
+
+    def withdrawals_for(
+        self,
+        claim_id: str,
+    ) -> tuple[RelationshipClaimWithdrawal, ...]:
+        claim_key = _claim_id(claim_id)
+        return tuple(
+            withdrawal
+            for _key, withdrawal in sorted(self._withdrawals.items())
+            if withdrawal.claim_id == claim_key
+        )
+
+    def is_active(self, claim_id: str) -> bool:
+        if self.claim(claim_id) is None:
+            raise ValueError("relationship claim is not stored")
+        return not self.withdrawals_for(claim_id)

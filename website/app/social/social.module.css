@@ -859,6 +859,74 @@
 }
 .disclosureBoundary b { margin-right: 12px; color: #ff5c35; }
 
+.claimLifecycle {
+  margin-top: 30px;
+  padding: 25px 27px 0;
+  border: 1px solid #1e1f1b;
+  color: #eceee7;
+  background: #252722;
+}
+.claimLifecycle h3 { margin: 8px 0 0; font-size: 22px; letter-spacing: -.035em; }
+.claimLifecycle > div:first-child > p:last-child {
+  max-width: 720px;
+  margin: 11px 0 0;
+  color: #b9bbb2;
+  font-size: 10px;
+  line-height: 1.65;
+}
+.claimStatus {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: 1fr 34px 1fr;
+  border: 1px solid #55574f;
+}
+.claimStatus > div { padding: 17px 18px; }
+.claimStatus > div:last-child { border-left: 1px solid #55574f; background: rgba(217,255,67,.08); }
+.claimStatus > i {
+  display: grid;
+  place-items: center;
+  color: #d9ff43;
+  font: normal 16px var(--font-mono);
+}
+.claimStatus small,
+.claimStatus strong,
+.claimStatus span { display: block; }
+.claimStatus small { color: #d9ff43; font: 8px var(--font-mono); letter-spacing: .1em; }
+.claimStatus strong { margin-top: 8px; font-size: 12px; }
+.claimStatus span { margin-top: 7px; color: #b9bbb2; font: 8px/1.45 var(--font-mono); }
+.claimStatus[data-withdrawn="true"] > div:first-child { background: rgba(255,92,53,.16); }
+.claimStatus[data-withdrawn="true"] > div:first-child small,
+.claimStatus[data-withdrawn="true"] > div:first-child strong { color: #ff875f; }
+.claimActionRow {
+  margin: 0 -27px;
+  padding: 13px 27px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-top: 1px solid #55574f;
+}
+.claimActionRow p { margin: 0; color: #b9bbb2; font: 8px/1.5 var(--font-mono); }
+.claimActionRow button {
+  flex: 0 0 auto;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #d9ff43;
+  color: #1e1f1b;
+  background: #d9ff43;
+  cursor: pointer;
+  font: 8px var(--font-mono);
+}
+.claimBoundary {
+  display: block;
+  margin: 0 -27px;
+  padding: 10px 27px;
+  border-top: 1px solid #55574f;
+  color: #ff875f;
+  font: 8px var(--font-mono);
+  letter-spacing: .05em;
+}
+
 .factBoundary {
   margin-top: 30px;
   padding: 23px 27px;
@@ -947,6 +1015,12 @@
   .coverageWarning span { display: block; float: none; margin-top: 6px; }
   .gapRecovery { grid-template-columns: 1fr; }
   .gapRecovery > i { min-height: 24px; transform: rotate(90deg); }
+  .claimLifecycle { padding-inline: 20px; }
+  .claimStatus { grid-template-columns: 1fr; }
+  .claimStatus > i { min-height: 30px; transform: rotate(90deg); }
+  .claimStatus > div:last-child { border-top: 1px solid #55574f; border-left: 0; }
+  .claimActionRow { margin-inline: -20px; padding-inline: 20px; align-items: flex-start; flex-direction: column; }
+  .claimBoundary { margin-inline: -20px; padding-inline: 20px; }
   .factBoundary { grid-template-columns: 1fr; }
   .factBoundary > b { transform: rotate(90deg); }
   .qrBackdrop { padding: 8px; place-items: start center; }

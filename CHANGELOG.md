@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Mutual Actor-to-Actor relationship claims now have a signed participant
+  withdrawal path. A withdrawal deactivates only the portable claim and records
+  a content-free local activity fact; it never automatically changes a local
+  Subject hypothesis, circle, contextual trust, PeerBook trust, capability or
+  authorization. This makes `family` / `mutual-guardian` claims reversible
+  without treating social distance as an authority grant.
 - 新增受众绑定的 `social.relationship.disclosure` 加密对象、
   `relation-disclose` / `relation-disclosure-list` CLI，以及默认关闭的
   `anet_relation_disclose` / `anet_relation_disclosures` MCP 工具。披露只接受

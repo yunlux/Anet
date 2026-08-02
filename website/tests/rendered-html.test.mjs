@@ -91,6 +91,9 @@ test("renders the relationship demo with explicit fact and inference boundaries"
   assert.match(html, /requested_action: none/);
   assert.match(html, /active schedule required/);
   assert.match(html, /咨询性缺页通知/);
+  assert.match(html, /MUTUAL RELATIONSHIP CLAIM \/ REVOCABLE/);
+  assert.match(html, /共同声明可以撤回/);
+  assert.match(html, /NO FORCED CIRCLE CHANGE/);
   assert.match(html, /G 的本地判断/);
   assert.match(html, /AUTHORIZATION EFFECT: NONE/);
   assert.match(html, /本地持久化顺序回放/);

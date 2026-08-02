@@ -20,6 +20,8 @@ export function LanguageToggle() {
   useEffect(() => {
     const saved = window.localStorage.getItem("anet-language");
     const initial = saved === "zh" ? "zh" : "en";
+    // The server always renders English; hydrate a previously chosen local language once.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLanguage(initial);
     applyLanguage(initial);
   }, []);

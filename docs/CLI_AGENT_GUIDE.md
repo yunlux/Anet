@@ -303,6 +303,16 @@ Labels are public to recipients of the claim. Acceptance projects only social
 circle evidence; it never grants contextual trust or capabilities. See
 [`RELATIONSHIP_CLAIMS_V1.md`](RELATIONSHIP_CLAIMS_V1.md).
 
+Either participant can sign a withdrawal for one stored mutual claim. Importing
+that withdrawal only marks the portable claim inactive and records a local
+activity fact; it does not automatically alter either observer's Subject,
+circle, contextual trust, PeerBook trust, capability, or authorization:
+
+```text
+anet --home <B_HOME> relation-claim-withdraw <MREL_CLAIM_ID> --out <WITHDRAWAL.json>
+anet --home <A_HOME> relation-claim-withdraw-import <WITHDRAWAL.json>
+```
+
 To show a selected content-free part of this node's observer-local social view
 to one pinned peer:
 
