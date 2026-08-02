@@ -64,6 +64,7 @@ RELATION_EVENT_DETAIL_FIELDS = {
     "relationship.context-trust-set": frozenset(
         {"context", "estimate", "confidence"}
     ),
+    "relationship.paused": frozenset({"state"}),
     "relationship.ended": frozenset({"state"}),
     "relationship.mutual-claim-withdrawn": frozenset(
         {"claim_id", "withdrawing_actor_id", "relationship_changed"}
@@ -2057,6 +2058,43 @@ class RelationshipBook:
     ) -> RelationshipEstimate:
         """End one local relationship estimate without rewriting its Subject."""
 
+        return self._set_relationship_state(
+            subject_ref,
+            state="ended",
+            event_type="relationship.ended",
+            evidence_ref=evidence_ref,
+            now=now,
+        )
+
+    def pause_relationship(
+        self,
+        subject_ref: str,
+        *,
+        evidence_ref: str,
+        now: int | None = None,
+    ) -> RelationshipEstimate:
+        """Mark one local relationship as dormant without rewriting its Subject."""
+
+        return self._set_relationship_state(
+            subject_ref,
+            state="dormant",
+            event_type="relationship.paused",
+            evidence_ref=evidence_ref,
+            now=now,
+        )
+
+    def _set_relationship_state(
+        self,
+        subject_ref: str,
+        *,
+        state: str,
+        event_type: str,
+        evidence_ref: str,
+        now: int | None,
+    ) -> RelationshipEstimate:
+        if state not in {"dormant", "ended"}:
+            raise ValueError("relationship state transition must be dormant or ended")
+
         subject_key = _bounded_text(
             subject_ref,
             label="Subject reference",
@@ -2065,18 +2103,18 @@ class RelationshipBook:
         relationship = self._relationships.get(subject_key)
         if relationship is None:
             raise KeyError(f"unknown Subject hypothesis: {subject_key}")
-        if relationship.state == "ended":
+        if relationship.state == state:
             return relationship
         evidence = _bounded_text(
             evidence_ref,
-            label="relationship end evidence reference",
+            label="relationship state evidence reference",
             maximum=MAX_EVIDENCE_LENGTH,
         )
         current = _now_ms(now)
-        ended = RelationshipEstimate(
+        updated = RelationshipEstimate(
             subject_ref=relationship.subject_ref,
             circle=relationship.circle,
-            state="ended",
+            state=state,
             relationship_labels=relationship.relationship_labels,
             relationship_confidence=relationship.relationship_confidence,
             context_trust=relationship.context_trust,
@@ -2087,16 +2125,16 @@ class RelationshipBook:
             ),
             updated_ms=current,
         )
-        self._relationships[subject_key] = ended
+        self._relationships[subject_key] = updated
         self._append_event(
-            "relationship.ended",
+            event_type,
             subject_ref=subject_key,
             evidence_ref=evidence,
             now=current,
-            details={"state": "ended"},
+            details={"state": state},
         )
         self.save()
-        return ended
+        return updated
 
     def suggestion_decision(
         self,

@@ -377,6 +377,19 @@ The local activity feed projects the change as the content-free
 `relationship.ended` estimate, so a local `/social` model import can replay it
 without exposing the reason or evidence reference.
 
+For a relationship that is merely inactive rather than concluded, use the same
+observer-local confirmation pattern with `relation-pause`:
+
+```text
+anet --home <HOME> relation-pause <SUBJECT_REF> --confirm <SUBJECT_REF> \
+  --reason "operator:relationship-inactive"
+```
+
+This records `relationship.paused` and sets the relationship state to
+`dormant`; it is excluded from active circle counts and from relationship
+suggestions. It retains the same local Subject, Actor, evidence, contextual
+trust and claim boundaries. An explicit `relation-circle` reactivates it.
+
 Revise one hypothesis one-to-one while inheriting its relationship:
 
 ```text

@@ -618,6 +618,14 @@ function projectActivity(
       tag: tags[item.fact_level],
     };
   }
+  if (item.activity_type === "relationship.paused") {
+    return {
+      id: item.activity_id,
+      title: "暂停本地关系",
+      detail: `${subject} · Subject 与历史仍保留 · 不改变授权`,
+      tag: tags[item.fact_level],
+    };
+  }
   if (item.activity_type.startsWith("relationship.suggestion-")) {
     return {
       id: item.activity_id,
@@ -736,7 +744,7 @@ export function SocialCircleDemo() {
     () =>
       subjects.reduce<Record<Circle, number>>(
         (result, subject) => {
-          if (subject.relationshipState !== "ended") {
+          if (!subject.relationshipState || subject.relationshipState === "active") {
             result[subject.id === "b" ? demoCircle : subject.circle] += 1;
           }
           return result;
@@ -1046,7 +1054,9 @@ export function SocialCircleDemo() {
                   <small>
                     {subject.relationshipState === "ended"
                       ? "关系已结束 · Subject 保留"
-                      : `${circleMeta[circle].label} · ${subject.confidence}%`}
+                      : subject.relationshipState === "dormant"
+                        ? "关系暂不活跃 · Subject 保留"
+                        : `${circleMeta[circle].label} · ${subject.confidence}%`}
                   </small>
                 </button>
               );

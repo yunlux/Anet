@@ -1107,6 +1107,36 @@ def cmd_relation_trust(args: argparse.Namespace) -> int:
 
 
 def cmd_relation_end(args: argparse.Namespace) -> int:
+    return _cmd_relation_state(
+        args,
+        state="ended",
+        action="ended",
+        mutate=lambda relationships, subject_ref: relationships.end_relationship(
+            subject_ref,
+            evidence_ref=args.reason,
+        ),
+    )
+
+
+def cmd_relation_pause(args: argparse.Namespace) -> int:
+    return _cmd_relation_state(
+        args,
+        state="dormant",
+        action="paused",
+        mutate=lambda relationships, subject_ref: relationships.pause_relationship(
+            subject_ref,
+            evidence_ref=args.reason,
+        ),
+    )
+
+
+def _cmd_relation_state(
+    args: argparse.Namespace,
+    *,
+    state: str,
+    action: str,
+    mutate: Any,
+) -> int:
     subject_ref = str(args.subject).strip()
     if args.confirm != subject_ref:
         raise ValueError("--confirm must exactly match the Subject reference")
@@ -1119,14 +1149,11 @@ def cmd_relation_end(args: argparse.Namespace) -> int:
     existing = relationships.relationship(subject_ref)
     if existing is None:
         raise ValueError("Subject hypothesis is not present in this local relationship book")
-    relationship = relationships.end_relationship(
-        subject_ref,
-        evidence_ref=args.reason,
-    )
+    relationship = mutate(relationships, subject_ref)
     _print_json(
         {
             "relationship": relationship.to_dict(),
-            "already_ended": existing.state == "ended",
+            f"already_{action}": existing.state == state,
             "subject_changed": False,
             "actors_changed": False,
             "claims_changed": False,
@@ -3541,6 +3568,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="bounded local reason or evidence reference; not raw private content",
     )
     relation_end.set_defaults(func=cmd_relation_end)
+
+    relation_pause = sub.add_parser(
+        "relation-pause",
+        help="mark one observer-local relationship dormant without revoking Actors",
+    )
+    relation_pause.add_argument("subject", help="observer-local subj_ reference")
+    relation_pause.add_argument(
+        "--confirm",
+        required=True,
+        help="repeat the complete Subject reference",
+    )
+    relation_pause.add_argument(
+        "--reason",
+        required=True,
+        help="bounded local reason or evidence reference; not raw private content",
+    )
+    relation_pause.set_defaults(func=cmd_relation_pause)
 
     relation_propose = sub.add_parser(
         "relation-propose",

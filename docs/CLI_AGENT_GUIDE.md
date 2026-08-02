@@ -250,6 +250,20 @@ The command is idempotent and changes no PeerBook or authorization state. It
 sets only the local relationship state to `ended`; a later explicit
 `relation-circle` reopens it as `active`.
 
+For an inactive relationship that should remain available for later local
+review, use the same confirmation pattern with `relation-pause` instead:
+
+```text
+anet --home <HOME> relation-pause <SUBJECT_REF> --confirm <SUBJECT_REF> \
+  --reason "operator:relationship-inactive"
+```
+
+This sets only the local relationship state to `dormant`. It retains the
+Subject, linked Actors, contextual trust, claims and history, but excludes the
+relationship from advisor suggestions and active-circle counts. An explicit
+`relation-circle` is required to reactivate it; the command has
+`authorization_effect: none`.
+
 For a stopped Discord-enabled runtime, replay any already durable source events
 after relationship-state repair with:
 

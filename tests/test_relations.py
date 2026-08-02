@@ -67,6 +67,31 @@ def test_cli_observes_an_opaque_operator_attested_external_actor(
     assert NodeConfig.load(home).peers_path.exists()
     assert json.loads(NodeConfig.load(home).peers_path.read_text(encoding="utf-8"))["peers"] == []
 
+    pause = [
+        "--home",
+        str(home),
+        "relation-pause",
+        observed["subject"]["subject_ref"],
+        "--confirm",
+        observed["subject"]["subject_ref"],
+        "--reason",
+        "operator:relationship-inactive",
+    ]
+    assert main(pause) == 0
+    paused = json.loads(capsys.readouterr().out)
+    assert paused["relationship"]["state"] == "dormant"
+    assert paused["already_paused"] is False
+    assert paused["subject_changed"] is False
+    assert paused["actors_changed"] is False
+    assert paused["claims_changed"] is False
+    assert paused["trust_changed"] is False
+    assert paused["peerbook_changed"] is False
+    assert paused["authorization_effect"] == "none"
+
+    assert main(pause) == 0
+    repeated_pause = json.loads(capsys.readouterr().out)
+    assert repeated_pause["already_paused"] is True
+
     end = [
         "--home",
         str(home),
@@ -120,6 +145,7 @@ def test_cli_observes_an_opaque_operator_attested_external_actor(
     ).snapshot()
     assert [item["event_type"] for item in snapshot["events"]] == [
         "actor.observed",
+        "relationship.paused",
         "relationship.ended",
         "actor.revoked",
     ]
@@ -223,10 +249,27 @@ def test_ended_relationship_keeps_local_history_and_circle_reopens_it(tmp_path) 
         now=1_800_000_000_003,
     )
 
+    paused = book.pause_relationship(
+        subject.subject_ref,
+        evidence_ref="operator:relationship-inactive",
+        now=1_800_000_000_004,
+    )
+    assert paused.state == "dormant"
+    assert paused.circle == "close"
+    assert paused.context_trust == trusted.context_trust
+    assert (
+        book.pause_relationship(
+            subject.subject_ref,
+            evidence_ref="operator:relationship-inactive",
+            now=1_800_000_000_005,
+        )
+        == paused
+    )
+
     ended = book.end_relationship(
         subject.subject_ref,
         evidence_ref="operator:relationship-ended",
-        now=1_800_000_000_004,
+        now=1_800_000_000_006,
     )
     assert ended.state == "ended"
     assert ended.circle == "close"
@@ -234,20 +277,17 @@ def test_ended_relationship_keeps_local_history_and_circle_reopens_it(tmp_path) 
     assert book.subject(subject.subject_ref) is not None
     assert book.actor(peer.node_id) is not None
 
-    assert (
-        book.end_relationship(
-            subject.subject_ref,
-            evidence_ref="operator:relationship-ended",
-            now=1_800_000_000_005,
-        )
-        == ended
-    )
+    assert book.end_relationship(
+        subject.subject_ref,
+        evidence_ref="operator:relationship-ended",
+        now=1_800_000_000_007,
+    ) == ended
     reopened = book.set_circle(
         subject.subject_ref,
         "known",
         confidence=60,
         evidence_ref="operator:relationship-reopened",
-        now=1_800_000_000_006,
+        now=1_800_000_000_008,
     )
     assert reopened.state == "active"
     assert reopened.circle == "known"
@@ -255,6 +295,7 @@ def test_ended_relationship_keeps_local_history_and_circle_reopens_it(tmp_path) 
         "actor.observed",
         "relationship.circle-set",
         "relationship.context-trust-set",
+        "relationship.paused",
         "relationship.ended",
         "relationship.circle-set",
     ]

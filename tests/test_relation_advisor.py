@@ -136,6 +136,29 @@ def test_message_volume_and_discord_activity_never_suggest_closer_circle(
     assert RelationshipAdvisor.advise(book.snapshot()) == ()
 
 
+def test_dormant_or_ended_relationships_never_receive_new_suggestions(
+    tmp_path,
+) -> None:
+    _observer, peer, book, subject = _book_with_peer(tmp_path)
+    _task_cycle(book, peer, subject.subject_ref, 1)
+    _task_cycle(book, peer, subject.subject_ref, 2)
+    assert RelationshipAdvisor.advise(book.snapshot())
+
+    book.pause_relationship(
+        subject.subject_ref,
+        evidence_ref="operator:relationship-inactive",
+        now=1_800_000_000_999,
+    )
+    assert RelationshipAdvisor.advise(book.snapshot()) == ()
+
+    book.end_relationship(
+        subject.subject_ref,
+        evidence_ref="operator:relationship-ended",
+        now=1_800_000_001_000,
+    )
+    assert RelationshipAdvisor.advise(book.snapshot()) == ()
+
+
 def test_advisor_never_suggests_friend_close_family_or_subject_link(
     tmp_path,
 ) -> None:
