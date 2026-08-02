@@ -293,6 +293,13 @@ Complete model:
 anet --home <HOME> relation-list --model
 ```
 
+The complete model also contains a compact `mutual_relationship_claims`
+projection for claims stored in this node home. It has participant Actor IDs,
+their current local Subject references when known, circle, labels, active or
+withdrawn state, and bounded withdrawal metadata. It never inserts a claim
+into a Subject or changes a local relationship estimate. The `/social` page
+renders this projection only in the browser after a local file import.
+
 The `/social` demonstration can render an exported model locally in the
 browser:
 

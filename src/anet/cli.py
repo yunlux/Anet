@@ -487,6 +487,43 @@ def cmd_relation_list(args: argparse.Namespace) -> int:
     )
     if args.model:
         model = relationships.snapshot()
+        claims = RelationshipClaimBook(config.relationship_claims_path)
+        model["mutual_relationship_claims"] = [
+            {
+                "claim_id": claim.claim_id,
+                "participant_actor_ids": [
+                    claim.proposal.proposer_card.node_id,
+                    claim.accepter_card.node_id,
+                ],
+                "participant_subject_refs": [
+                    {
+                        "actor_id": actor_id,
+                        "subject_ref": (
+                            subject.subject_ref if subject is not None else None
+                        ),
+                    }
+                    for actor_id in (
+                        claim.proposal.proposer_card.node_id,
+                        claim.accepter_card.node_id,
+                    )
+                    for subject in (relationships.primary_subject(actor_id),)
+                ],
+                "circle": claim.circle,
+                "labels": list(claim.labels),
+                "accepted_ms": claim.accepted_ms,
+                "active": claims.is_active(claim.claim_id),
+                "withdrawals": [
+                    {
+                        "withdrawal_id": withdrawal.withdrawal_id,
+                        "withdrawing_actor_id": withdrawal.withdrawing_card.node_id,
+                        "withdrawn_ms": withdrawal.withdrawn_ms,
+                    }
+                    for withdrawal in claims.withdrawals_for(claim.claim_id)
+                ],
+                "authorization_effect": "none",
+            }
+            for claim in claims.all()
+        ]
         model["relationship_suggestions"] = [
             item.to_dict() for item in RelationshipAdvisor.advise(model)
         ]

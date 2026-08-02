@@ -252,6 +252,31 @@ def test_relationship_claim_cli_projects_both_views_without_peer_trust(
     assert listed[0]["claim_id"] == imported["claim_id"]
     assert listed[0]["circle"] == "friend"
 
+    assert main(["--home", str(a_home), "relation-list", "--model"]) == 0
+    model = json.loads(capsys.readouterr().out)
+    assert model["mutual_relationship_claims"] == [
+        {
+            "claim_id": imported["claim_id"],
+            "participant_actor_ids": [a_init["node_id"], b_init["node_id"]],
+            "participant_subject_refs": [
+                {
+                    "actor_id": a_init["node_id"],
+                    "subject_ref": None,
+                },
+                {
+                    "actor_id": b_init["node_id"],
+                    "subject_ref": imported["subject_ref"],
+                },
+            ],
+            "circle": "friend",
+            "labels": ["research-partner"],
+            "accepted_ms": model["mutual_relationship_claims"][0]["accepted_ms"],
+            "active": True,
+            "withdrawals": [],
+            "authorization_effect": "none",
+        }
+    ]
+
     for home, own_id, peer_id in (
         (a_home, a_init["node_id"], b_init["node_id"]),
         (b_home, b_init["node_id"], a_init["node_id"]),
@@ -366,6 +391,13 @@ def test_claim_withdrawal_cli_preserves_each_observer_local_circle(
     listed = json.loads(capsys.readouterr().out)
     assert listed[0]["active"] is False
     assert listed[0]["withdrawals"][0]["withdrawing_actor_id"] == b_init["node_id"]
+    assert main(["--home", str(a_home), "relation-list", "--model"]) == 0
+    model = json.loads(capsys.readouterr().out)
+    projected_claim = model["mutual_relationship_claims"][0]
+    assert projected_claim["claim_id"] == accepted["claim_id"]
+    assert projected_claim["active"] is False
+    assert projected_claim["withdrawals"][0]["withdrawing_actor_id"] == b_init["node_id"]
+    assert projected_claim["authorization_effect"] == "none"
     a_config = NodeConfig.load(a_home)
     a_book = RelationshipBook(a_config.relationships_path, own_actor_id=a_init["node_id"])
     assert a_book.get(b_init["node_id"]).circle == "family"

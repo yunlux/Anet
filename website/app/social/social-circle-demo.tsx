@@ -101,6 +101,24 @@ type RelationSnapshot = {
     ordering: string;
     privacy: string;
   };
+  mutual_relationship_claims?: {
+    claim_id: string;
+    participant_actor_ids: string[];
+    participant_subject_refs: {
+      actor_id: string;
+      subject_ref: string | null;
+    }[];
+    circle: string;
+    labels: string[];
+    accepted_ms: number;
+    active: boolean;
+    withdrawals: {
+      withdrawal_id: string;
+      withdrawing_actor_id: string;
+      withdrawn_ms: number;
+    }[];
+    authorization_effect: string;
+  }[];
 };
 
 type SubjectModel = {
@@ -140,6 +158,8 @@ type TimelineEvent = {
   tag: string;
 };
 
+type MutualClaimModel = NonNullable<RelationSnapshot["mutual_relationship_claims"]>[number];
+
 const circleMeta: Record<Circle, { label: string; index: string }> = {
   family: { label: "家人", index: "01" },
   close: { label: "亲密", index: "02" },
@@ -177,6 +197,7 @@ function projectSnapshot(value: unknown): {
   observer: string;
   subjects: SubjectModel[];
   activities: TimelineEvent[];
+  claims: MutualClaimModel[];
 } {
   if (!value || typeof value !== "object") {
     throw new Error("模型必须是 JSON 对象");
@@ -333,6 +354,9 @@ function projectSnapshot(value: unknown): {
       ? snapshot.relationship_activity.activities
           .slice(-12)
           .map(projectActivity)
+      : [],
+    claims: Array.isArray(snapshot.mutual_relationship_claims)
+      ? snapshot.mutual_relationship_claims
       : [],
   };
 }
@@ -624,6 +648,7 @@ export function SocialCircleDemo() {
   const [importedSubjects, setImportedSubjects] = useState<SubjectModel[] | null>(null);
   const [importedObserver, setImportedObserver] = useState("");
   const [importedActivity, setImportedActivity] = useState<TimelineEvent[]>([]);
+  const [importedClaims, setImportedClaims] = useState<MutualClaimModel[] | null>(null);
   const [importError, setImportError] = useState("");
   const [disclosureSent, setDisclosureSent] = useState(false);
   const [disclosureSchedule, setDisclosureSchedule] = useState<
@@ -728,6 +753,7 @@ export function SocialCircleDemo() {
       setImportedSubjects(projected.subjects);
       setImportedObserver(projected.observer);
       setImportedActivity(projected.activities);
+      setImportedClaims(projected.claims);
       setSelectedId(projected.subjects[0].id);
       setStep(Math.max(0, projected.activities.length - 1));
       setFriendAdded(false);
@@ -741,6 +767,7 @@ export function SocialCircleDemo() {
     setImportedSubjects(null);
     setImportedObserver("");
     setImportedActivity([]);
+    setImportedClaims(null);
     setSelectedId("d");
     setStep(formationEvents.length - 1);
     setImportError("");
@@ -1454,37 +1481,77 @@ export function SocialCircleDemo() {
         <section className={styles.claimLifecycle}>
           <div>
             <p className={styles.kicker}>MUTUAL RELATIONSHIP CLAIM / REVOCABLE</p>
-            <h3>共同声明可以撤回，A 的本地判断不会被 B 远程改写。</h3>
+            <h3>
+              {importedClaims
+                ? "导入的共同声明仅描述 Actor 间的签名事实。"
+                : "共同声明可以撤回，A 的本地判断不会被 B 远程改写。"}
+            </h3>
             <p>
-              `family · mutual-guardian` 是 A 与 B 双方签名的 Actor-to-Actor 声明。
-              它不包含 Subject，也不授予监护、任务、文件或付款权限。
+              共同声明不包含 Subject，也不授予监护、任务、文件或付款权限。
+              {importedClaims
+                ? " 导入文件只在此浏览器解析，不会被上传。"
+                : " 示例中的 family · mutual-guardian 由 A 与 B 双方签名。"}
             </p>
           </div>
-          <div className={styles.claimStatus} data-withdrawn={claimWithdrawn}>
-            <div>
-              <small>PORTABLE CLAIM</small>
-              <strong>{claimWithdrawn ? "INACTIVE · SIGNED WITHDRAWAL" : "ACTIVE · MUTUALLY SIGNED"}</strong>
-              <span>mrel_guardian… · A ↔ B · family</span>
+          {(importedClaims ?? [
+            {
+              claim_id: "mrel_guardian_demo",
+              participant_actor_ids: ["A", "B"],
+              participant_subject_refs: [],
+              circle: "family",
+              labels: ["mutual-guardian"],
+              accepted_ms: 0,
+              active: !claimWithdrawn,
+              withdrawals: claimWithdrawn
+                ? [{ withdrawal_id: "mrelw_demo", withdrawing_actor_id: "B", withdrawn_ms: 0 }]
+                : [],
+              authorization_effect: "none",
+            },
+          ]).map((claim) => (
+            <div
+              className={styles.claimStatus}
+              data-withdrawn={!claim.active}
+              key={claim.claim_id}
+            >
+              <div>
+                <small>PORTABLE CLAIM</small>
+                <strong>
+                  {claim.active ? "ACTIVE · MUTUALLY SIGNED" : "INACTIVE · SIGNED WITHDRAWAL"}
+                </strong>
+                <span>
+                  {claim.claim_id.slice(0, 18)}… · {claim.participant_actor_ids.map((id) => id.slice(0, 11)).join(" ↔ ")} · {claim.circle}
+                </span>
+              </div>
+              <i aria-hidden="true">→</i>
+              <div>
+                <small>LOCAL RELATIONSHIP BOOK</small>
+                <strong>independent · unchanged</strong>
+                <span>
+                  {claim.withdrawals.length
+                    ? `${claim.withdrawals.length} 个已验证撤回；仍不强制改变圈层、Subject 或 contextual trust`
+                    : "圈层、Subject 和 contextual trust 仍由当前观察者自己修订"}
+                </span>
+              </div>
             </div>
-            <i aria-hidden="true">→</i>
-            <div>
-              <small>A LOCAL RELATIONSHIP BOOK</small>
-              <strong>family · unchanged</strong>
-              <span>圈层、Subject 和 contextual trust 由 A 自己另行修订</span>
-            </div>
-          </div>
+          ))}
           <div className={styles.claimActionRow}>
             <p>
-              {claimWithdrawn
-                ? "B 的签名撤回已作为活动事实导入；它只使该共享声明失效。"
-                : "B 可撤回自己对这条共享声明的站台；A 收到后只记录事实。"}
+              {importedClaims
+                ? importedClaims.length
+                  ? `已从当前节点导入 ${importedClaims.length} 条持久化声明摘要。`
+                  : "当前节点没有存储的共同声明。"
+                : claimWithdrawn
+                  ? "B 的签名撤回已作为活动事实导入；它只使该共享声明失效。"
+                  : "B 可撤回自己对这条共享声明的站台；A 收到后只记录事实。"}
             </p>
-            <button
-              type="button"
-              onClick={() => setClaimWithdrawn((current) => !current)}
-            >
-              {claimWithdrawn ? "恢复演示" : "模拟 B 签名撤回 →"}
-            </button>
+            {!importedClaims && (
+              <button
+                type="button"
+                onClick={() => setClaimWithdrawn((current) => !current)}
+              >
+                {claimWithdrawn ? "恢复演示" : "模拟 B 签名撤回 →"}
+              </button>
+            )}
           </div>
           <b className={styles.claimBoundary}>
             AUTHORIZATION EFFECT: NONE · NO FORCED CIRCLE CHANGE
