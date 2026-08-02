@@ -39,8 +39,10 @@ therefore starts at machine boot without requiring a user to log in. Pass
 `-Root` or `-NodeHome` to select an explicit machine-owned location. Pass
 `-Port`, `-ListenHost`, `-LocatorContext`, and repeated `-Advertise` values to
 make the node's address stable and reachable by a same-host WSL node.
-The task is also configured to restart a failed supervisor up to three times
-with a one-minute interval and has no execution time limit.
+The task is also configured to restart a failed supervisor up to 99 times
+with a one-minute interval and has no execution time limit. The initial wheel
+uses `software.sha256` from the control page when present; if it is omitted,
+the installer records the locally observed hash instead.
 When the installer explicitly reuses this target, it stops the managed task
 and waits for the old supervisor to release the node lock before starting the
 new task, so updated control-page settings take effect immediately.
@@ -81,8 +83,9 @@ not advertise `127.0.0.1`, `localhost`, or `::1`, because the receiving runtime
 can connect to its own loopback and then report a TLS/Node ID mismatch.
 
 The same rule is enforced again whenever the supervisor applies a remote
-configuration: host-scoped Windows/WSL overlays with equal listener ports are
-rejected, and a changed listener, advertised locator, context, or capability
+configuration: enabled Windows/WSL overlays must either both be local-only or
+both declare host scope; host-scoped overlays with equal listener ports are
+rejected. A changed listener, advertised locator, context, or capability
 regenerates the local signed `card.json` before the `anet serve` child is
 restarted.
 

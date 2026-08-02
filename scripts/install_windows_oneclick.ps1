@@ -184,8 +184,20 @@ function Assert-CrossPlatformPorts {
         -NotePropertyValue @($Contexts) -Force
     $currentConfig | Add-Member -NotePropertyName advertise `
         -NotePropertyValue @($Advertise) -Force
-    if (-not (Test-HasHostScope $currentConfig) -or
-        -not (Test-HasHostScope $otherConfig)) {
+    if ($currentConfig.PSObject.Properties["listen_enabled"] -and
+        -not [bool]$currentConfig.listen_enabled) {
+        return
+    }
+    if ($otherConfig.PSObject.Properties["listen_enabled"] -and
+        -not [bool]$otherConfig.listen_enabled) {
+        return
+    }
+    $currentHasHostScope = Test-HasHostScope $currentConfig
+    $otherHasHostScope = Test-HasHostScope $otherConfig
+    if ($currentHasHostScope -ne $otherHasHostScope) {
+        throw "Windows and WSL host scope must be declared on both enabled overlays"
+    }
+    if (-not $currentHasHostScope) {
         return
     }
     $otherPort = 0
@@ -208,6 +220,7 @@ function Assert-CrossPlatformPorts {
 function Assert-CrossPlatformLocators {
     param(
         [object]$Platforms,
+        [object]$CommonConfig,
         [string]$PlatformName,
         [string]$ListenHost,
         [string[]]$Advertise,
@@ -218,6 +231,20 @@ function Assert-CrossPlatformLocators {
     }
     $other = if ($PlatformName -eq "windows") { "wsl" } else { "windows" }
     if ($null -eq $Platforms.PSObject.Properties[$other]) {
+        return
+    }
+    $currentConfig = Get-EffectivePlatformConfig `
+        $Platforms $CommonConfig $PlatformName
+    $otherConfig = Get-EffectivePlatformConfig `
+        $Platforms $CommonConfig $other
+    if ($currentConfig -and
+        $currentConfig.PSObject.Properties["listen_enabled"] -and
+        -not [bool]$currentConfig.listen_enabled) {
+        return
+    }
+    if ($otherConfig -and
+        $otherConfig.PSObject.Properties["listen_enabled"] -and
+        -not [bool]$otherConfig.listen_enabled) {
         return
     }
     $hasHostContext = @(
@@ -362,6 +389,7 @@ if ($page.PSObject.Properties["platforms"]) {
 }
 Assert-CrossPlatformLocators `
     $platformsForValidation `
+    $commonConfig `
     "windows" `
     $ListenHost `
     $Advertise `
@@ -441,7 +469,10 @@ if (-not $Wheel) {
 }
 $wheelPath = (Resolve-Path -LiteralPath $Wheel).Path
 if (-not $WheelSha256) {
-    $WheelSha256 = (Get-FileHash -LiteralPath $wheelPath -Algorithm SHA256).Hash
+    $WheelSha256 = Get-OptionalProperty $software "sha256"
+    if (-not $WheelSha256) {
+        $WheelSha256 = (Get-FileHash -LiteralPath $wheelPath -Algorithm SHA256).Hash
+    }
 }
 
 $installer = ""
@@ -589,7 +620,7 @@ $taskArguments = "-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$launcher`"
 $action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument $taskArguments
 $settings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
-    -RestartCount 3 `
+    -RestartCount 99 `
     -RestartInterval (New-TimeSpan -Minutes 1) `
     -ExecutionTimeLimit ([TimeSpan]::Zero)
 if ($Admin) {

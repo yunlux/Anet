@@ -284,7 +284,17 @@ def validate_cross_platform_ports(
         current["locator_contexts"] = list(contexts)
     if advertise is not None:
         current["advertise"] = list(advertise)
-    if not _has_host_scope(current) or not _has_host_scope(other):
+    if not bool(current.get("listen_enabled", True)) or not bool(
+        other.get("listen_enabled", True)
+    ):
+        return
+    current_host_scope = _has_host_scope(current)
+    other_host_scope = _has_host_scope(other)
+    if current_host_scope != other_host_scope:
+        raise DeploymentError(
+            "Windows and WSL host scope must be declared on both enabled overlays"
+        )
+    if not current_host_scope:
         return
     if listen_port is None:
         raise DeploymentError(

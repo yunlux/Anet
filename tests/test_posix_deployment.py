@@ -149,6 +149,35 @@ def test_cross_platform_host_locators_accept_distinct_ports() -> None:
     )
 
 
+def test_cross_platform_host_scope_must_be_declared_on_both_overlays() -> None:
+    page = {
+        "platforms": {
+            "windows": {
+                "config": {
+                    "listen_port": 43111,
+                    "locator_contexts": ["host:abcdefgh"],
+                    "advertise": [
+                        "tls://192.0.2.10:43111?scope=host&zone=abcdefgh"
+                    ],
+                }
+            },
+            "wsl": {"config": {"listen_port": 43112}},
+        }
+    }
+    try:
+        validate_cross_platform_ports(
+            page,
+            "wsl",
+            listen_port=43112,
+            contexts=[],
+            advertise=[],
+        )
+    except DeploymentError as exc:
+        assert "host scope must be declared on both" in str(exc)
+    else:
+        raise AssertionError("mixed host scope must be rejected")
+
+
 def test_launchd_plist_runs_at_login_and_keeps_supervisor_alive() -> None:
     value = plistlib.loads(
         launchd_plist(

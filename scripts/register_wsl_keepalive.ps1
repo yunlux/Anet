@@ -77,8 +77,9 @@ $principal = New-ScheduledTaskPrincipal `
     -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
-    -RestartCount 3 `
-    -RestartInterval (New-TimeSpan -Minutes 1)
+    -RestartCount 99 `
+    -RestartInterval (New-TimeSpan -Minutes 1) `
+    -ExecutionTimeLimit ([TimeSpan]::Zero)
 Register-ScheduledTask `
     -TaskPath $taskPath `
     -TaskName $TaskName `

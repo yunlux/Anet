@@ -293,11 +293,19 @@ def _validate_cross_platform_ports(document: dict[str, Any]) -> None:
     wsl = _effective_platform_config(document, "wsl")
     if windows is None or wsl is None:
         return
-    if not _has_host_scope(windows) or not _has_host_scope(wsl):
-        return
-    window_values = _network_values(windows)
+    windows_values = _network_values(windows)
     wsl_values = _network_values(wsl)
-    windows_port = window_values[1]
+    if not windows_values[2] or not wsl_values[2]:
+        return
+    windows_host_scope = _has_host_scope(windows)
+    wsl_host_scope = _has_host_scope(wsl)
+    if windows_host_scope != wsl_host_scope:
+        raise RemoteControlError(
+            "Windows and WSL host scope must be declared on both enabled overlays"
+        )
+    if not windows_host_scope:
+        return
+    windows_port = windows_values[1]
     wsl_port = wsl_values[1]
     if not 1 <= windows_port <= 65535 or not 1 <= wsl_port <= 65535:
         raise RemoteControlError(
@@ -872,6 +880,32 @@ def sync_remote_control(
     }
 
 
+async def _wait_for_child_or_interval(
+    child: asyncio.subprocess.Process | None,
+    delay: float,
+) -> int | None:
+    """Wait for the next control poll or notice a server child exit first."""
+
+    interval_task = asyncio.create_task(asyncio.sleep(max(5.0, delay)))
+    if child is None:
+        await interval_task
+        return None
+    child_task = asyncio.create_task(child.wait())
+    try:
+        done, _pending = await asyncio.wait(
+            (interval_task, child_task),
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if child_task in done:
+            return child_task.result()
+        return None
+    finally:
+        for task in (interval_task, child_task):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(interval_task, child_task, return_exceptions=True)
+
+
 async def run_supervisor(
     home: Path,
     *,
@@ -953,7 +987,15 @@ async def run_supervisor(
                 await start_child()
             if once:
                 return None
-            await asyncio.sleep(max(5.0, next_interval))
+            exit_code = await _wait_for_child_or_interval(child, next_interval)
+            if exit_code is not None and child is not None:
+                LOGGER.warning(
+                    "Anet server child exited unexpectedly: returncode=%s; "
+                    "retrying in 5 seconds",
+                    exit_code,
+                )
+                child = None
+                await asyncio.sleep(5.0)
     finally:
         try:
             await stop_child()

@@ -38,8 +38,10 @@ After installation:
   `~/Library/LaunchAgents`. It is loaded immediately and has `RunAtLoad` and
   `KeepAlive` enabled.
 - Each supervisor runs the remote control client and an `anet serve` child.
-  Configuration or Peer Card changes restart the child; a successful package
-  update re-executes the supervisor from the updated runtime.
+  Configuration or Peer Card changes restart the child; an unexpected child
+  exit is noticed immediately instead of waiting for the next long control
+  page interval. A successful package update re-executes the supervisor from
+  the updated runtime.
 - A home-level OS lock prevents a second supervisor from operating the same
   node home concurrently.
 - A changed wheel or repository is applied even when its package version is
@@ -85,9 +87,10 @@ bridge from an ordinary Windows PowerShell window:
 
 This creates `\\Anet\\WSL-KeepAlive` as a current-user logon task. It does not
 create a node or copy any identity; it starts `anet-supervisor.service` inside
-the selected distribution and holds a small shell process open. A WSL distro
-is user-scoped, so this bridge intentionally uses the same Windows user that
-owns the distro rather than the Windows Anet `SYSTEM` task.
+the selected distribution and holds a small shell process open with no
+execution time limit. The task has bounded automatic retries if WSL exits. A
+WSL distro is user-scoped, so this bridge intentionally uses the same Windows
+user that owns the distro rather than the Windows Anet `SYSTEM` task.
 
 Diagnostics:
 

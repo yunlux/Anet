@@ -264,6 +264,48 @@ def test_cross_platform_control_pages_reject_equal_listener_ports(
         sync_remote_control(local.home, url=page, apply_software=False)
 
 
+def test_cross_platform_control_pages_reject_mixed_host_scope(
+    tmp_path: Path, monkeypatch
+) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43111,
+    )
+    page = _write_page(
+        tmp_path / "control.json",
+        {
+            "sequence": 1,
+            "platforms": {
+                "windows": {
+                    "config": {
+                        "listen_host": "0.0.0.0",
+                        "listen_port": 43121,
+                        "locator_contexts": ["host:abcdefgh"],
+                        "advertise": [
+                            "tls://192.0.2.8:43121?scope=host&zone=abcdefgh"
+                        ],
+                    }
+                },
+                "wsl": {
+                    "config": {
+                        "listen_host": "127.0.0.1",
+                        "listen_port": 43122,
+                    }
+                },
+            },
+        },
+    )
+    monkeypatch.setattr(remote_control, "runtime_platform", lambda: "wsl")
+
+    with pytest.raises(
+        RemoteControlError,
+        match="host scope must be declared on both",
+    ):
+        sync_remote_control(local.home, url=page, apply_software=False)
+
+
 def test_cross_platform_control_pages_reject_loopback_host_locator(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -361,6 +403,22 @@ def test_supervisor_lock_prevents_two_control_clients_for_one_home(
 
     second.acquire()
     second.release()
+
+
+@pytest.mark.asyncio
+async def test_supervisor_wait_observes_child_exit_before_long_poll_interval() -> None:
+    class FinishedProcess:
+        returncode = 17
+
+        async def wait(self) -> int:
+            return self.returncode
+
+    result = await remote_control._wait_for_child_or_interval(
+        FinishedProcess(),
+        86400,
+    )
+
+    assert result == 17
 
 
 def test_same_version_software_change_is_not_silently_skipped(
