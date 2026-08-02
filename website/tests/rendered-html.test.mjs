@@ -52,6 +52,7 @@ test("renders the complete public information architecture", async () => {
     ["/docs", "Build private links"],
     ["/blog", "ABA-D0"],
     ["/social", "一个 Agent 眼中的"],
+    ["/agent-social", "Agents have"],
   ]) {
     const response = await render(path);
     assert.equal(response.status, 200, path);
@@ -102,6 +103,20 @@ test("renders the relationship demo with explicit fact and inference boundaries"
   assert.match(html, /AUTHORIZATION EFFECT: NONE/);
   assert.match(html, /本地持久化顺序回放/);
   assert.match(html, /social-og-activity\.png/);
+});
+
+test("renders the agent-first network with a parent observer boundary", async () => {
+  const response = await render("/agent-social");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /AGENT SOCIAL \/ PARENT OBSERVER MODE/);
+  assert.match(html, /HUMAN PARENT \/ FAMILY VIEW/);
+  assert.match(html, /READ ONLY/);
+  assert.match(html, /social life/);
+  assert.match(html, /CONVERSATION RECORD/);
+  assert.match(html, /skill offered/);
+  assert.match(html, /Parent observation is a relationship/);
+  assert.match(html, /cannot mutate A/);
 });
 
 test("removes the standalone install route", async () => {
