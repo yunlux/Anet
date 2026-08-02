@@ -67,6 +67,37 @@ def test_cli_observes_an_opaque_operator_attested_external_actor(
     assert NodeConfig.load(home).peers_path.exists()
     assert json.loads(NodeConfig.load(home).peers_path.read_text(encoding="utf-8"))["peers"] == []
 
+    revoke = [
+        "--home",
+        str(home),
+        "relation-actor-revoke",
+        actor_id,
+        "--confirm",
+        actor_id,
+        "--reason",
+        "operator:source-retired",
+    ]
+    assert main(revoke) == 0
+    revoked = json.loads(capsys.readouterr().out)
+    assert revoked["actor"]["state"] == "revoked"
+    assert revoked["relationship"]["subject_ref"] == observed["subject"]["subject_ref"]
+    assert revoked["relationship"]["circle"] == "public"
+    assert revoked["subject_changed"] is False
+    assert revoked["peerbook_changed"] is False
+    assert revoked["authorization_effect"] == "none"
+
+    assert main(revoke) == 0
+    repeated_revoke = json.loads(capsys.readouterr().out)
+    assert repeated_revoke["already_revoked"] is True
+    snapshot = RelationshipBook(
+        model_home.relationships_path,
+        own_actor_id=initialized["node_id"],
+    ).snapshot()
+    assert [item["event_type"] for item in snapshot["events"]] == [
+        "actor.observed",
+        "actor.revoked",
+    ]
+
 
 def test_relationship_book_keeps_actor_facts_and_subject_hypotheses_separate(
     tmp_path,

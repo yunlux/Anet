@@ -597,6 +597,48 @@ def cmd_relation_observe_actor(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_relation_actor_revoke(args: argparse.Namespace) -> int:
+    """Withdraw one locally observed external Actor without erasing a Subject."""
+
+    actor_id = str(args.actor).strip().lower()
+    if not actor_id.startswith("act_"):
+        raise ValueError(
+            "relation-actor-revoke accepts only opaque typed act_ Actor IDs; "
+            "use peer-revoke for a signed Node Actor"
+        )
+    if args.confirm != actor_id:
+        raise ValueError("--confirm must exactly match the Actor ID")
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    relationships = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=identity.node_id,
+    )
+    before = relationships.actor(actor_id)
+    if before is None:
+        raise ValueError("Actor is not observed in this local relationship book")
+    relation = relationships.revoke_actor(
+        actor_id,
+        evidence_ref=args.reason,
+    )
+    actor = relationships.actor(actor_id)
+    if actor is None:
+        raise RuntimeError("revoked Actor was not persisted")
+    _print_json(
+        {
+            "actor": actor.to_dict(),
+            "relationship": relation.to_dict() if relation is not None else None,
+            "already_revoked": before.state == "revoked",
+            "subject_changed": False,
+            "circle_changed": False,
+            "trust_changed": False,
+            "peerbook_changed": False,
+            "authorization_effect": "none",
+        }
+    )
+    return 0
+
+
 def _suggestion_command(item: RelationshipSuggestion) -> list[str]:
     evidence = f"suggestion:{item.suggestion_id}"
     if item.suggestion_type == "circle.advance":
@@ -3390,6 +3432,26 @@ def build_parser() -> argparse.ArgumentParser:
         help="bounded local evidence reference; not raw private content",
     )
     relation_observe_actor.set_defaults(func=cmd_relation_observe_actor)
+
+    relation_actor_revoke = sub.add_parser(
+        "relation-actor-revoke",
+        help="revoke one locally observed opaque external Actor",
+    )
+    relation_actor_revoke.add_argument(
+        "actor",
+        help="complete opaque act_ Actor ID",
+    )
+    relation_actor_revoke.add_argument(
+        "--confirm",
+        required=True,
+        help="repeat the complete Actor ID",
+    )
+    relation_actor_revoke.add_argument(
+        "--reason",
+        required=True,
+        help="bounded local reason or evidence reference; not raw private content",
+    )
+    relation_actor_revoke.set_defaults(func=cmd_relation_actor_revoke)
 
     relation_circle = sub.add_parser(
         "relation-circle",

@@ -224,6 +224,18 @@ identifiers, names, addresses, or message content in the opaque ID, label, or
 evidence reference. It creates a `public` Subject hypothesis only; it cannot
 pin a peer, set a circle, grant trust, or authorize any action. Use a signed
 Peer Card rather than this command for an `an1...` Node.
+
+To stop treating one such local external source as active, require an exact
+confirmation and retain its Subject/relationship history for explicit review:
+
+```text
+anet --home <HOME> relation-actor-revoke act_local_<32-hex> \
+  --confirm act_local_<32-hex> --reason "operator:source-retired"
+```
+
+This only changes the local Actor state to `revoked`; it does not remove a
+Subject, change a circle or trust estimate, modify PeerBook, or grant/revoke
+authorization. Do not use it for an `an1...` Node; use `peer-revoke` there.
 For a stopped Discord-enabled runtime, replay any already durable source events
 after relationship-state repair with:
 

@@ -334,6 +334,18 @@ Subject hypothesis at `public`, and reports `identity_assertion: none` and
 `authorization_effect: none`. It cannot observe an `an1...` Node; use its
 signed Peer Card for that. Repeating the identical observation is idempotent.
 
+Withdraw one local external Actor observation with an exact confirmation:
+
+```text
+anet --home <HOME> relation-actor-revoke act_local_<32-hex> \
+  --confirm act_local_<32-hex> --reason "operator:source-retired"
+```
+
+This marks only the Actor as revoked and appends one local `actor.revoked`
+event. It retains the Subject hypothesis, circle, contextual trust, and any
+other linked Actors for explicit later revision. For a Node Actor use
+`peer-revoke`, which additionally cleans its cryptographic transport state.
+
 Set a circle and optional labels:
 
 ```text

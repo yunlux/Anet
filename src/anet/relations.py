@@ -2398,6 +2398,8 @@ class RelationshipBook:
         actor = self._actors.get(actor_key)
         if actor is None:
             return None
+        if actor.state == "revoked":
+            return self.get(actor_key)
         evidence = _bounded_text(
             evidence_ref,
             label="Actor revocation evidence reference",
