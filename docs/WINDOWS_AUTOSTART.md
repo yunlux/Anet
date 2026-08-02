@@ -109,13 +109,15 @@ The downloaded command above must also run from an elevated PowerShell when
 `-Admin` is used.
 
 The control page still needs a pinned `software.wheel_url` for the initial
-runtime installation. `repo_url` is used for subsequent source-based updates
-when a wheel is not supplied.
+runtime installation, either in the common `software` object or in the
+selected `platforms.windows.software` overlay. `repo_url` is used for
+subsequent source-based updates when a wheel is not supplied.
 
 The page may contain a `platforms` object with `windows`, `wsl`, `linux`,
 `macos`, or `termux` overlays. The selected overlay is merged after the common
-document, so one control URL can share software and community peers while
-keeping listen ports and advertised addresses platform-specific. See
+document, so one control URL can share common software and community peers
+while overriding the wheel, hash, listen ports, and advertised addresses for
+one platform. See
 [`windows-control-page.example.json`](windows-control-page.example.json).
 
 The first implementation intentionally uses plain JSON pages. A page can

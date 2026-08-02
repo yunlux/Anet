@@ -153,6 +153,36 @@ def platform_config(page: dict[str, Any], platform_name: str) -> dict[str, Any]:
     return merged
 
 
+def platform_software(page: dict[str, Any], platform_name: str) -> dict[str, Any]:
+    common = page.get("software", {})
+    if common is None:
+        common = {}
+    if not isinstance(common, dict):
+        raise DeploymentError("control page software must be an object")
+    platforms = page.get("platforms")
+    if platforms is None:
+        return dict(common)
+    if not isinstance(platforms, dict):
+        raise DeploymentError("control page platforms must be an object")
+    overlay = platforms.get(platform_name)
+    if overlay is None:
+        return dict(common)
+    if not isinstance(overlay, dict):
+        raise DeploymentError(
+            f"control page platforms.{platform_name} must be an object"
+        )
+    software = overlay.get("software", {})
+    if software is None:
+        software = {}
+    if not isinstance(software, dict):
+        raise DeploymentError(
+            f"control page platforms.{platform_name}.software must be an object"
+        )
+    merged = dict(common)
+    merged.update(software)
+    return merged
+
+
 def string_list(value: Any, label: str) -> list[str]:
     if not isinstance(value, list):
         raise DeploymentError(f"{label} must be a list")
@@ -591,7 +621,7 @@ def main(platform_name: str, default_root: Path) -> int:
     except PreflightConflict as exc:
         raise DeploymentError(str(exc)) from exc
     page = read_json_url(args.control_url)
-    software = page.get("software")
+    software = platform_software(page, platform_name)
     if not isinstance(software, dict):
         raise DeploymentError("control page must contain a software object")
     page_config = platform_config(page, platform_name)

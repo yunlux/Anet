@@ -19,10 +19,11 @@ It reuses the target runtime/node, reports known Ahub data roots, and stops if
 another Termux Anet deployment or supervisor is already present. Use
 `--allow-existing` only when a second explicit Termux deployment is intended.
 
-The selected Termux platform overlay can set `listen_host`, `listen_port`,
-`advertise`, and `locator_contexts`; the installer applies those values before
-enabling runit and re-signs the local Card. If a node already exists, an
-explicitly requested host or port must match it.
+The selected Termux platform overlay can set `software`, `listen_host`,
+`listen_port`, `advertise`, and `locator_contexts`; a platform `software`
+object can override the common wheel URL and hash. The installer applies
+those values before enabling runit and re-signs the local Card. If a node
+already exists, an explicitly requested host or port must match it.
 
 The installer additionally installs `python-cryptography`, `python-msgpack`,
 and `termux-services`, then:

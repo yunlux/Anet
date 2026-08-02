@@ -135,6 +135,48 @@ function Get-EffectivePlatformConfig {
     return [pscustomobject]$values
 }
 
+function Get-EffectivePlatformSoftware {
+    param(
+        [object]$Platforms,
+        [object]$CommonSoftware,
+        [string]$PlatformName
+    )
+    $values = [ordered]@{}
+    if ($null -ne $CommonSoftware) {
+        if ($CommonSoftware -isnot [psobject]) {
+            throw "control page software must be an object"
+        }
+        foreach ($property in $CommonSoftware.PSObject.Properties) {
+            $values[$property.Name] = $property.Value
+        }
+    }
+    if ($null -eq $Platforms) {
+        return [pscustomobject]$values
+    }
+    $overlayProperty = $Platforms.PSObject.Properties[$PlatformName]
+    if ($null -eq $overlayProperty) {
+        return [pscustomobject]$values
+    }
+    $overlay = $overlayProperty.Value
+    if ($null -eq $overlay) {
+        return [pscustomobject]$values
+    }
+    if (-not $overlay.PSObject.Properties["software"]) {
+        return [pscustomobject]$values
+    }
+    $software = $overlay.software
+    if ($null -eq $software) {
+        return [pscustomobject]$values
+    }
+    if ($software -isnot [psobject]) {
+        throw "control page platforms.$PlatformName.software must be an object"
+    }
+    foreach ($property in $software.PSObject.Properties) {
+        $values[$property.Name] = $property.Value
+    }
+    return [pscustomobject]$values
+}
+
 function Test-HasHostScope {
     param([object]$Config)
     if ($null -eq $Config) {
@@ -344,10 +386,12 @@ if (-not $Root) {
 
 $rootPath = [System.IO.Path]::GetFullPath($Root)
 $page = Read-ControlPage $ControlUrl
-$software = $page.software
-if (-not $software) {
-    throw "control page must contain a software object for one-click installation"
+$commonSoftware = if ($page.PSObject.Properties["software"]) {
+    $page.software
+} else {
+    $null
 }
+$software = $commonSoftware
 
 $platformConfig = $null
 $commonConfig = $null
@@ -361,7 +405,12 @@ if ($page.PSObject.Properties["platforms"]) {
         $platform = $platforms.windows
         $platformConfig = Get-EffectivePlatformConfig `
             $platforms $commonConfig "windows"
+        $software = Get-EffectivePlatformSoftware `
+            $platforms $commonSoftware "windows"
     }
+}
+if (-not $software -or $software -isnot [psobject]) {
+    throw "control page must contain a software object for one-click installation"
 }
 if ($platformConfig) {
     if (-not $requestedListenHost -and $platformConfig.PSObject.Properties["listen_host"]) {

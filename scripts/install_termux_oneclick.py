@@ -27,6 +27,7 @@ from posix_oneclick import (
     choose_port,
     download,
     platform_config,
+    platform_software,
     read_json_url,
     resolve_reference,
     run,
@@ -245,7 +246,7 @@ def main() -> int:
     ensure_termux_packages(prefix, update=not args.no_package_update)
 
     page = read_json_url(args.control_url)
-    software = page.get("software")
+    software = platform_software(page, "termux")
     if not isinstance(software, dict):
         raise DeploymentError("control page must contain a software object")
     page_config = platform_config(page, "termux")

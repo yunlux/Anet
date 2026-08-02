@@ -20,10 +20,11 @@ python3 scripts/install_macos_oneclick.py \
 ```
 
 The control page must contain `software.version` and an initial
-`software.wheel_url`. If `software.sha256` is absent, the prototype computes
-the local wheel hash after downloading it. The rest of the page uses the same
-format as the Windows deployment prototype: default `config`, Peer Cards,
-`repo_url`, `pages`, and `kv` JSON sources.
+`software.wheel_url`, either at the root or in the selected platform overlay.
+If `software.sha256` is absent, the prototype computes the local wheel hash
+after downloading it. The rest of the page uses the same format as the
+Windows deployment prototype: default `config`, Peer Cards, `repo_url`,
+`pages`, and `kv` JSON sources.
 
 After installation:
 

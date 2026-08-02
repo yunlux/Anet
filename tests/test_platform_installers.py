@@ -69,6 +69,7 @@ def test_windows_oneclick_is_an_explicit_supervised_deployment_layer() -> None:
     assert "host-scoped locators must not advertise" in installer
     assert "must use distinct listener ports" in installer
     assert "host scope must be declared on both enabled overlays" in installer
+    assert "get-effectiveplatformsoftware" in installer
     assert "supervisor" in installer
     assert "-m" in launcher
     assert "supervisor" in launcher
@@ -85,6 +86,7 @@ def test_posix_oneclick_is_an_explicit_native_service_layer() -> None:
     assert "--control-url" in text
     assert "install_runtime" in text
     assert "validate_cross_platform_ports" in text
+    assert "platform_software" in text
 
 
 def test_wsl_host_keepalive_is_an_explicit_user_scoped_bridge() -> None:
@@ -110,6 +112,7 @@ def test_termux_oneclick_uses_termux_native_service_layer() -> None:
     assert "allow-existing" in text
     assert "--listen-host" in text
     assert "apply_locator_config" in text
+    assert "platform_software" in text
     assert "existing node listens on port" in text
     assert '"restart", termux_service' in text
 

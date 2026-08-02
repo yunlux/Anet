@@ -14,6 +14,7 @@ from posix_oneclick import (  # noqa: E402
     SYSTEMD_SERVICE,
     launchd_plist,
     platform_config,
+    platform_software,
     systemd_unit,
     validate_cross_platform_locators,
     validate_cross_platform_ports,
@@ -44,6 +45,29 @@ def test_platform_config_selects_the_platform_specific_node_settings() -> None:
     assert platform_config(page, "windows")["listen_port"] == 43111
     assert platform_config(page, "wsl")["listen_port"] == 43112
     assert platform_config(page, "linux") == {"sync_interval": 1.0}
+
+
+def test_platform_software_selects_the_platform_specific_artifact() -> None:
+    page = {
+        "software": {
+            "version": "0.12.1",
+            "wheel_url": "common.whl",
+        },
+        "platforms": {
+            "windows": {
+                "software": {"wheel_url": "windows.whl"},
+            },
+            "termux": {
+                "software": {"wheel_url": "termux.whl", "sha256": "abc"},
+            },
+        },
+    }
+    assert platform_software(page, "windows") == {
+        "version": "0.12.1",
+        "wheel_url": "windows.whl",
+    }
+    assert platform_software(page, "termux")["wheel_url"] == "termux.whl"
+    assert platform_software(page, "linux")["wheel_url"] == "common.whl"
 
 
 def test_cross_platform_host_locators_cannot_use_loopback() -> None:
