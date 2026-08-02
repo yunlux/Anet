@@ -7,8 +7,14 @@ from typing import TYPE_CHECKING, Any
 
 from ..ahub_http import AhubHTTPClient
 from ..config import AhubCarrierConfig
-from ..control_plane import NodeDescriptor, issue_node_descriptor
-from ..encoding import atomic_json
+from ..control_plane import (
+    GENESIS_DIGEST,
+    NodeDescriptor,
+    ReachabilityRecord,
+    issue_node_descriptor,
+    issue_reachability_record,
+)
+from ..encoding import atomic_json, b64d, b64e, canonical_pack
 from ..packet import now_ms
 
 if TYPE_CHECKING:
@@ -19,6 +25,10 @@ CONTROL_STATE_VERSION = 1
 CONTROL_STATE_FILENAME = "control-state.json"
 DESCRIPTOR_TTL_MS = 30 * 24 * 60 * 60 * 1000
 DESCRIPTOR_REFRESH_MS = 7 * 24 * 60 * 60 * 1000
+REACHABILITY_STATE_FILENAME = "reachability-state.json"
+REACHABILITY_TTL_MS = 5 * 60 * 1000
+REACHABILITY_REFRESH_MS = 60 * 1000
+REACHABILITY_PROTOCOL_VERSIONS = ("anet/1",)
 
 
 def _load_descriptor_state(path: Path) -> NodeDescriptor | None:
@@ -79,6 +89,157 @@ def current_node_descriptor(node: AnetNode, *, current_ms: int | None = None) ->
     return descriptor
 
 
+def _load_reachability_checkpoint(
+    path: Path, *, node_id: str
+) -> tuple[int, bytes]:
+    if not path.exists():
+        return 0, GENESIS_DIGEST
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("invalid local reachability state") from exc
+    if not isinstance(value, dict) or set(value) != {
+        "version",
+        "node_id",
+        "sequence",
+        "last_digest",
+    }:
+        raise ValueError("invalid local reachability state")
+    if value["version"] != CONTROL_STATE_VERSION:
+        raise ValueError("unsupported local reachability state")
+    if not isinstance(value["node_id"], str) or value["node_id"] != node_id:
+        raise ValueError("local reachability state belongs to another node")
+    sequence = value["sequence"]
+    if isinstance(sequence, bool) or not isinstance(sequence, int) or sequence < 1:
+        raise ValueError("invalid local reachability sequence")
+    if not isinstance(value["last_digest"], str):
+        raise ValueError("invalid local reachability digest")
+    try:
+        last_digest = b64d(value["last_digest"])
+    except Exception as exc:
+        raise ValueError("invalid local reachability digest") from exc
+    if len(last_digest) != 32:
+        raise ValueError("local reachability digest must be 32 bytes")
+    return sequence, last_digest
+
+
+def _save_reachability_checkpoint(
+    path: Path,
+    *,
+    node_id: str,
+    record: ReachabilityRecord,
+) -> None:
+    atomic_json(
+        path,
+        {
+            "version": CONTROL_STATE_VERSION,
+            "node_id": node_id,
+            "sequence": record.sequence,
+            "last_digest": b64e(record.digest),
+        },
+        private=True,
+    )
+
+
+def _reachability_inputs(node: AnetNode) -> tuple[tuple[str, ...], bytes]:
+    candidates = tuple(sorted(set(node.config.effective_addresses())))
+    capabilities = tuple(sorted(set(node.config.capabilities)))
+    capability_digest = hashlib.sha256(
+        canonical_pack(list(capabilities))
+    ).digest()
+    return candidates, capability_digest
+
+
+def current_node_reachability(
+    node: AnetNode,
+    descriptor: NodeDescriptor,
+    *,
+    current_ms: int | None = None,
+    relay_reservation: str = "",
+) -> ReachabilityRecord:
+    """Prepare a short-lived reachability record for the current process.
+
+    The sequence checkpoint is committed separately, after the Ahub accepts
+    the record. A failed HTTP publish can therefore retry the same revision
+    instead of consuming a revision that the rendezvous never saw.
+    """
+
+    current = now_ms() if current_ms is None else current_ms
+    candidates, capability_digest = _reachability_inputs(node)
+    session_id = node.control_session_id
+    lock = node._reachability_lock
+    with lock:
+        cached = node._reachability_record
+        if (
+            cached is not None
+            and cached.descriptor_digest == descriptor.digest
+            and cached.session_id == session_id
+            and cached.protocol_versions == REACHABILITY_PROTOCOL_VERSIONS
+            and cached.candidates == candidates
+            and cached.relay_reservation == str(relay_reservation)
+            and cached.capability_digest == capability_digest
+            and cached.expires_ms - current > REACHABILITY_REFRESH_MS
+        ):
+            return cached
+
+        checkpoint = node.config.home / REACHABILITY_STATE_FILENAME
+        if checkpoint.exists():
+            sequence, previous_digest = _load_reachability_checkpoint(
+                checkpoint,
+                node_id=node.node_id,
+            )
+        else:
+            sequence, previous_digest = 0, GENESIS_DIGEST
+        record = issue_reachability_record(
+            node.identity,
+            descriptor,
+            protocol_versions=REACHABILITY_PROTOCOL_VERSIONS,
+            candidates=candidates,
+            relay_reservation=str(relay_reservation),
+            capability_digest=capability_digest,
+            sequence=sequence + 1,
+            previous_digest=previous_digest,
+            session_id=session_id,
+            issued_ms=current,
+            ttl_ms=REACHABILITY_TTL_MS,
+        )
+        node._reachability_record = record
+        return record
+
+
+def commit_node_reachability(node: AnetNode, record: ReachabilityRecord) -> bool:
+    """Persist a successfully published reachability revision."""
+
+    if record.node_id != node.node_id:
+        raise ValueError("reachability record belongs to another node")
+    path = node.config.home / REACHABILITY_STATE_FILENAME
+    with node._reachability_lock:
+        if path.exists():
+            sequence, last_digest = _load_reachability_checkpoint(
+                path,
+                node_id=node.node_id,
+            )
+            if sequence > record.sequence:
+                return False
+            if sequence == record.sequence:
+                if last_digest != record.digest:
+                    raise ValueError("reachability checkpoint revision conflict")
+                return False
+            if (
+                record.sequence != sequence + 1
+                or record.previous_digest != last_digest
+            ):
+                raise ValueError("reachability checkpoint chain is not contiguous")
+        elif record.sequence != 1 or record.previous_digest != GENESIS_DIGEST:
+            raise ValueError("reachability checkpoint is missing its predecessor")
+        _save_reachability_checkpoint(
+            path,
+            node_id=node.node_id,
+            record=record,
+        )
+        return True
+
+
 def sync_ahub_once(
     node: AnetNode,
     config: AhubCarrierConfig,
@@ -120,11 +281,16 @@ def sync_ahub_once(
     )
     descriptor = current_node_descriptor(node)
     descriptor_changed = client.publish_descriptor(descriptor)
+    reachability = current_node_reachability(node, descriptor)
+    reachability_changed = client.publish_reachability(reachability)
+    commit_node_reachability(node, reachability)
     stats: dict[str, Any] = {
         "carrier": "ahub-v1",
         "base_origin": config.base_url,
         "peers": len(cards),
         "descriptor_published": descriptor_changed,
+        "reachability_published": reachability_changed,
+        "reachability_sequence": reachability.sequence,
         "pulled_acks": 0,
         "acknowledged_settlements": 0,
         "pulled_packets": 0,

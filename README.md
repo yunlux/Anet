@@ -20,104 +20,110 @@ its end-to-end security model.
 
 > Anet is under active development. The current release is `v0.12.1`.
 
-## Install with your agent
+## One-command deployment
 
-The recommended installation flow is the same one shown on the
-[Anet website](https://anet-network.yunluxyz.chatgpt.site/#install): copy the
-prompt below and send it to Codex or another capable coding agent.
+For a new Windows device, the recommended path is one PowerShell command. It
+downloads the deployment entry point, creates one private node, installs the
+runtime, registers the auto-start task, and starts the supervisor plus its
+anet serve child. The supervisor then polls the control page and can apply
+software, default configuration, Peer Cards, and nested pages/kv sources.
 
-```text
-Install Anet from https://github.com/yunlux/Anet and detect the platform:
-use scripts/install_windows.ps1 on native Windows, scripts/install_macos.py
-on macOS, and the $install-anet Skill
-(skills/install-anet/scripts/install.py) on Linux. Make safe routine decisions
-autonomously and do not ask me to choose paths, labels, ports, service names,
-or Ahub settings. On WSL, use $install-anet's bootstrap_wsl.py for the
-authorized persistent setup (scripts/install_wsl.py is the runtime-only
-alternative); derive this profile's stable local ID, or generate and persist
-an agent-neutral profile-local ID when none exists; reuse the first registered
-healthy host-local Ahub and create one only after confirming none exists;
-create or reuse one independent node for this Agent, explicitly pair it with
-the other local Agents managed around that Ahub, generate a least-privilege
-MCP configuration and register it with this profile, then report every
-reused/created resource, service state, and path. On non-WSL platforms stop
-after the verified runtime install unless persistent setup is separately
-authorized. Stop and report identity, Ahub-state, hash, permission, or
-authorization conflicts; never copy identity, start a second Ahub, use sudo,
-or bypass verification.
-```
+The control page must provide software.version and an initial software.wheel_url.
+Add software.sha256 for a pinned package hash and software.repo_url so a
+downloaded entry point can fetch matching helper scripts and later source
+updates. See docs/windows-control-page.example.json and
+docs/WINDOWS_AUTOSTART.md.
 
-This cross-platform prompt selects the native clean installer automatically.
-Its WSL branch explicitly authorizes the bounded single-Ahub bootstrap. On
-native Windows, macOS, and non-WSL Linux it remains runtime-only and does
-**not** authorize a persistent node, trust, Ahub, service, or profile change.
+Run this in an ordinary PowerShell window for a current-user installation:
 
-Platform entry points:
+~~~powershell
+& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/yunlux/Anet/main/scripts/install_windows_oneclick.ps1))) -ControlUrl https://example.invalid/anet/control.json
+~~~
 
-```text
-Native Windows  scripts/install_windows.ps1
-Windows node    scripts/install_windows_oneclick.ps1 -ControlUrl <CONTROL_URL>
-Windows machine scripts/install_windows_oneclick.ps1 -Admin -ControlUrl <CONTROL_URL>
-WSL             scripts/install_wsl.py
-WSL node        scripts/install_wsl_oneclick.py --control-url <CONTROL_URL>
-Linux node      scripts/install_linux_oneclick.py --control-url <CONTROL_URL>
-macOS           scripts/install_macos.py
-macOS node      scripts/install_macos_oneclick.py --control-url <CONTROL_URL>
-Android Termux  scripts/install_termux_oneclick.py --control-url <CONTROL_URL>
-Linux           skills/install-anet/scripts/install.py
-```
+For a machine-wide installation that starts at Windows boot, open PowerShell
+with Run as administrator and add -Admin:
 
-The native Windows entry above is the clean runtime installer. When a control
-page is available and the requested behavior is a self-starting node, use the
-explicit Windows deployment prototype:
+~~~powershell
+& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/yunlux/Anet/main/scripts/install_windows_oneclick.ps1))) -Admin -ControlUrl https://example.invalid/anet/control.json
+~~~
 
-```powershell
-.\scripts\install_windows_oneclick.ps1 -ControlUrl <CONTROL_URL>
-```
+Current-user mode uses %LOCALAPPDATA%/Anet and an AtLogOn task. Administrator
+mode uses %ProgramData%/Anet, the SYSTEM principal, and an AtStartup task.
+Both modes run a bounded duplicate preflight first; a known existing Anet/Ahub
+runtime, service, task, or process stops the install instead of silently
+creating a second deployment. Use -AllowExisting only when a second explicit
+deployment is intended.
 
-It creates the node home, registers the current-user `Anet\Supervisor` task,
-and starts the supervisor plus an `anet serve` child. The page format is in
-[`docs/WINDOWS_AUTOSTART.md`](docs/WINDOWS_AUTOSTART.md).
+The same deployment model is available on the other platforms. Run these
+entry points from an Anet checkout (the Windows command above is the only
+checkout-free entry point):
 
-For a machine-wide startup deployment, run PowerShell as administrator and use:
+~~~bash
+# WSL
+python3 scripts/install_wsl_oneclick.py --control-url <CONTROL_URL>
 
-```powershell
-.\scripts\install_windows_oneclick.ps1 -Admin -ControlUrl <CONTROL_URL>
-```
+# non-WSL Linux
+python3 scripts/install_linux_oneclick.py --control-url <CONTROL_URL>
 
-Administrator mode uses `%ProgramData%\Anet` and registers the `SYSTEM` task
-principal with an `AtStartup` trigger, so the node starts without a user login.
+# macOS
+python3 scripts/install_macos_oneclick.py --control-url <CONTROL_URL>
 
-These platform installers run a bounded, read-only preflight before package/runtime/service
-changes. They report an existing target for reuse, detect known Anet/Ahub
-roots and (for one-click deployment) platform services, tasks, and processes,
-and stop before creating a second same-platform deployment. Use
-`-AllowExisting` or `--allow-existing` only as an explicit override. Native
-Windows and WSL are separate detection boundaries and never share a node home
-or identity.
+# Android Termux
+python3 scripts/install_termux_oneclick.py --control-url <CONTROL_URL>
+~~~
 
-For Windows and WSL coexistence, assign distinct ports and the same opaque
-`host:<zone>` context. Control pages support `platforms.windows` and
-`platforms.wsl` overlays. Port numbers isolate listener collisions but do not
-make the two runtimes' `127.0.0.1` addresses interchangeable. Use a shared
-non-loopback host address (or `0.0.0.0` plus explicit `-Advertise`/`--advertise`)
-for host-scoped direct locators. WSL systemd does not launch the distribution
-after a Windows reboot by itself; optionally register the explicit host bridge:
+WSL and Linux create and start a systemd --user supervisor, macOS loads a
+LaunchAgent, and Termux uses termux-services/runit plus Termux:Boot. WSL also
+needs the Windows host keepalive task if the distribution must start after a
+Windows reboot:
 
-```powershell
+~~~powershell
 .\scripts\register_wsl_keepalive.ps1 -Distribution Ubuntu -LinuxUser <LINUX_USER>
-```
+~~~
 
-The corresponding WSL/Linux/macOS deployment prototype is documented in
-[`docs/POSIX_AUTOSTART.md`](docs/POSIX_AUTOSTART.md).
+Windows and WSL are separate nodes even in mirrored networking. Give them
+distinct listener ports and the same opaque host:<zone> context. Port numbers
+only isolate listeners; they do not make the two runtimes' 127.0.0.1 addresses
+interchangeable. Host-scoped locators must use a shared non-loopback address
+(or 0.0.0.0 with explicit -Advertise/--advertise).
 
-Termux uses a separate Android adapter documented in
-[`docs/TERMUX_AUTOSTART.md`](docs/TERMUX_AUTOSTART.md).
+The original runtime-only installers remain available for operators who do not
+want a persistent node or service:
 
-For the full self-service contract, see
-[CLI Agent Guide](docs/CLI_AGENT_GUIDE.md),
-[MCP Agent Guide](docs/MCP_AGENT_GUIDE.md), and
-[Hermes Skill Install](docs/HERMES_SKILL_INSTALL.md).
+~~~text
+Windows  scripts/install_windows.ps1
+WSL      scripts/install_wsl.py
+macOS    scripts/install_macos.py
+Linux    skills/install-anet/scripts/install.py
+~~~
+
+For the full control-page format, service paths, diagnostics, and CLI/MCP
+boundaries, see docs/CLI_AGENT_GUIDE.md, docs/MCP_AGENT_GUIDE.md,
+docs/WINDOWS_AUTOSTART.md, docs/POSIX_AUTOSTART.md, and
+docs/TERMUX_AUTOSTART.md.
+
+## Agent-assisted installation
+
+If Codex or another coding agent should run the deployment, give it the
+following instruction. It should use the one-click entry point above, report
+the final node ID, node home, service/task state, and control-page URL, and
+never copy identity, TLS private keys, SQLite state, or an entire node home
+from another device:
+
+~~~text
+Install and deploy Anet from https://github.com/yunlux/Anet. Use this control
+page URL: <CONTROL_URL> (replace the placeholder before running). Detect the
+platform and use its one-click deployment entry point; on Windows use the
+PowerShell one-command entry, adding -Admin only for a machine-wide startup.
+Report the installed runtime, independent node, auto-start service, node ID,
+node home, and control-page URL. Stop on an existing deployment, identity,
+hash, permission, or control-page conflict. Do not copy identity, TLS private
+keys, SQLite state, or an entire node home from another device.
+~~~
+
+This prompt only delegates the commands above to an agent; it does not change
+the platform-specific node-home, identity-isolation, or duplicate-preflight
+rules.
 
 ## Why Anet
 

@@ -162,7 +162,16 @@ retains a later sequence causes the replacement sequence-1 object to fail
 closed as a fork. It must remain with that node home and must not be shared as
 another runtime's identity state.
 
-The slice still does not wire dynamic Reachability into PeerBook/locator CLI,
-transparency gossip, Android secure-key storage, approval request/decision
-schemas, QUIC, live relay, LAN discovery or network migration. Those remain
+When an Anet node uses an Ahub StoreCarrier, the carrier now derives a
+short-lived `ReachabilityRecord v1` from the node's effective locators and
+capability set, publishes it after the descriptor, and persists the accepted
+revision in a separate private `reachability-state.json` checkpoint. The
+process session ID changes after restart, while the node-wide revision chain
+continues. A failed publish does not advance the checkpoint, so the same
+revision can be retried. This publication does not change PeerBook trust or
+turn a reachability candidate into an authorization.
+
+Dynamic Reachability is still not wired into PeerBook/locator CLI, transparency
+gossip, Android secure-key storage, approval request/decision schemas, QUIC,
+live relay discovery, LAN discovery, or network migration. Those remain
 subsequent roadmap gates.

@@ -4,7 +4,9 @@ import asyncio
 import hashlib
 import logging
 import os
+import secrets
 import ssl
+import threading
 import time
 import re
 from contextlib import suppress
@@ -22,7 +24,7 @@ from .config import (
     NodeConfig,
     WebDAVCarrierConfig,
 )
-from .control_plane import ControlPlaneStore
+from .control_plane import ControlPlaneStore, ReachabilityRecord
 from .companion_protocol import (
     APPROVAL_REQUEST_KIND,
     COMPANION_KINDS,
@@ -131,6 +133,9 @@ class AnetNode:
         self._fallback_probe_tasks: dict[str, asyncio.Task[bool]] = {}
         self._fallback_schedules: dict[str, AdaptiveSchedule] = {}
         self._prekey_response_last_ms: dict[str, int] = {}
+        self._control_session_id = secrets.token_hex(16)
+        self._reachability_lock = threading.Lock()
+        self._reachability_record: ReachabilityRecord | None = None
         self._discord_bridge: DiscordSocialBridge | None = None
         self._relationship_projector: RelationshipProjector | None = None
         self._relationship_disclosure_book: (
@@ -152,6 +157,10 @@ class AnetNode:
     @property
     def node_id(self) -> str:
         return self.identity.node_id
+
+    @property
+    def control_session_id(self) -> str:
+        return self._control_session_id
 
     @property
     def local_card(self) -> PeerCard:

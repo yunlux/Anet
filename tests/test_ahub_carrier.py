@@ -9,9 +9,18 @@ import sys
 import time
 import urllib.request
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 from anet.ahub import AhubService
+from anet.ahub_http import AhubHTTPClient
 from anet.config import AhubCarrierConfig, initialize_node
+from anet.carriers.ahub import (
+    current_node_descriptor,
+    current_node_reachability,
+    sync_ahub_once,
+)
 from anet.node import AnetNode
 from anet.peers import PeerBook
 
@@ -128,6 +137,16 @@ def test_ahub_store_carrier_preserves_all_ack_layers_across_restart(
         )
         first = first_round["carriers"][0]
         assert first["pushed_packets"] == 1
+        control_client = AhubHTTPClient(
+            config.base_url,
+            a.identity,
+            allow_insecure_http=True,
+        )
+        _descriptor, reachability = control_client.lookup(a.node_id)
+        assert reachability is not None
+        assert reachability.protocol_versions == ("anet/1",)
+        assert reachability.sequence == 1
+        assert (a.config.home / "reachability-state.json").exists()
         assert not a.store.packet_delivered(packet_id)
         assert (
             a.store.delivery_path_state(packet_id, b.node_id, path_id)
@@ -205,3 +224,62 @@ def test_ahub_store_carrier_preserves_all_ack_layers_across_restart(
     assert secret not in combined_logs
     assert a.node_id not in combined_logs
     assert b.node_id not in combined_logs
+
+
+def test_reachability_checkpoint_retries_without_skipping_on_publish_failure(
+    tmp_path: Path,
+) -> None:
+    config = initialize_node(
+        tmp_path / "node",
+        label="node",
+        listen_host="192.0.2.20",
+        listen_port=43121,
+    )
+    node = AnetNode(config)
+    try:
+        descriptor = current_node_descriptor(node)
+        carrier = AhubCarrierConfig(
+            name="test",
+            base_url="https://example.invalid",
+        )
+        with (
+            patch.object(AhubHTTPClient, "publish_descriptor", return_value=True),
+            patch.object(
+                AhubHTTPClient,
+                "publish_reachability",
+                side_effect=OSError("simulated publish failure"),
+            ),
+        ):
+            with pytest.raises(OSError, match="simulated publish failure"):
+                sync_ahub_once(node, carrier)
+
+        first = current_node_reachability(node, descriptor)
+        assert first.sequence == 1
+        assert first.candidates == ("tls://192.0.2.20:43121",)
+        retry = current_node_reachability(node, descriptor)
+        assert retry == first
+        assert not (config.home / "reachability-state.json").exists()
+
+        with (
+            patch.object(AhubHTTPClient, "publish_descriptor", return_value=True),
+            patch.object(
+                AhubHTTPClient,
+                "publish_reachability",
+                return_value=True,
+            ),
+        ):
+            stats = sync_ahub_once(node, carrier)
+        assert stats["reachability_sequence"] == 1
+        assert (config.home / "reachability-state.json").exists()
+
+        restarted = AnetNode(config)
+        try:
+            next_descriptor = current_node_descriptor(restarted)
+            next_record = current_node_reachability(restarted, next_descriptor)
+            assert next_record.sequence == 2
+            assert next_record.previous_digest == first.digest
+            assert next_record.session_id != first.session_id
+        finally:
+            restarted.close()
+    finally:
+        node.close()

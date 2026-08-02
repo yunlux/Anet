@@ -69,9 +69,11 @@ v0.1–v0.11 已完成以下可复用能力：
   receipt；持久 owner listener、peer-scoped discovery、NodeConfig 与
   AdaptiveRouter 自动接入也已完成，但尚未抽象为独立 `SessionCarrier`，也没有
   生产 TLS/rate-limit 配置和真实公网运行证据；
-- Peer Card 仍混合长期身份描述和较动态的地址信息；NodeDescriptor 已由 Ahub
-  Carrier 发布，但动态 Reachability 尚未接入 PeerBook/locator CLI；
-- 已有短期、可过期、防回放的 `ReachabilityRecord`，但尚未由真实节点持续发布；
+- Peer Card 仍混合长期身份描述和较动态的地址信息；NodeDescriptor 与短期
+  ReachabilityRecord 已由 Ahub Carrier 发布，但动态 Reachability 尚未接入
+  PeerBook/locator CLI；
+- 已有短期、可过期、防回放的 `ReachabilityRecord`，真实节点会在 Ahub
+  StoreCarrier 同步时持续刷新；
 - 没有 QUIC 会话、LAN 签名发现、NAT 穿透或移动网络迁移；
 - Android Companion 协议和实验 App 已有实现，但当前部署由 Android Remote
   Control MCP 1.9 替代，真机 Anet Node/签名人工授权不再是近期阻塞项；
@@ -95,7 +97,9 @@ P0 是当前唯一主线。P1 以前的任务不能被 A2A、群组、匿名路�
 `HumanDeviceGrant/Revocation v1`、严格序列化、内存状态机和 SQLite 原子持久
 checkpoint 已完成；`NodeDescriptor/ReachabilityRecord` 已接入 P0.2 Ahub
 Rendezvous，Ahub Carrier 已在所属节点 home 保持公开 descriptor revision
-checkpoint；动态 Reachability 尚未接入 PeerBook/locator CLI 或真实部署节点。
+checkpoint，并在真实 Anet 节点的 Ahub StoreCarrier 同步中发布短期
+ReachabilityRecord，使用独立 `reachability-state.json` 跨重启延续序列；
+动态 Reachability 尚未接入 PeerBook/locator CLI。
 
 - 定义长期 `NodeDescriptor/PeerCard v2`：Node ID、身份键、静态协议能力、
   card sequence、前序摘要、有效期和轮换/撤销证据；
