@@ -2442,6 +2442,11 @@ class RelationshipBook:
             return None
         return max(candidates, key=lambda item: (item[0], item[1], item[2]))[3]
 
+    def actor(self, actor_id: str) -> ActorRecord | None:
+        """Return one locally observed Actor without exposing mutable state."""
+
+        return self._actors.get(validate_actor_id(actor_id))
+
     def subject(self, subject_ref: str) -> SubjectHypothesis | None:
         return self._subjects.get(str(subject_ref))
 

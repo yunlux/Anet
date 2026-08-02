@@ -208,6 +208,22 @@ their complete `an1...` ID and cryptographic proof. Platform Adapters may
 create opaque account, device, or session Actor IDs with a scoped
 `platform-observed`, `bridge-attested`, or operator proof. A bridge-attested
 Actor never inherits the bridge Node's relationship, trust, or capabilities.
+For a person or external Agent without an Anet Node, an Agent may explicitly
+create one local, opaque `act_<namespace>_<32-hex>` observation instead of
+inventing a global identity:
+
+```text
+anet --home <HOME> relation-observe-actor act_local_<32-hex> \
+  --kind human.local --confidence 35 \
+  --evidence "operator:relationship-bootstrap"
+```
+
+This is a local `operator-attested` fact, not proof that the source is human,
+AI, a particular person, or a particular controller. Never place raw account
+identifiers, names, addresses, or message content in the opaque ID, label, or
+evidence reference. It creates a `public` Subject hypothesis only; it cannot
+pin a peer, set a circle, grant trust, or authorize any action. Use a signed
+Peer Card rather than this command for an `an1...` Node.
 For a stopped Discord-enabled runtime, replay any already durable source events
 after relationship-state repair with:
 

@@ -10,6 +10,64 @@ from anet.identity import Identity
 from anet.relations import InteractionEvidence, RelationshipBook
 
 
+def test_cli_observes_an_opaque_operator_attested_external_actor(
+    tmp_path,
+    capsys,
+) -> None:
+    home = tmp_path / "observer"
+    assert (
+        main(
+            [
+                "--home",
+                str(home),
+                "init",
+                "--label",
+                "observer",
+                "--port",
+                "48601",
+            ]
+        )
+        == 0
+    )
+    initialized = json.loads(capsys.readouterr().out)
+    actor_id = "act_local_" + "a" * 32
+    command = [
+        "--home",
+        str(home),
+        "relation-observe-actor",
+        actor_id,
+        "--kind",
+        "human.local",
+        "--label",
+        "local human observer",
+        "--confidence",
+        "35",
+        "--evidence",
+        "operator:relationship-bootstrap",
+    ]
+    assert main(command) == 0
+    observed = json.loads(capsys.readouterr().out)
+    assert observed["actor"]["actor_id"] == actor_id
+    assert observed["actor"]["actor_kind"] == "human.local"
+    assert observed["actor"]["proofs"][0]["scope"] == "operator-attested"
+    assert observed["subject"]["actor_links"][0]["confidence"] == 35
+    assert observed["relationship"]["circle"] == "public"
+    assert observed["identity_assertion"] == "none"
+    assert observed["authorization_effect"] == "none"
+
+    assert main(command) == 0
+    repeated = json.loads(capsys.readouterr().out)
+    assert repeated["subject"]["subject_ref"] == observed["subject"]["subject_ref"]
+    model_home = NodeConfig.load(home)
+    snapshot = RelationshipBook(
+        model_home.relationships_path,
+        own_actor_id=initialized["node_id"],
+    ).snapshot()
+    assert [item["event_type"] for item in snapshot["events"]] == ["actor.observed"]
+    assert NodeConfig.load(home).peers_path.exists()
+    assert json.loads(NodeConfig.load(home).peers_path.read_text(encoding="utf-8"))["peers"] == []
+
+
 def test_relationship_book_keeps_actor_facts_and_subject_hypotheses_separate(
     tmp_path,
 ) -> None:

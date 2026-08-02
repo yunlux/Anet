@@ -84,7 +84,7 @@ from .relationship_claims import (
     RelationshipClaimWithdrawal,
     RelationshipProposal,
 )
-from .relations import RELATION_CIRCLES, RelationshipBook
+from .relations import ActorObservation, ActorProof, RELATION_CIRCLES, RelationshipBook
 from .scheduling import AdaptiveSchedule
 from .social import SocialPolicy, SocialThreshold
 from .store import PacketStore
@@ -535,6 +535,65 @@ def cmd_relation_list(args: argparse.Namespace) -> int:
         _print_json(model)
     else:
         _print_json([record.to_dict() for record in relationships.all()])
+    return 0
+
+
+def cmd_relation_observe_actor(args: argparse.Namespace) -> int:
+    """Add one explicitly local, opaque external Actor observation.
+
+    A Node Actor must arrive through a verified Peer Card. This narrow command
+    exists for sources such as a locally known person or external Agent that
+    do not own an Anet Node yet.  Its proof is deliberately operator-attested,
+    so it cannot be confused with platform or cryptographic verification.
+    """
+
+    actor_id = str(args.actor).strip().lower()
+    if not actor_id.startswith("act_"):
+        raise ValueError(
+            "relation-observe-actor accepts only opaque typed act_ Actor IDs; "
+            "observe Node Actors through their signed Peer Card"
+        )
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    relationships = RelationshipBook(
+        config.relationships_path,
+        own_actor_id=identity.node_id,
+    )
+    current = int(time.time() * 1000)
+    observation = ActorObservation(
+        actor_id=actor_id,
+        actor_kind=args.kind,
+        actor_label=(
+            str(args.label).strip()
+            if args.label is not None
+            else f"{args.kind} · {actor_id[-6:]}"
+        ),
+        proof=ActorProof(
+            proof_type="operator.local.v1",
+            scope="operator-attested",
+            issuer_actor_id=identity.node_id,
+            evidence_ref=args.evidence,
+            observed_ms=current,
+        ),
+    )
+    subject = relationships.observe_typed_actor(
+        observation,
+        subject_confidence=args.confidence,
+        now=current,
+    )
+    actor = relationships.actor(actor_id)
+    if actor is None:
+        raise RuntimeError("observed Actor was not persisted")
+    _print_json(
+        {
+            "actor": actor.to_dict(),
+            "subject": subject.to_dict(),
+            "relationship": relationships.relationship(subject.subject_ref).to_dict(),
+            "proof_scope": "operator-attested",
+            "identity_assertion": "none",
+            "authorization_effect": "none",
+        }
+    )
     return 0
 
 
@@ -3301,6 +3360,36 @@ def build_parser() -> argparse.ArgumentParser:
         help="bounded local evidence reference; not raw private content",
     )
     relation_link.set_defaults(func=cmd_relation_link)
+
+    relation_observe_actor = sub.add_parser(
+        "relation-observe-actor",
+        help="record an opaque external Actor under an explicit local assertion",
+    )
+    relation_observe_actor.add_argument(
+        "actor",
+        help="opaque act_<namespace>_<32-hex> Actor ID; never a raw account ID",
+    )
+    relation_observe_actor.add_argument(
+        "--kind",
+        required=True,
+        help="source-domain label such as human.local or agent.external",
+    )
+    relation_observe_actor.add_argument(
+        "--label",
+        help="optional local display label; do not use raw account identifiers",
+    )
+    relation_observe_actor.add_argument(
+        "--confidence",
+        type=int,
+        default=50,
+        help="0-100 confidence in the initial local Subject hypothesis",
+    )
+    relation_observe_actor.add_argument(
+        "--evidence",
+        required=True,
+        help="bounded local evidence reference; not raw private content",
+    )
+    relation_observe_actor.set_defaults(func=cmd_relation_observe_actor)
 
     relation_circle = sub.add_parser(
         "relation-circle",

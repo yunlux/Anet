@@ -317,6 +317,23 @@ anet --home <HOME> relation-link <ACTOR_ID> <SUBJECT_REF> \
   --confidence 82 --evidence "claim:same-controller"
 ```
 
+Observe a non-Node source under an explicit local operator assertion. This is
+the bootstrap route for a person or external Agent that does not have an Anet
+Node. The Actor ID must already be an opaque `act_<namespace>_<32-hex>` value;
+never place a raw account ID, username, email, phone number, or session token
+in it or in the display label:
+
+```text
+anet --home <HOME> relation-observe-actor act_local_<32-hex> \
+  --kind human.local --confidence 35 \
+  --evidence "operator:relationship-bootstrap"
+```
+
+The command always records `operator-attested`, creates only a new local
+Subject hypothesis at `public`, and reports `identity_assertion: none` and
+`authorization_effect: none`. It cannot observe an `an1...` Node; use its
+signed Peer Card for that. Repeating the identical observation is idempotent.
+
 Set a circle and optional labels:
 
 ```text
