@@ -131,6 +131,14 @@ function Get-EffectivePlatformConfig {
                 $values[$property.Name] = $property.Value
             }
         }
+    } elseif ($null -ne $overlay -and
+        $overlay.PSObject.Properties["default_config"]) {
+        $config = $overlay.default_config
+        if ($null -ne $config) {
+            foreach ($property in $config.PSObject.Properties) {
+                $values[$property.Name] = $property.Value
+            }
+        }
     }
     return [pscustomobject]$values
 }
@@ -372,6 +380,34 @@ function Stop-ManagedSupervisorTask {
     throw "managed Anet supervisor task did not stop within 30 seconds"
 }
 
+function Wait-ManagedSupervisorTask {
+    param(
+        [string]$TaskPath,
+        [string]$TaskName
+    )
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $task = Get-ScheduledTask `
+            -TaskPath $TaskPath `
+            -TaskName $TaskName `
+            -ErrorAction SilentlyContinue
+        if ($null -ne $task -and [string]$task.State -eq "Running") {
+            return
+        }
+        Start-Sleep -Milliseconds 200
+    }
+    $lastResult = "unknown"
+    try {
+        $lastResult = [string](Get-ScheduledTaskInfo `
+            -TaskPath $TaskPath `
+            -TaskName $TaskName
+        ).LastTaskResult
+    } catch {
+        $lastResult = "unavailable"
+    }
+    throw "managed Anet supervisor task did not start within 30 seconds (last task result: $lastResult)"
+}
+
 $requestedListenHost = $ListenHost
 if ($Admin -and -not (Test-IsAdministrator)) {
     throw "-Admin requires an elevated PowerShell window (Run as administrator)"
@@ -397,6 +433,9 @@ $platformConfig = $null
 $commonConfig = $null
 if ($page.PSObject.Properties["config"]) {
     $commonConfig = $page.config
+    $platformConfig = $commonConfig
+} elseif ($page.PSObject.Properties["default_config"]) {
+    $commonConfig = $page.default_config
     $platformConfig = $commonConfig
 }
 if ($page.PSObject.Properties["platforms"]) {
@@ -698,6 +737,7 @@ Register-ScheduledTask `
     -Settings $settings `
     -Force | Out-Null
 Start-ScheduledTask -TaskPath $taskPath -TaskName $taskName
+Wait-ManagedSupervisorTask $taskPath $taskName
 
 [ordered]@{
     ok = $true

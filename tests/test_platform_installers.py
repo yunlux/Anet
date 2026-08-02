@@ -60,6 +60,8 @@ def test_windows_oneclick_is_an_explicit_supervised_deployment_layer() -> None:
     assert 'get-optionalproperty $software "sha256"' in installer
     assert "stop-managedsupervisortask" in installer
     assert "did not stop within 30 seconds" in installer
+    assert "wait-managedsupervisortask" in installer
+    assert "did not start within 30 seconds" in installer
     assert "-port" in installer
     assert "-listenhost" in installer
     assert "locatorcontext" in installer
@@ -70,6 +72,7 @@ def test_windows_oneclick_is_an_explicit_supervised_deployment_layer() -> None:
     assert "must use distinct listener ports" in installer
     assert "host scope must be declared on both enabled overlays" in installer
     assert "get-effectiveplatformsoftware" in installer
+    assert "default_config" in installer
     assert "supervisor" in installer
     assert "-m" in launcher
     assert "supervisor" in launcher
@@ -93,12 +96,15 @@ def test_wsl_host_keepalive_is_an_explicit_user_scoped_bridge() -> None:
     text = source("register_wsl_keepalive.ps1")
     assert "wsl.exe" in text
     assert "systemctl --user start" in text
+    assert "systemctl --user is-active --quiet" in text
     assert "sleep 3600" in text
     assert "executiontimelimit" in text
     assert "restartcount 99" in text
     assert "-atlogon" in text
     assert "interactiveToken".lower() in text
     assert "windows-user-wsl-keepalive" in text
+    assert "wait-managedtask" in text
+    assert "did not start within 30 seconds" in text
 
 
 def test_termux_oneclick_uses_termux_native_service_layer() -> None:

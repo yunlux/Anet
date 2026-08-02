@@ -46,6 +46,9 @@ the installer records the locally observed hash instead.
 When the installer explicitly reuses this target, it stops the managed task
 and waits for the old supervisor to release the node lock before starting the
 new task, so updated control-page settings take effect immediately.
+After registration it waits up to 30 seconds for the task to enter `Running`;
+a missing start is reported with the task's last result instead of being
+reported as a successful install.
 
 Every Windows entry point runs a read-only preflight before it downloads a
 wheel, creates a virtual environment, or registers a task. The clean runtime
@@ -113,6 +116,11 @@ runtime installation, either in the common `software` object or in the
 selected `platforms.windows.software` overlay. `repo_url` is used for
 subsequent source-based updates when a wheel is not supplied.
 
+The initial installer accepts `config` or its equivalent `default_config`
+object, including the selected platform overlay. The running remote-control
+client uses the same precedence, so initial deployment and later sync do not
+interpret the page differently.
+
 The page may contain a `platforms` object with `windows`, `wsl`, `linux`,
 `macos`, or `termux` overlays. The selected overlay is merged after the common
 document, so one control URL can share common software and community peers
@@ -145,6 +153,10 @@ even when its package version is unchanged. Before the update, package files
 and metadata inside the managed runtime are snapshotted; a pip or CLI
 verification failure restores them. This local rollback does not replace a
 signed manifest, dependency rollback, or publisher policy.
+
+Each page application also snapshots `config.json`, the local signed
+`card.json`, and `peers.json`; a configuration, Card, or software failure
+restores those node-control files before the failed sequence is retried.
 
 The supervisor keeps the last local configuration when a page is unavailable.
 Use one bounded sync with:

@@ -14,7 +14,9 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from .ahub_http import AhubHTTPClient
 from .bundle import create_bundle, import_bundle
+from .carriers.ahub import validate_peer_reachability
 from .carriers.directory import sync_directory_once
 from .config import (
     AhubCarrierConfig,
@@ -184,6 +186,71 @@ def cmd_peer_list(args: argparse.Namespace) -> int:
     peers = PeerBook(config.peers_path, own_node_id=identity.node_id)
     _print_json([card.to_dict() for card in peers.all()])
     return 0
+
+
+def cmd_peer_reachability(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    peers = PeerBook(config.peers_path, own_node_id=identity.node_id)
+    peer = peers.require(args.peer)
+    carriers = [
+        carrier
+        for carrier in config.ahub_carriers
+        if not args.carrier or carrier.name == args.carrier
+    ]
+    if not carriers:
+        raise KeyError(f"unknown Ahub carrier: {args.carrier}")
+    sources: list[dict[str, Any]] = []
+    errors: dict[str, str] = {}
+    dynamic_candidates: list[str] = []
+    for carrier in carriers:
+        if not carrier.enabled:
+            errors[carrier.name] = "Ahub carrier is disabled"
+            continue
+        try:
+            client = AhubHTTPClient(
+                carrier.base_url,
+                identity,
+                timeout_seconds=carrier.timeout,
+                allow_insecure_http=carrier.allow_insecure_http,
+            )
+            descriptor, record = client.lookup(peer.node_id)
+            record = validate_peer_reachability(peer, descriptor, record)
+            if record is not None:
+                dynamic_candidates.extend(record.candidates)
+            sources.append(
+                {
+                    "carrier": carrier.name,
+                    "base_origin": carrier.base_url,
+                    "descriptor": {
+                        "sequence": descriptor.sequence,
+                        "digest": b64e(descriptor.digest),
+                        "issued_ms": descriptor.issued_ms,
+                        "expires_ms": descriptor.expires_ms,
+                        "capabilities": list(descriptor.capabilities),
+                    },
+                    "reachability": (
+                        None if record is None else record.to_dict()
+                    ),
+                    "candidates": (
+                        [] if record is None else list(record.candidates)
+                    ),
+                }
+            )
+        except Exception as exc:
+            errors[carrier.name] = str(exc)[:1000]
+    candidates = list(dict.fromkeys((*dynamic_candidates, *peer.addresses)))
+    _print_json(
+        {
+            "ok": bool(sources),
+            "peer_id": peer.node_id,
+            "static_card_addresses": list(peer.addresses),
+            "effective_candidates": candidates,
+            "sources": sources,
+            "errors": errors,
+        }
+    )
+    return 0 if sources else 1
 
 
 def cmd_peer_revoke(args: argparse.Namespace) -> int:
@@ -3124,6 +3191,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     peer_list = sub.add_parser("peer-list", help="list pinned peers")
     peer_list.set_defaults(func=cmd_peer_list)
+
+    peer_reachability = sub.add_parser(
+        "peer-reachability",
+        help="query signed short-lived Ahub reachability for a pinned peer",
+    )
+    peer_reachability.add_argument("peer")
+    peer_reachability.add_argument(
+        "--carrier",
+        default="",
+        help="limit the query to one configured Ahub carrier",
+    )
+    peer_reachability.set_defaults(func=cmd_peer_reachability)
 
     peer_revoke = sub.add_parser(
         "peer-revoke",

@@ -29,6 +29,34 @@ if ($LinuxUser) {
     Assert-SafeToken $LinuxUser "-LinuxUser"
 }
 
+function Wait-ManagedTask {
+    param(
+        [string]$TaskPath,
+        [string]$TaskName
+    )
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $task = Get-ScheduledTask `
+            -TaskPath $TaskPath `
+            -TaskName $TaskName `
+            -ErrorAction SilentlyContinue
+        if ($null -ne $task -and [string]$task.State -eq "Running") {
+            return
+        }
+        Start-Sleep -Milliseconds 200
+    }
+    $lastResult = "unknown"
+    try {
+        $lastResult = [string](Get-ScheduledTaskInfo `
+            -TaskPath $TaskPath `
+            -TaskName $TaskName
+        ).LastTaskResult
+    } catch {
+        $lastResult = "unavailable"
+    }
+    throw "WSL keepalive task did not start within 30 seconds (last task result: $lastResult)"
+}
+
 $wslCommand = Get-Command wsl.exe -ErrorAction Stop
 $distroNames = @(
     & $wslCommand.Source --list --quiet 2>$null |
@@ -57,6 +85,7 @@ $linuxCommand = (
     'export XDG_RUNTIME_DIR=/run/user/$(id -u) && ' +
     'export DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus && ' +
     "systemctl --user start $ServiceName && " +
+    "systemctl --user is-active --quiet $ServiceName && " +
     'while :; do sleep 3600; done'
 )
 $wslArguments = "--distribution `"$Distribution`""
@@ -89,6 +118,7 @@ Register-ScheduledTask `
     -Settings $settings `
     -Force | Out-Null
 Start-ScheduledTask -TaskPath $taskPath -TaskName $TaskName
+Wait-ManagedTask $taskPath $TaskName
 
 [ordered]@{
     ok = $true

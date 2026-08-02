@@ -82,11 +82,19 @@ def test_invalid_peer_card_does_not_partially_apply_the_control_page(
         addresses=remote.effective_addresses(),
         capabilities=remote.capabilities,
     )
+    Identity.load(local.identity_path).card(
+        addresses=local.effective_addresses(),
+        capabilities=local.capabilities,
+    ).save(local.home / "card.json")
+    config_before = (local.home / "config.json").read_bytes()
+    card_before = (local.home / "card.json").read_bytes()
+    peers_before = (local.home / "peers.json").read_bytes()
     page = _write_page(
         tmp_path / "control.json",
         {
             "version": 1,
             "sequence": 1,
+            "config": {"listen_port": 43107, "sync_interval": 0.5},
             "nodes": [
                 remote_card.to_dict(),
                 {"node_id": "malformed-card"},
@@ -102,6 +110,63 @@ def test_invalid_peer_card_does_not_partially_apply_the_control_page(
         own_node_id=Identity.load(local.identity_path).node_id,
     )
     assert peers.all() == []
+    assert (local.home / "config.json").read_bytes() == config_before
+    assert (local.home / "card.json").read_bytes() == card_before
+    assert (local.home / "peers.json").read_bytes() == peers_before
+    assert not (local.home / "remote-control-state.json").exists()
+
+
+def test_software_failure_rolls_back_config_and_peers(
+    tmp_path: Path, monkeypatch
+) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43105,
+    )
+    remote = initialize_node(
+        tmp_path / "remote",
+        label="remote",
+        listen_host="127.0.0.1",
+        listen_port=43106,
+    )
+    remote_card = Identity.load(remote.identity_path).card(
+        addresses=remote.effective_addresses(),
+        capabilities=remote.capabilities,
+    )
+    Identity.load(local.identity_path).card(
+        addresses=local.effective_addresses(),
+        capabilities=local.capabilities,
+    ).save(local.home / "card.json")
+    config_before = (local.home / "config.json").read_bytes()
+    card_before = (local.home / "card.json").read_bytes()
+    peers_before = (local.home / "peers.json").read_bytes()
+    page = _write_page(
+        tmp_path / "control.json",
+        {
+            "version": 1,
+            "sequence": 1,
+            "config": {"listen_port": 43108, "sync_interval": 0.5},
+            "nodes": [remote_card.to_dict()],
+            "software": {
+                "version": "0.12.2",
+                "wheel_url": "https://example.invalid/update.whl",
+            },
+        },
+    )
+
+    def fail_software(home: Path, software: dict, state: dict) -> bool:
+        del home, software, state
+        raise RuntimeError("software update failed")
+
+    monkeypatch.setattr(remote_control, "_install_software", fail_software)
+    with pytest.raises(RuntimeError, match="software update failed"):
+        sync_remote_control(local.home, url=page)
+
+    assert (local.home / "config.json").read_bytes() == config_before
+    assert (local.home / "card.json").read_bytes() == card_before
+    assert (local.home / "peers.json").read_bytes() == peers_before
     assert not (local.home / "remote-control-state.json").exists()
 
 

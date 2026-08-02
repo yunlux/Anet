@@ -28,6 +28,7 @@ def test_systemd_unit_runs_the_remote_supervisor() -> None:
     )
     assert SYSTEMD_SERVICE == "anet-supervisor.service"
     assert "ExecStart=" in unit
+    assert "EnvironmentFile=-%h/.config/anet/discord-social.env" in unit
     assert " -m anet --home " in unit
     assert " supervisor" in unit
     assert "Restart=on-failure" in unit
@@ -45,6 +46,20 @@ def test_platform_config_selects_the_platform_specific_node_settings() -> None:
     assert platform_config(page, "windows")["listen_port"] == 43111
     assert platform_config(page, "wsl")["listen_port"] == 43112
     assert platform_config(page, "linux") == {"sync_interval": 1.0}
+
+
+def test_platform_config_accepts_default_config_alias() -> None:
+    page = {
+        "default_config": {"sync_interval": 1.0},
+        "platforms": {
+            "wsl": {"default_config": {"listen_port": 43112}},
+        },
+    }
+
+    assert platform_config(page, "wsl") == {
+        "sync_interval": 1.0,
+        "listen_port": 43112,
+    }
 
 
 def test_platform_software_selects_the_platform_specific_artifact() -> None:

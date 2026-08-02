@@ -25,6 +25,8 @@ If `software.sha256` is absent, the prototype computes the local wheel hash
 after downloading it. The rest of the page uses the same format as the
 Windows deployment prototype: default `config`, Peer Cards, `repo_url`,
 `pages`, and `kv` JSON sources.
+`default_config` is accepted as an alias for `config`, including inside a
+platform overlay.
 
 After installation:
 
@@ -52,6 +54,9 @@ After installation:
   when they belong to the managed runtime. A pip/CLI verification failure
   restores that snapshot; this is local package rollback, not full dependency
   or signed-manifest rollback.
+- Each page application snapshots `config.json`, the local signed `card.json`,
+  and `peers.json`; a configuration, Card, or software failure restores those
+  node-control files before the failed sequence is retried.
 - For host-scoped Windows/WSL overlays, the remote-control client rejects equal
   listener ports and loopback locators. Changes to listener or advertised
   address fields regenerate the local signed Card before restart.
@@ -93,7 +98,9 @@ bridge from an ordinary Windows PowerShell window:
 This creates `\\Anet\\WSL-KeepAlive` as a current-user logon task. It does not
 create a node or copy any identity; it starts `anet-supervisor.service` inside
 the selected distribution and holds a small shell process open with no
-execution time limit. The task has bounded automatic retries if WSL exits. A
+execution time limit. The task has bounded automatic retries if WSL exits.
+The registration command waits up to 30 seconds for the task to enter
+`Running` and reports its last task result if startup fails. A
 WSL distro is user-scoped, so this bridge intentionally uses the same Windows
 user that owns the distro rather than the Windows Anet `SYSTEM` task.
 
