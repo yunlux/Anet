@@ -610,6 +610,14 @@ function projectActivity(
       tag: tags[item.fact_level],
     };
   }
+  if (item.activity_type === "relationship.ended") {
+    return {
+      id: item.activity_id,
+      title: "结束本地关系",
+      detail: `${subject} · 保留 Subject、Actor 与历史 · 不改变授权`,
+      tag: tags[item.fact_level],
+    };
+  }
   if (item.activity_type.startsWith("relationship.suggestion-")) {
     return {
       id: item.activity_id,
@@ -1035,7 +1043,11 @@ export function SocialCircleDemo() {
                 >
                   <b>{subject.mark}</b>
                   <span>{viewMode === "subjects" ? `SUBJ ${subject.name}` : `${subject.actors.length} ACTOR`}</span>
-                  <small>{circleMeta[circle].label} · {subject.confidence}%</small>
+                  <small>
+                    {subject.relationshipState === "ended"
+                      ? "关系已结束 · Subject 保留"
+                      : `${circleMeta[circle].label} · ${subject.confidence}%`}
+                  </small>
                 </button>
               );
             })}

@@ -289,6 +289,34 @@ def test_tail_projection_keeps_latest_bounded_window() -> None:
     assert page.has_more is False
 
 
+def test_relationship_end_projects_as_a_local_estimate_without_evidence() -> None:
+    observer = Identity.generate("observer")
+    model = {
+        "observer_actor_id": observer.node_id,
+        "subjects": [{"subject_ref": "subj_0011223344556677"}],
+        "events": [
+            {
+                "event_id": "revt_" + "4" * 24,
+                "event_type": "relationship.ended",
+                "actor_id": "",
+                "subject_ref": "subj_0011223344556677",
+                "evidence_ref": "operator:relationship-ended",
+                "observed_ms": 1_800_000_000_001,
+                "details": {"state": "ended"},
+            }
+        ],
+    }
+
+    item = RelationshipActivityFeed.read(model).activities[0].to_dict()
+
+    assert item["activity_type"] == "relationship.ended"
+    assert item["category"] == "relationship"
+    assert item["fact_level"] == "estimate"
+    assert item["details"] == {"state": "ended"}
+    assert "operator:relationship-ended" not in json.dumps(item)
+    assert item["authorization_effect"] == "none"
+
+
 def test_event_details_reject_unbounded_or_wrong_domain_fields() -> None:
     with pytest.raises(ValueError, match="details"):
         RelationshipEvent(

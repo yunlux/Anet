@@ -373,6 +373,9 @@ Actors, delete the Subject hypothesis, erase contextual trust, alter mutual
 relationship claims, modify PeerBook, or change authorization. Repeating the
 same command is idempotent. A later explicit `relation-circle` action reopens
 the local relationship as `active`; setting contextual trust alone does not.
+The local activity feed projects the change as the content-free
+`relationship.ended` estimate, so a local `/social` model import can replay it
+without exposing the reason or evidence reference.
 
 Revise one hypothesis one-to-one while inheriting its relationship:
 
