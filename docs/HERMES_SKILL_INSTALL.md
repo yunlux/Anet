@@ -52,20 +52,22 @@ own local configuration, in that order.
 
 The bootstrap is deterministic and idempotent:
 
-1. verifies WSL, Python 3.11+, and the systemd user manager;
-2. installs the pinned `full` runtime without identity files;
-3. obtains an exclusive host bootstrap lock;
-4. reads `~/.config/anet/bootstrap.json`;
-5. validates both Ahub databases before treating state as existing;
-6. reuses the registered healthy Ahub or starts one user service at the
+1. emits a bounded read-only preflight for the Anet runtime, Ahub roots, user
+   services, and running Anet/Ahub processes;
+2. verifies WSL, Python 3.11+, and the systemd user manager;
+3. installs the pinned `full` runtime without identity files;
+4. obtains an exclusive host bootstrap lock;
+5. reads `~/.config/anet/bootstrap.json`;
+6. validates both Ahub databases before treating state as existing;
+7. reuses the registered healthy Ahub or starts one user service at the
    default loopback endpoint only when no Ahub state or unit exists;
-7. validates a registered node's complete Node ID before reuse;
-8. creates one private home under
+8. validates a registered node's complete Node ID before reuse;
+9. creates one private home under
    `~/.local/state/anet/nodes/<agent-id>` only when no registered node exists;
-9. allowlists each bootstrap-managed node in the single Ahub;
-10. explicitly exchanges signed public Cards between the managed local nodes;
-11. configures peer-scoped Ahub carriers and one node user service per Agent;
-12. writes a restrictive, profile-neutral MCP configuration under
+10. allowlists each bootstrap-managed node in the single Ahub;
+11. explicitly exchanges signed public Cards between the managed local nodes;
+12. configures peer-scoped Ahub carriers and one node user service per Agent;
+13. writes a restrictive, profile-neutral MCP configuration under
     `~/.config/anet/agents/<agent-id>/mcp-stdio.json`.
 
 It never scans arbitrary home directories. An unmanaged Ahub endpoint,

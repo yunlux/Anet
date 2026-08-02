@@ -37,6 +37,8 @@ so installing MCP does not mutate an existing core runtime.
 The default root is `%LOCALAPPDATA%\Anet`. Each release lives under
 `versions\<version>\venv`; `current.json` identifies the selected runtime.
 An explicit `-Root` may be used for managed installations.
+The installer performs a read-only runtime/Ahub preflight first and reports
+reuse rather than treating an existing target as a fresh install.
 
 ## Clean WSL install
 
@@ -50,6 +52,8 @@ python3 scripts/install_wsl.py \
 The default root is `~/.local/anet`, with versioned environments under
 `versions/<version>/venv` and an atomic `current` symlink. This location is an
 Anet platform runtime, not a Hermes profile or node home.
+The clean entry point runs the bounded runtime/Ahub preflight before any wheel
+or virtual-environment mutation.
 
 ## Clean macOS install
 
@@ -63,7 +67,9 @@ python3 scripts/install_macos.py \
 The default root is `~/Library/Application Support/Anet`, using the same
 versioned layout and atomic `current` pointer as WSL. The existing
 `bootstrap-macos.sh` remains a separate, optional node-onboarding helper; it is
-not part of the clean runtime install.
+not part of the clean runtime install. It also runs a target/node preflight and
+requires `--allow-existing` before adding to an incomplete or alternate
+existing Anet root.
 
 ## Existing deployment release gates
 
@@ -86,3 +92,56 @@ paths:
 Release gates may back up and verify existing identities. Clean installers
 never read them. Neither layer creates, copies, renames, or infers a persistent
 node identity.
+
+## Windows automatic deployment prototype
+
+For the requested self-starting Windows behavior, use the separate prototype
+deployment entry point:
+
+```powershell
+.\scripts\install_windows_oneclick.ps1 `
+  -ControlUrl https://example.invalid/anet/control.json
+```
+
+It creates one local node, writes the remote control URL, registers a
+current-user `Anet\Supervisor` scheduled task, and starts the control client
+with an `anet serve` child. For a machine-wide deployment, run an elevated
+PowerShell and add `-Admin`; that uses `%ProgramData%\Anet`, the `SYSTEM`
+principal, and an `AtStartup` trigger. Use explicit `-Port`, `-LocatorContext`,
+and `-Advertise` values when the Windows node will coexist with WSL. See
+[`WINDOWS_AUTOSTART.md`](WINDOWS_AUTOSTART.md) for the page shape and current
+limitations. Its one-click preflight stops on another known Windows Anet
+deployment; `-AllowExisting` is the explicit override.
+For direct Windows/WSL connectivity, use distinct ports and a non-loopback
+shared host address; a port does not make the two runtimes' `127.0.0.1`
+addresses equivalent.
+
+## WSL, Linux, and macOS automatic deployment prototype
+
+The corresponding explicit POSIX deployment entry points are:
+
+```bash
+python3 scripts/install_wsl_oneclick.py --control-url <CONTROL_URL>
+python3 scripts/install_linux_oneclick.py --control-url <CONTROL_URL>
+python3 scripts/install_macos_oneclick.py --control-url <CONTROL_URL>
+```
+
+WSL and non-WSL Linux use `systemd --user`; macOS uses a LaunchAgent. WSL
+requires the separate Windows host keepalive bridge when the distribution must
+be launched at Windows user logon. See [`POSIX_AUTOSTART.md`](POSIX_AUTOSTART.md)
+for service names, locations, diagnostics, and the required systemd
+user-session precondition. POSIX one-click preflight stops on another known
+same-platform deployment; `--allow-existing` is the explicit override.
+
+## Android Termux automatic deployment prototype
+
+Termux has its own entry point and does not use the Linux systemd entry point:
+
+```bash
+python3 scripts/install_termux_oneclick.py \
+  --control-url <CONTROL_URL>
+```
+
+It uses Termux-native Python dependencies, `termux-services`/runit, and a
+`~/.termux/boot` script. The Termux:Boot add-on must be installed and opened
+once by the operator. See [`TERMUX_AUTOSTART.md`](TERMUX_AUTOSTART.md).

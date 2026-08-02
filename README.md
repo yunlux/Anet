@@ -56,10 +56,63 @@ Platform entry points:
 
 ```text
 Native Windows  scripts/install_windows.ps1
+Windows node    scripts/install_windows_oneclick.ps1 -ControlUrl <CONTROL_URL>
+Windows machine scripts/install_windows_oneclick.ps1 -Admin -ControlUrl <CONTROL_URL>
 WSL             scripts/install_wsl.py
+WSL node        scripts/install_wsl_oneclick.py --control-url <CONTROL_URL>
+Linux node      scripts/install_linux_oneclick.py --control-url <CONTROL_URL>
 macOS           scripts/install_macos.py
+macOS node      scripts/install_macos_oneclick.py --control-url <CONTROL_URL>
+Android Termux  scripts/install_termux_oneclick.py --control-url <CONTROL_URL>
 Linux           skills/install-anet/scripts/install.py
 ```
+
+The native Windows entry above is the clean runtime installer. When a control
+page is available and the requested behavior is a self-starting node, use the
+explicit Windows deployment prototype:
+
+```powershell
+.\scripts\install_windows_oneclick.ps1 -ControlUrl <CONTROL_URL>
+```
+
+It creates the node home, registers the current-user `Anet\Supervisor` task,
+and starts the supervisor plus an `anet serve` child. The page format is in
+[`docs/WINDOWS_AUTOSTART.md`](docs/WINDOWS_AUTOSTART.md).
+
+For a machine-wide startup deployment, run PowerShell as administrator and use:
+
+```powershell
+.\scripts\install_windows_oneclick.ps1 -Admin -ControlUrl <CONTROL_URL>
+```
+
+Administrator mode uses `%ProgramData%\Anet` and registers the `SYSTEM` task
+principal with an `AtStartup` trigger, so the node starts without a user login.
+
+These platform installers run a bounded, read-only preflight before package/runtime/service
+changes. They report an existing target for reuse, detect known Anet/Ahub
+roots and (for one-click deployment) platform services, tasks, and processes,
+and stop before creating a second same-platform deployment. Use
+`-AllowExisting` or `--allow-existing` only as an explicit override. Native
+Windows and WSL are separate detection boundaries and never share a node home
+or identity.
+
+For Windows and WSL coexistence, assign distinct ports and the same opaque
+`host:<zone>` context. Control pages support `platforms.windows` and
+`platforms.wsl` overlays. Port numbers isolate listener collisions but do not
+make the two runtimes' `127.0.0.1` addresses interchangeable. Use a shared
+non-loopback host address (or `0.0.0.0` plus explicit `-Advertise`/`--advertise`)
+for host-scoped direct locators. WSL systemd does not launch the distribution
+after a Windows reboot by itself; optionally register the explicit host bridge:
+
+```powershell
+.\scripts\register_wsl_keepalive.ps1 -Distribution Ubuntu -LinuxUser <LINUX_USER>
+```
+
+The corresponding WSL/Linux/macOS deployment prototype is documented in
+[`docs/POSIX_AUTOSTART.md`](docs/POSIX_AUTOSTART.md).
+
+Termux uses a separate Android adapter documented in
+[`docs/TERMUX_AUTOSTART.md`](docs/TERMUX_AUTOSTART.md).
 
 For the full self-service contract, see
 [CLI Agent Guide](docs/CLI_AGENT_GUIDE.md),

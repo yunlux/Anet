@@ -18,13 +18,61 @@ Linux 提供独立于 Agent runtime 的纯净安装器。安装器只安装 Anet
 
 ```text
 Windows  scripts/install_windows.ps1
+Windows 节点 scripts/install_windows_oneclick.ps1 -ControlUrl <CONTROL_URL>
+Windows 管理员节点 scripts/install_windows_oneclick.ps1 -Admin -ControlUrl <CONTROL_URL>
 WSL      scripts/install_wsl.py
+WSL 节点  scripts/install_wsl_oneclick.py --control-url <CONTROL_URL>
+Linux 节点 scripts/install_linux_oneclick.py --control-url <CONTROL_URL>
 macOS    scripts/install_macos.py
+macOS 节点 scripts/install_macos_oneclick.py --control-url <CONTROL_URL>
+安卓 Termux scripts/install_termux_oneclick.py --control-url <CONTROL_URL>
 Linux    skills/install-anet/scripts/install.py
 ```
 
 三者只安装版本化 Anet runtime；节点身份、`ANET_HOME`、Agent 集成和服务注册均
 不属于默认安装。
+
+上面的 Windows 入口是纯净 runtime 安装器。如果控制页已经准备好，并且需要设备
+自动启动节点，可以显式使用 Windows 部署原型：
+
+```powershell
+.\scripts\install_windows_oneclick.ps1 -ControlUrl <CONTROL_URL>
+```
+
+它会创建节点 home，注册当前用户的 `Anet\Supervisor` 计划任务，并启动 supervisor
+以及 `anet serve` 子进程。控制页格式见
+[`docs/WINDOWS_AUTOSTART.md`](docs/WINDOWS_AUTOSTART.md)。
+
+如果要安装为整机启动方式，请在“以管理员身份运行”的 PowerShell 中执行：
+
+```powershell
+.\scripts\install_windows_oneclick.ps1 -Admin -ControlUrl <CONTROL_URL>
+```
+
+管理员模式使用 `%ProgramData%\Anet`，以 `SYSTEM` 账户注册 `AtStartup` 计划任务，
+机器启动时无需用户登录即可运行节点。
+
+上面这些平台安装入口都会在下载 wheel、安装运行时、注册服务/计划任务之前执行有界的只读
+预检：识别目标是否可复用，检查已知 Anet/Ahub 路径；一键部署入口还会检查本平台的
+服务、任务和进程。发现同一平台的另一套持久部署时会停止，不会静默创建第二个节点。
+只有明确需要第二套部署时才使用 `-AllowExisting` 或 `--allow-existing`。原生 Windows
+和 WSL 是两个独立检测边界，不共享 node home 或身份。
+
+Windows 与 WSL 共存时，应显式为两端指定不同端口和相同的 `host:<随机 zone>`；
+端口只能隔离监听冲突，不能让两套运行时的 `127.0.0.1` 互相等价。host-scoped
+直连必须使用两端都能到达的非回环宿主地址（或监听 `0.0.0.0` 并显式设置
+`-Advertise`/`--advertise`）。控制页支持 `platforms.windows` 与 `platforms.wsl`
+分流监听地址。WSL 的 systemd 不会自己拉起 WSL 发行版，可额外注册：
+
+```powershell
+.\scripts\register_wsl_keepalive.ps1 -Distribution Ubuntu -LinuxUser <LINUX_USER>
+```
+
+WSL、Linux 和 macOS 的对应部署原型见
+[`docs/POSIX_AUTOSTART.md`](docs/POSIX_AUTOSTART.md)。
+
+Termux 使用单独的 Android 适配器，见
+[`docs/TERMUX_AUTOSTART.md`](docs/TERMUX_AUTOSTART.md)。
 
 Agent 自助安装、CLI 工作流和安全边界见
 [`docs/CLI_AGENT_GUIDE.md`](docs/CLI_AGENT_GUIDE.md)；stdio MCP 的配置、
@@ -616,9 +664,12 @@ session。无人值守 worker 应使用只启用必要 MCP 的最小 profile，�
 anet --home <HOME> locator-config `
   --add-context host:<HOST_ZONE> `
   --add-context lan:<LAN_ZONE> `
-  --advertise "tls://127.0.0.1:<PORT>?scope=host&zone=<HOST_ZONE>&priority=0" `
+  --advertise "tls://<SHARED_HOST_ADDRESS>:<PORT>?scope=host&zone=<HOST_ZONE>&priority=0" `
   --advertise "tls://<LAN_IP>:<PORT>?scope=lan&zone=<LAN_ZONE>&priority=20"
 anet --home <HOME> doctor
 ```
 
-Windows 与同机 WSL 使用相同 `host:<HOST_ZONE>`，但仍使用不同端口和 Node ID。Mac 只共享 `lan:<LAN_ZONE>`，绝不能共享 Windows/WSL 的 host zone。`locator-config` 原子更新配置并重签 `card.json`；随后必须重新交换 Card。不要把 `identity.json`、`tls-key.pem`、数据库或完整 node home 发送给任何其他节点。
+Windows 与同机 WSL 使用相同 `host:<HOST_ZONE>` 和两端都能到达的
+`<SHARED_HOST_ADDRESS>`，但仍使用不同端口和 Node ID；不能把 `127.0.0.1`
+作为跨运行时 host-scoped 地址。Mac 只共享 `lan:<LAN_ZONE>`，绝不能共享
+Windows/WSL 的 host zone。`locator-config` 原子更新配置并重签 `card.json`；随后必须重新交换 Card。不要把 `identity.json`、`tls-key.pem`、数据库或完整 node home 发送给任何其他节点。

@@ -10,12 +10,14 @@ ADVERTISE=""
 LAN_ZONE=""
 WHEEL=""
 ANET_ROOT="${ANET_ROOT:-$HOME/Library/Application Support/Anet}"
+ALLOW_EXISTING="0"
 
 usage() {
   cat <<'EOF'
 Usage:
   bootstrap-macos.sh <anet-wheel> --sha256 <HEX> --advertise <LAN-IP> \
-    --lan-zone <OPAQUE-ZONE> --label <NODE-LABEL> [--port 4246]
+    --lan-zone <OPAQUE-ZONE> --label <NODE-LABEL> [--port 4246] \
+    [--allow-existing]
 
 The script verifies the pinned wheel, installs it into an isolated venv,
 initializes a new node if needed, and exports a public Peer Card. It does not
@@ -56,6 +58,10 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || { echo "--label requires a value" >&2; exit 2; }
       LABEL=$2
       shift 2
+      ;;
+    --allow-existing)
+      ALLOW_EXISTING="1"
+      shift
       ;;
     -h|--help)
       usage
@@ -110,6 +116,56 @@ PYTHON=${PYTHON:-python3}
 VENV="$ANET_ROOT/venv"
 NODE_HOME="$ANET_ROOT/nodes/$LABEL"
 PUBLIC_DIR="$ANET_ROOT/public"
+
+DEFAULT_ANET_ROOT="$HOME/Library/Application Support/Anet"
+TARGET_REUSABLE="0"
+if [[ -x "$VENV/bin/python" && -f "$NODE_HOME/config.json" ]]; then
+  TARGET_REUSABLE="1"
+fi
+
+FOREIGN_ROOTS=""
+if [[ "$ANET_ROOT" != "$DEFAULT_ANET_ROOT" ]]; then
+  if [[ -e "$DEFAULT_ANET_ROOT/venv" || -d "$DEFAULT_ANET_ROOT/nodes" ]]; then
+    FOREIGN_ROOTS="$DEFAULT_ANET_ROOT"
+  fi
+fi
+
+TARGET_MARKERS=""
+if [[ -e "$VENV" || -d "$ANET_ROOT/nodes" ]]; then
+  TARGET_MARKERS="$ANET_ROOT"
+fi
+AHUB_ROOTS=""
+for candidate in \
+  "$ANET_ROOT/ahub" \
+  "$ANET_ROOT/ahub-data" \
+  "$HOME/Library/Application Support/Ahub"; do
+  if [[ -f "$candidate/ahub.sqlite3" || -f "$candidate/control.sqlite3" ]]; then
+    AHUB_ROOTS="${AHUB_ROOTS:+$AHUB_ROOTS }$candidate"
+  fi
+done
+ACTIVE_ANET=""
+if command -v pgrep >/dev/null 2>&1; then
+  ACTIVE_ANET=$(pgrep -af 'python.*-m anet|anet serve|anet-fabric' || true)
+fi
+if command -v launchctl >/dev/null 2>&1; then
+  if launchctl print "gui/$(id -u)/net.anet.supervisor" >/dev/null 2>&1; then
+    ACTIVE_ANET="${ACTIVE_ANET:+$ACTIVE_ANET }net.anet.supervisor"
+  fi
+fi
+
+echo "Anet install preflight: target=$ANET_ROOT reusable=$TARGET_REUSABLE" >&2
+if [[ -n "$AHUB_ROOTS" ]]; then
+  echo "Anet install preflight: existing Ahub data=$AHUB_ROOTS" >&2
+fi
+if [[ "$ALLOW_EXISTING" != "1" && "$TARGET_REUSABLE" != "1" && \
+      ( -n "$FOREIGN_ROOTS" || -n "$TARGET_MARKERS" || -n "$ACTIVE_ANET" ) ]]; then
+  [[ -n "$FOREIGN_ROOTS" ]] && echo "existing roots: $FOREIGN_ROOTS" >&2
+  [[ -n "$TARGET_MARKERS" ]] && echo "incomplete target: $TARGET_MARKERS" >&2
+  [[ -n "$ACTIVE_ANET" ]] && echo "active Anet supervisor/process detected" >&2
+  echo "Anet install preflight stopped; use the existing target or --allow-existing" >&2
+  exit 17
+fi
+
 mkdir -p "$ANET_ROOT" "$PUBLIC_DIR"
 
 if [[ ! -x "$VENV/bin/python" ]]; then

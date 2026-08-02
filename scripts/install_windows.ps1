@@ -34,6 +34,20 @@ if ($rootPath -eq [System.IO.Path]::GetPathRoot($rootPath) -or $rootPath -eq $us
     throw "install root is too broad"
 }
 
+$preflight = $null
+$preflightScript = ""
+if ($PSScriptRoot) {
+    $preflightScript = Join-Path $PSScriptRoot "windows_install_preflight.ps1"
+}
+if ($preflightScript -and (Test-Path -LiteralPath $preflightScript -PathType Leaf)) {
+    $preflightJson = & powershell.exe -NoProfile -ExecutionPolicy Bypass `
+        -File $preflightScript -TargetRoot $rootPath -RuntimeOnly
+    if ($LASTEXITCODE -ne 0) {
+        throw "Windows install preflight failed with exit code $LASTEXITCODE"
+    }
+    $preflight = $preflightJson | ConvertFrom-Json
+}
+
 $versions = Join-Path $rootPath "versions"
 $releaseName = if ($Feature -eq "core") { $Version } else { "$Version-$Feature" }
 $destination = Join-Path $versions $releaseName
@@ -141,4 +155,5 @@ $pendingJson = "$currentJson.new"
 $current | ConvertTo-Json | Set-Content -LiteralPath $pendingJson -Encoding utf8
 Move-Item -LiteralPath $pendingJson -Destination $currentJson -Force
 $current["outcome"] = $outcome
+$current["preflight"] = $preflight
 $current | ConvertTo-Json -Compress

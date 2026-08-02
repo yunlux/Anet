@@ -55,16 +55,49 @@ class PeerBook:
         )
 
     def add(self, card: PeerCard) -> None:
-        card.verify()
-        if card.node_id == self.own_node_id:
-            raise ValueError("cannot add the local node as a peer")
-        if card.node_id in self._revocations:
-            raise ValueError("peer identity is locally revoked")
-        existing = self._peers.get(card.node_id)
-        if existing and (existing.sign_public != card.sign_public or existing.box_public != card.box_public):
-            raise ValueError("peer identity key mismatch")
-        self._peers[card.node_id] = card
-        self.save()
+        self.add_many([card])
+
+    def add_many(self, cards: list[PeerCard]) -> tuple[int, int]:
+        """Validate and persist a batch of peer cards as one update.
+
+        Remote control pages can publish several cards together. Validate the
+        complete batch against a staged view before replacing the peer file so
+        one malformed or conflicting card cannot leave a partially applied
+        page behind.
+        """
+
+        staged = dict(self._peers)
+        added = 0
+        updated = 0
+        for card in cards:
+            card.verify()
+            if card.node_id == self.own_node_id:
+                raise ValueError("cannot add the local node as a peer")
+            if card.node_id in self._revocations:
+                raise ValueError("peer identity is locally revoked")
+            existing = staged.get(card.node_id)
+            if existing and (
+                existing.sign_public != card.sign_public
+                or existing.box_public != card.box_public
+            ):
+                raise ValueError("peer identity key mismatch")
+            if existing is None:
+                added += 1
+            elif existing.to_dict() != card.to_dict():
+                updated += 1
+            staged[card.node_id] = card
+
+        if staged == self._peers:
+            return added, updated
+
+        original = self._peers
+        self._peers = staged
+        try:
+            self.save()
+        except BaseException:
+            self._peers = original
+            raise
+        return added, updated
 
     @staticmethod
     def _key_fingerprint(card: PeerCard) -> str:

@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "sequence": 1,
+  "network": "community",
+  "repo_url": "https://github.com/yunlux/Anet",
+  "poll_seconds": 300,
+  "software": {
+    "version": "0.12.1",
+    "wheel_url": "https://example.invalid/releases/anet-fabric-0.12.1.whl",
+    "sha256": "REPLACE_WITH_SHA256"
+  },
+  "config": {
+    "sync_interval": 2.0,
+    "sync_jitter": 0.2,
+    "listen_enabled": true,
+    "direct_enabled": true
+  },
+  "platforms": {
+    "windows": {
+      "config": {
+        "listen_host": "0.0.0.0",
+        "listen_port": 43111,
+        "locator_contexts": ["host:REPLACE_WITH_SHARED_HOST_ZONE"],
+        "advertise": [
+          "tls://REPLACE_WITH_SHARED_HOST_ADDRESS:43111?scope=host&zone=REPLACE_WITH_SHARED_HOST_ZONE&priority=0"
+        ]
+      }
+    },
+    "wsl": {
+      "config": {
+        "listen_host": "0.0.0.0",
+        "listen_port": 43112,
+        "locator_contexts": ["host:REPLACE_WITH_SHARED_HOST_ZONE"],
+        "advertise": [
+          "tls://REPLACE_WITH_SHARED_HOST_ADDRESS:43112?scope=host&zone=REPLACE_WITH_SHARED_HOST_ZONE&priority=0"
+        ]
+      }
+    }
+  },
+  "nodes": [
+    {
+      "card_url": "https://example.invalid/network/node-a.card.json"
+    }
+  ],
+  "pages": [
+    "https://example.invalid/network/community-page.json"
+  ]
+}

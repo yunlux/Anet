@@ -16,6 +16,7 @@ def test_install_anet_skill_is_self_contained() -> None:
     required = (
         SKILL / "SKILL.md",
         SKILL / "scripts" / "install.py",
+        SKILL / "scripts" / "install_preflight.py",
         SKILL / "scripts" / "bootstrap_wsl.py",
         SKILL / "references" / "after-install.md",
         SKILL / "assets" / "SHA256SUMS",
@@ -41,6 +42,7 @@ def test_install_anet_skill_bundled_wheel_is_pinned() -> None:
         encoding="utf-8"
     )
     assert EXPECTED_SHA256 in installer
+    assert "install_preflight" in installer
 
 
 def test_install_anet_skill_is_runtime_only_by_default() -> None:
@@ -62,6 +64,8 @@ def test_skill_exposes_explicit_full_runtime_for_wsl_bootstrap() -> None:
     assert '"--feature",' in bootstrap
     assert '"full",' in bootstrap
     assert "second Ahub" in bootstrap
+    assert "install_preflight" in bootstrap
+    assert "another WSL Anet node service" in bootstrap
     assert "registered Node ID does not match node home" in bootstrap
     assert "ANET_MCP_ALLOW_RAW_INBOX" in bootstrap
     assert "ANET_MCP_ALLOW_RELATION_MODEL" in bootstrap
