@@ -2105,6 +2105,10 @@ class RelationshipBook:
             raise KeyError(f"unknown Subject hypothesis: {subject_key}")
         if relationship.state == state:
             return relationship
+        if state == "dormant" and relationship.state == "ended":
+            raise ValueError(
+                "cannot pause an ended relationship; use relation-circle to reactivate it"
+            )
         evidence = _bounded_text(
             evidence_ref,
             label="relationship state evidence reference",

@@ -262,7 +262,8 @@ This sets only the local relationship state to `dormant`. It retains the
 Subject, linked Actors, contextual trust, claims and history, but excludes the
 relationship from advisor suggestions and active-circle counts. An explicit
 `relation-circle` is required to reactivate it; the command has
-`authorization_effect: none`.
+`authorization_effect: none`. It cannot be used to turn an `ended`
+relationship back into `dormant`; use an explicit `relation-circle` to reopen.
 
 For a stopped Discord-enabled runtime, replay any already durable source events
 after relationship-state repair with:

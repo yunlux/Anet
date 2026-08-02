@@ -282,12 +282,18 @@ def test_ended_relationship_keeps_local_history_and_circle_reopens_it(tmp_path) 
         evidence_ref="operator:relationship-ended",
         now=1_800_000_000_007,
     ) == ended
+    with pytest.raises(ValueError, match="cannot pause an ended relationship"):
+        book.pause_relationship(
+            subject.subject_ref,
+            evidence_ref="operator:relationship-inactive",
+            now=1_800_000_000_008,
+        )
     reopened = book.set_circle(
         subject.subject_ref,
         "known",
         confidence=60,
         evidence_ref="operator:relationship-reopened",
-        now=1_800_000_000_008,
+        now=1_800_000_000_009,
     )
     assert reopened.state == "active"
     assert reopened.circle == "known"
