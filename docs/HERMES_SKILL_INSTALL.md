@@ -84,6 +84,7 @@ The generated MCP config binds:
   outbound and task-sender peers;
 - no task capabilities by default;
 - `ANET_MCP_ALLOW_RAW_INBOX=0`;
+- `ANET_MCP_ALLOW_RELATION_MODEL=0`;
 - `ANET_MCP_ALLOW_RELATION_ACTIVITY=0`;
 - `ANET_MCP_ALLOW_RELATION_DISCLOSURE=0`.
 

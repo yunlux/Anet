@@ -127,6 +127,7 @@ def test_generated_mcp_config_is_profile_scoped_and_fail_closed(
     assert config["env"]["ANET_MCP_ALLOWED_PEERS"] == "an1peer-a,an1peer-b"
     assert config["env"]["ANET_MCP_TASK_CAPABILITIES"] == ""
     assert config["env"]["ANET_MCP_ALLOW_RAW_INBOX"] == "0"
+    assert config["env"]["ANET_MCP_ALLOW_RELATION_MODEL"] == "0"
     assert config["env"]["ANET_MCP_ALLOW_RELATION_ACTIVITY"] == "0"
     assert config["env"]["ANET_MCP_ALLOW_RELATION_DISCLOSURE"] == "0"
 

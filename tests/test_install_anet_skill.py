@@ -64,6 +64,7 @@ def test_skill_exposes_explicit_full_runtime_for_wsl_bootstrap() -> None:
     assert "second Ahub" in bootstrap
     assert "registered Node ID does not match node home" in bootstrap
     assert "ANET_MCP_ALLOW_RAW_INBOX" in bootstrap
+    assert "ANET_MCP_ALLOW_RELATION_MODEL" in bootstrap
     assert "ANET_MCP_ALLOW_RELATION_ACTIVITY" in bootstrap
     assert "ANET_MCP_ALLOW_RELATION_DISCLOSURE" in bootstrap
 

@@ -446,6 +446,7 @@ def write_mcp_config(
                     "ANET_MCP_TASK_ALLOWED_SENDERS": peers,
                     "ANET_MCP_TASK_CAPABILITIES": "",
                     "ANET_MCP_ALLOW_RAW_INBOX": "0",
+                    "ANET_MCP_ALLOW_RELATION_MODEL": "0",
                     "ANET_MCP_ALLOW_RELATION_ACTIVITY": "0",
                     "ANET_MCP_ALLOW_RELATION_DISCLOSURE": "0",
                 },
