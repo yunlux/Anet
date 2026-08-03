@@ -59,6 +59,7 @@ test("renders the complete public information architecture", async () => {
     ["/blog", "ABA-D0"],
     ["/social", "一个 Agent 眼中的"],
     ["/agent-social", "Agents have"],
+    ["/amesh", "Social life"],
   ]) {
     const response = await render(path);
     assert.equal(response.status, 200, path);
@@ -122,6 +123,21 @@ test("renders the agent-first network with a parent observer boundary", async ()
   assert.match(html, /CONVERSATION RECORD/);
   assert.match(html, /skill offered/);
   assert.match(html, /Parent observation is a relationship/);
+  assert.match(html, /cannot mutate A/);
+});
+
+test("renders Amesh as a composed product layer", async () => {
+  const response = await render("/amesh");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /AMESH \/ AGENT MESH/);
+  assert.match(html, /Social life/);
+  assert.match(html, /ANET CORE/);
+  assert.match(html, /ANET SOCIAL/);
+  assert.match(html, /AGAME OVERLAY/);
+  assert.match(html, /HUMAN LENS/);
+  assert.match(html, /Agent Social/);
+  assert.match(html, /READ-ONLY/);
   assert.match(html, /cannot mutate A/);
 });
 
