@@ -18,7 +18,6 @@ export function Header() {
           <Link href="/docs"><T en="Docs" zh="文档" /></Link>
           <Link href="/#install"><T en="Install" zh="安装" /></Link>
           <Link href="/blog"><T en="Updates" zh="更新" /></Link>
-          <Link href="/amesh"><T en="Amesh" zh="Amesh" /></Link>
           <a className="github-nav" href="https://github.com/yunlux/Anet" target="_blank" rel="noreferrer">
             <img src="https://github.githubassets.com/favicons/favicon.svg" alt="" aria-hidden="true" />
             GitHub
