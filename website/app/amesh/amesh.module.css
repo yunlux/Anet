@@ -1,0 +1,65 @@
+.page { color: #161815; background: #f0eee7; min-height: 100vh; }
+.hero, .layerSection, .routeSection { width: min(1240px, calc(100% - 56px)); margin-inline: auto; }
+.hero { display: grid; grid-template-columns: 1.1fr .9fr; gap: 72px; align-items: end; padding: 86px 0 70px; }
+.kicker, .sectionKicker { margin: 0; color: #6a6c64; font: 650 10px/1.4 var(--font-mono); letter-spacing: .14em; }
+.kicker span { display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: #d9ff43; box-shadow: 0 0 0 4px rgba(217,255,67,.2); }
+.hero h1 { margin: 25px 0; font-size: clamp(58px, 7.5vw, 112px); line-height: .86; letter-spacing: -.075em; font-weight: 560; }
+.hero h1 em, .sectionHeader h2 em { color: #e05232; font-style: normal; }
+.lead { max-width: 640px; margin: 0; color: #565850; font-size: 16px; line-height: 1.65; }
+.heroMeta { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 30px; color: #72746b; font: 9px var(--font-mono); letter-spacing: .08em; }
+.heroMeta i { width: 4px; height: 4px; background: #b8b8ac; border-radius: 50%; }
+.contractCard { color: #edf0e8; border: 1px solid #33372f; background: #20231f; box-shadow: 18px 22px 0 rgba(20,22,18,.08); }
+.contractTop { display: flex; justify-content: space-between; padding: 13px 16px; border-bottom: 1px solid #444940; color: #a3aa9a; font: 9px var(--font-mono); letter-spacing: .1em; }
+.contractTop b { color: #d9ff43; font-weight: 500; }
+.contractTitle { padding: 28px 20px 18px; }
+.contractTitle strong { display: block; font-size: 24px; letter-spacing: -.04em; font-weight: 550; }
+.contractTitle span { display: block; margin-top: 10px; color: #aeb4a8; font: 11px/1.55 var(--font-mono); }
+.contractRule { margin: 0 20px; padding: 13px 0; color: #bfc5b8; border-top: 1px solid #42473e; font: 10px/1.55 var(--font-mono); }
+.contractRule:last-child { padding-bottom: 22px; }
+.contractRule span { margin-right: 7px; color: #d9ff43; }
+.layerSection, .routeSection { padding: 84px 0 0; }
+.sectionHeader { display: grid; grid-template-columns: 1fr .75fr; gap: 60px; align-items: end; margin-bottom: 30px; }
+.sectionHeader h2, .routeCopy h2 { margin: 11px 0 0; font-size: clamp(31px, 4vw, 54px); line-height: .98; letter-spacing: -.055em; font-weight: 560; }
+.sectionHeader > p, .routeCopy > p { margin: 0; color: #707269; font: 11px/1.6 var(--font-mono); }
+.layerGrid { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid #161815; border-bottom: 1px solid #161815; }
+.layerCard { min-height: 218px; padding: 21px 20px; border-right: 1px solid #c9c6bc; }
+.layerCard:last-child { border-right: 0; }
+.layerCard > span { display: block; color: #7a7d73; font: 10px var(--font-mono); }
+.layerCard strong { display: block; margin-top: 70px; font: 650 11px var(--font-mono); letter-spacing: .09em; }
+.layerCard p { margin: 12px 0 0; color: #696c63; font-size: 12px; line-height: 1.5; }
+.layerCard.acid { background: #d9ff43; }
+.layerCard.acid p { color: #30362a; }
+.layerCard.blue { background: #cde9ff; }
+.layerCard.orange { background: #ffd8cb; }
+.layerCard.violet { background: #e5d9ff; }
+.routeSection { display: grid; grid-template-columns: 1.05fr .95fr; gap: 80px; padding-bottom: 25px; }
+.routeCopy { padding: 20px 0 40px; }
+.routeCopy > p { max-width: 500px; margin-top: 28px; font-family: var(--font-geist-sans), sans-serif; font-size: 14px; }
+.routeLinks { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 29px; }
+.routeLinks a { padding: 10px 12px; color: #161815; border: 1px solid #161815; font: 10px var(--font-mono); text-decoration: none; }
+.routeLinks a:hover { color: #f0eee7; background: #161815; }
+.routeLinks span { margin-left: 10px; color: #e05232; }
+.routeDiagram { display: grid; place-items: center; padding: 28px; background: #20231f; }
+.routeDiagram > div { width: min(100%, 300px); padding: 16px 18px; color: #dfe5d8; border: 1px solid #52594c; }
+.routeDiagram > div b { display: block; color: #d9ff43; font: 650 11px var(--font-mono); letter-spacing: .1em; }
+.routeDiagram > div span { display: block; margin-top: 7px; color: #9ca597; font: 10px var(--font-mono); }
+.routeDiagram > i { color: #9ca597; font-style: normal; line-height: 1; }
+.routeDiagram .routeHighlight { color: #20231f; background: #d9ff43; border-color: #d9ff43; }
+.routeDiagram .routeHighlight b, .routeDiagram .routeHighlight span { color: #20231f; }
+@media (max-width: 900px) {
+  .hero, .routeSection { grid-template-columns: 1fr; gap: 35px; }
+  .hero { padding-top: 52px; }
+  .sectionHeader { grid-template-columns: 1fr; gap: 22px; }
+  .layerGrid { grid-template-columns: 1fr 1fr; }
+  .layerCard:nth-child(2) { border-right: 0; }
+  .layerCard:nth-child(-n+2) { border-bottom: 1px solid #c9c6bc; }
+}
+@media (max-width: 620px) {
+  .hero, .layerSection, .routeSection { width: calc(100% - 28px); }
+  .hero { padding: 40px 0 52px; }
+  .hero h1 { font-size: 47px; }
+  .layerGrid { grid-template-columns: 1fr; }
+  .layerCard, .layerCard:nth-child(2) { border-right: 0; border-bottom: 1px solid #c9c6bc; }
+  .layerCard:last-child { border-bottom: 0; }
+  .routeSection { padding-top: 60px; }
+}
