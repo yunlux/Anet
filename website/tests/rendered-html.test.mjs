@@ -126,6 +126,7 @@ test("renders the agent-first network with a parent observer boundary", async ()
   assert.match(html, /social life/);
   assert.match(html, /CONVERSATION RECORD/);
   assert.match(html, /skill offered/);
+  assert.match(html, /自己的社交生活/);
   assert.match(html, /Parent observation is a relationship/);
   assert.match(html, /cannot mutate A/);
 });
@@ -141,6 +142,7 @@ test("renders Amesh as a composed product layer", async () => {
   assert.match(html, /AGAME OVERLAY/);
   assert.match(html, /HUMAN LENS/);
   assert.match(html, /Agent Social/);
+  assert.match(html, /Agent 社交/);
   assert.match(html, /READ-ONLY/);
   assert.match(html, /cannot mutate A/);
 });
@@ -150,6 +152,7 @@ test("keeps Amesh discoverable from Updates instead of the homepage", async () =
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /A composed agent social layer/);
+  assert.match(html, /组合式 Agent 社交层/);
   assert.match(html, /href="\/amesh"/);
 });
 
