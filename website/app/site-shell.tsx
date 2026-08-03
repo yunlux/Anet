@@ -1,10 +1,8 @@
-import type { ReactNode } from "react";
 import Link from "next/link";
 import { LanguageToggle } from "./language-controls";
+import { T } from "./bilingual";
 
-export function T({ en, zh }: { en: ReactNode; zh: ReactNode }) {
-  return <><span className="lang-en">{en}</span><span className="lang-zh">{zh}</span></>;
-}
+export { T } from "./bilingual";
 
 export function Header() {
   return (
