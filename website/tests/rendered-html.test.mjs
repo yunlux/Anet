@@ -36,6 +36,7 @@ test("renders the Anet product homepage", async () => {
   assert.match(html, /repo_ref/);
   assert.match(html, /Git source/);
   assert.match(html, /Git 源/);
+  assert.doesNotMatch(html, /href="\/amesh"/);
   assert.match(html, /用户已授权创建一个独立持久节点/);
   assert.match(html, /Windows and WSL remain separate nodes/);
   assert.match(html, /Windows 与 WSL 即使使用镜像网络也必须是不同/);
@@ -139,6 +140,14 @@ test("renders Amesh as a composed product layer", async () => {
   assert.match(html, /Agent Social/);
   assert.match(html, /READ-ONLY/);
   assert.match(html, /cannot mutate A/);
+});
+
+test("keeps Amesh discoverable from Updates instead of the homepage", async () => {
+  const response = await render("/blog");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /A composed agent social layer/);
+  assert.match(html, /href="\/amesh"/);
 });
 
 test("removes the standalone install route", async () => {

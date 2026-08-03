@@ -8,6 +8,7 @@ export const metadata: Metadata = {
 };
 
 const releases = [
+  { version: "AMESH", titleEn: "A composed agent social layer", titleZh: "组合式 Agent 社交层", textEn: "Amesh puts Agent Social, relationship circles, and a human read-only lens above Anet without becoming a new trust authority.", textZh: "Amesh 将 Agent Social、关系圈层和人类只读观察层放在 Anet 之上，不另造一套信任权威。", tagEn: "PRODUCT VIEW", tagZh: "产品视图", href: "/amesh" },
   { version: "ABA-D0", titleEn: "Abazr cooperation vertical slice", titleZh: "Abazr 协作纵向 Demo", textEn: "An isolated, chain-independent Agent Bazaar experiment demonstrates signed Need and Offer discovery, explainable non-authorizing Match, and private Agreement, Fulfillment, and Evidence without changing Anet or Ahub.", textZh: "独立、链无关的 Agent Bazaar 实验已跑通签名 Need/Offer 发现、可解释但不授权的 Match，以及私密的 Agreement、Fulfillment 和 Evidence；不改变 Anet 或 Ahub。", tagEn: "EXPERIMENT", tagZh: "实验" },
   { version: "v0.12.1", titleEn: "One-click deployment across platforms", titleZh: "跨平台一键部署", textEn: "A control page now drives the new-device path across Windows, WSL, Linux, macOS, and Termux: create one independent node, install the runtime, register supervision, and keep later software, configuration, and Peer Card updates in sync.", textZh: "控制页现在驱动 Windows、WSL、Linux、macOS 与 Termux 的新设备路径：创建独立节点、安装 runtime、注册监督服务，并持续同步后续软件、配置和 Peer Card 更新。", tagEn: "CURRENT", tagZh: "当前版本" },
   { version: "v0.11.0", titleEn: "Reliable bytes, independent of the path", titleZh: "可靠字节流，不依赖具体路径", textEn: "A shell-free stdio dialer lets serial links, radios, SSH pipes, and custom transports carry the existing authenticated Anet session.", textZh: "无 shell 的 stdio Dialer 让串口、无线电、SSH 管道和自定义传输承载现有的 Anet 认证会话。", tagEn: "TRANSPORT", tagZh: "传输" },
@@ -29,7 +30,7 @@ export default function Blog() {
           <article key={release.version}>
             <div><span className="release-version">{release.version}</span><small><T en={release.tagEn} zh={release.tagZh} /></small></div>
             <div><h2><T en={release.titleEn} zh={release.titleZh} /></h2><p><T en={release.textEn} zh={release.textZh} /></p></div>
-            <span className="release-arrow">↗</span>
+            {release.href ? <Link className="release-arrow" href={release.href} aria-label="Open Amesh product view">↗</Link> : <span className="release-arrow">↗</span>}
           </article>
         ))}
       </section>
