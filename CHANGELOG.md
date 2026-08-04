@@ -13,6 +13,8 @@
   repository/`-GitHubBranch`，fork 入口必须由操作者显式指定。
 - Core CI 现在也会在任意分支 push 时运行，优化分支不再依赖手动 workflow
   dispatch 才能获得跨平台测试和打包结果。
+- GitHub Actions 的 Python runner 已升级到 `actions/setup-python` v7，消除
+  Node 20 runtime 弃用警告并保持 workflow action 使用固定 SHA。
 - 修正 Windows、POSIX 初始安装器和运行中 remote-control 对顶层
   `default_config` 的 Windows/WSL 端口校验，并让 Windows PowerShell overlay 的空
   JSON 对象保持公共嵌套配置；错误的平台结构现在会在安装早期失败。

@@ -43,6 +43,10 @@ def test_core_ci_runs_on_every_branch_push() -> None:
     )
     assert "  push:\n  workflow_dispatch:" in workflow
     assert "  push:\n    branches:" not in workflow
+    assert "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" in workflow
+    assert "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065" not in (
+        workflow
+    )
 
 
 def test_platform_defaults_are_platform_owned() -> None:
