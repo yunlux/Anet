@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import plistlib
+import subprocess
 import sys
 from pathlib import Path
 
@@ -25,6 +26,7 @@ from posix_oneclick import (  # noqa: E402
     trusted_keys_from_args,
     validate_cross_platform_locators,
     validate_cross_platform_ports,
+    wait_for_supervisor_health,
     wheel_hash_for_install,
 )
 from posix_runtime_installer import source_requirement  # noqa: E402
@@ -59,6 +61,29 @@ def test_read_node_id_rejects_incomplete_status(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr("posix_oneclick.run", lambda *_args, **_kwargs: "{}")
     with pytest.raises(DeploymentError, match="complete Node ID"):
         read_node_id(Path("python"), Path("node"))
+
+
+def test_wait_for_supervisor_health_requires_cli_success_and_ok(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    results = iter(
+        (
+            subprocess.CompletedProcess(
+                [], 1, stdout='{"ok":false,"reason":"starting"}', stderr=""
+            ),
+            subprocess.CompletedProcess(
+                [], 0, stdout='{"ok":true,"state":"running"}', stderr=""
+            ),
+        )
+    )
+    moments = iter((0.0, 0.1, 0.2))
+    monkeypatch.setattr("posix_oneclick.subprocess.run", lambda *_a, **_k: next(results))
+    monkeypatch.setattr("posix_oneclick.time.monotonic", lambda: next(moments))
+    monkeypatch.setattr("posix_oneclick.time.sleep", lambda _delay: None)
+
+    health = wait_for_supervisor_health(Path("python"), Path("node"), timeout=1)
+
+    assert health["ok"] is True
 
 
 def test_pinned_wheel_requires_a_declared_or_explicit_hash() -> None:

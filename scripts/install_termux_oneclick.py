@@ -40,6 +40,7 @@ from posix_oneclick import (
     trusted_keys_from_args,
     validate_cross_platform_locators,
     validate_cross_platform_ports,
+    wait_for_supervisor_health,
     wheel_hash_for_install,
 )
 from posix_runtime_installer import InstallError, install_runtime
@@ -472,6 +473,7 @@ def _main_unlocked(args: argparse.Namespace) -> int:
     current_config = json.loads(config_path.read_text(encoding="utf-8"))
     node_id = read_node_id(python, node_home)
     service = install_termux_service(prefix, python, node_home)
+    service["health"] = wait_for_supervisor_health(python, node_home)
     boot_script = install_termux_boot(prefix)
     result = build_deployment_receipt(
         platform="termux",

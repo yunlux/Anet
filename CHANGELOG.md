@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- 新增持久 `Supervisor Health v1`：supervisor 原子记录心跳、首次/最近控制页同步、
+  子进程 PID、退化错误和连续失败次数；`anet supervisor-status` 只有在心跳新鲜且
+  supervisor/`anet serve` 两个进程都存活时返回成功。所有 one-click 安装器现在等待
+  这份证据并把它嵌入 Deployment Receipt，避免仅凭原生服务管理器的 `Running`
+  状态误报安装完成。
 - Windows、WSL、Linux、macOS 和 Termux 持久 one-click 安装器现在统一输出
   Deployment Receipt v1：版本化 JSON 接口分别报告 runtime、独立节点、已验证
   控制页、原生 supervisor 状态、autostart 与 preflight。Agent 必须校验必需字段，

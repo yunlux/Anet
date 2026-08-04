@@ -86,6 +86,7 @@ from .remote_control import (
     sync_remote_control,
     verify_remote_control,
 )
+from .supervisor_health import inspect_supervisor_health
 from .relationship_claims import (
     MutualRelationshipClaim,
     RelationshipClaimBook,
@@ -2762,6 +2763,12 @@ def cmd_supervisor(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_supervisor_status(args: argparse.Namespace) -> int:
+    result = inspect_supervisor_health(args.home)
+    _print_json(result)
+    return 0 if result["ok"] else 1
+
+
 _NODE_HOME_MARKERS = (
     "identity.json",
     "tls-key.pem",
@@ -4518,6 +4525,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="sync once and exit without starting the server child",
     )
     supervisor.set_defaults(func=cmd_supervisor)
+
+    supervisor_status = sub.add_parser(
+        "supervisor-status",
+        help="inspect durable supervisor, control-sync, and server-child health",
+    )
+    supervisor_status.set_defaults(func=cmd_supervisor_status)
 
     wake_bridge = sub.add_parser(
         "wake-bridge",

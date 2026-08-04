@@ -116,7 +116,8 @@ Windows 与 WSL 即使使用镜像网络仍是两个独立节点。两端必须�
 成功后，每个平台的持久安装器都会在 stdout 输出一个版本化的
 `anet.deployment.receipt` JSON 对象，统一包含 runtime、独立节点、已验证控制页、
 原生 supervisor 状态、自动启动标志和预检报告。平台差异只保留在
-`supervisor` 内。收据包含私有部署元数据，必须留在本机；精确接口和声明限制见
+`supervisor` 内。安装器还会等待一份新鲜的 `supervisor.health` 证据，确认首次持久
+同步后 supervisor 与 `anet serve` 子进程都真实存活。收据包含私有部署元数据，必须留在本机；精确接口和声明限制见
 [`docs/DEPLOYMENT_RECEIPT_V1.md`](docs/DEPLOYMENT_RECEIPT_V1.md)。
 
 如果只想安装 runtime、不创建持久节点或服务，仍可使用纯净安装入口：
@@ -158,7 +159,9 @@ peer 地址发布。最后报告 runtime、独立节点、服务/任务状态、
 node home。
 只有最终 stdout 对象的 `kind` 为 `anet.deployment.receipt`、
 `schema_version` 为 `1`、`ok` 为 true、`control.verified` 为 true 且
-`supervisor.autostart` 为 true 时才解析为成功。完整收据属于私有证据；分享前必须
+`supervisor.autostart`、`supervisor.health.ok`、
+`supervisor.health.supervisor_process_alive` 和
+`supervisor.health.child_process_alive` 均为 true 时才解析为成功。完整收据属于私有证据；分享前必须
 脱敏 Node ID、路径、地址、控制 URL 和服务详情。
 ~~~
 

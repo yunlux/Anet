@@ -16,6 +16,18 @@ from deployment_receipt import (  # noqa: E402
 )
 
 
+def sample_health() -> dict[str, object]:
+    return {
+        "kind": "anet.supervisor.health",
+        "schema_version": 1,
+        "ok": True,
+        "state": "running",
+        "fresh": True,
+        "supervisor_process_alive": True,
+        "child_process_alive": True,
+    }
+
+
 def sample_receipt(**overrides: object) -> dict[str, object]:
     values: dict[str, object] = {
         "platform": "wsl",
@@ -43,6 +55,7 @@ def sample_receipt(**overrides: object) -> dict[str, object]:
             "name": "anet-supervisor.service",
             "state": "active",
             "autostart": True,
+            "health": sample_health(),
         },
         "preflight": {"schema_version": 1, "findings": []},
     }
@@ -77,6 +90,11 @@ def test_receipt_rejects_unverified_control_or_inactive_contract() -> None:
     receipt = sample_receipt()
     receipt["supervisor"]["state"] = "failed"  # type: ignore[index]
     with pytest.raises(DeploymentReceiptError, match="not running"):
+        validate_deployment_receipt(receipt)
+
+    receipt = sample_receipt()
+    receipt["supervisor"]["health"]["child_process_alive"] = False  # type: ignore[index]
+    with pytest.raises(DeploymentReceiptError, match="child process"):
         validate_deployment_receipt(receipt)
 
 
@@ -128,6 +146,7 @@ def test_termux_receipt_keeps_boot_prerequisite_as_platform_detail() -> None:
             "name": "anet-supervisor",
             "state": "running",
             "autostart": True,
+            "health": sample_health(),
         },
         platform_details={
             "boot_script": "<TERMUX_HOME>/.termux/boot/start-anet-services",
@@ -145,6 +164,7 @@ def test_receipt_contract_is_published_for_people_and_agents() -> None:
     assert '"schema_version": 1' in contract
     assert "private deployment evidence" in contract
     assert "does not prove survival" in contract
+    assert "SUPERVISOR_HEALTH_V1.md" in contract
 
     for path in (
         ROOT / "README.md",

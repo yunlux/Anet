@@ -58,7 +58,8 @@ policy without consuming the first supervisor sync or its software update.
 The final stdout object uses the shared `anet.deployment.receipt` v1 interface.
 Runit state is under `supervisor`, while the boot script and Termux:Boot
 prerequisite remain under `platform_details`; see
-[`DEPLOYMENT_RECEIPT_V1.md`](DEPLOYMENT_RECEIPT_V1.md).
+[`DEPLOYMENT_RECEIPT_V1.md`](DEPLOYMENT_RECEIPT_V1.md). The installer waits for
+a fresh supervisor/child observation before emitting success.
 
 Install and open the Termux:Boot add-on once. It must come from the same
 distribution/signing source as Termux. On the next Android boot, the script
@@ -69,11 +70,15 @@ app to be opened once and boot scripts to live under `~/.termux/boot/`.
 Useful diagnostics:
 
 ```bash
+anet --home "$HOME/.local/anet/nodes/default" supervisor-status
 sv status anet-supervisor
 sv up anet-supervisor
 tail -f "$PREFIX/var/log/sv/anet-supervisor/current"
 cat "$HOME/.local/anet/nodes/default/remote-control-state.json"
 ```
+
+See [`SUPERVISOR_HEALTH_V1.md`](SUPERVISOR_HEALTH_V1.md) for the common health
+exit and staleness semantics.
 
 The default `core` feature is the recommended phone mode. `--feature mcp` is
 available, but consumes more memory and its optional dependencies are installed

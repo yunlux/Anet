@@ -167,9 +167,52 @@ function Assert-DeploymentReceipt {
     ) {
         throw "Windows deployment receipt supervisor is incomplete"
     }
+    $health = $supervisor["health"]
+    if (
+        $null -eq $health -or
+        $health.kind -ne "anet.supervisor.health" -or
+        $health.schema_version -ne 1 -or
+        $health.ok -ne $true -or
+        $health.fresh -ne $true -or
+        $health.supervisor_process_alive -ne $true -or
+        $health.child_process_alive -ne $true
+    ) {
+        throw "Windows deployment receipt supervisor health is incomplete"
+    }
     if ($null -eq $Receipt["preflight"]) {
         throw "Windows deployment receipt preflight is missing"
     }
+}
+
+function Wait-AnetSupervisorHealth {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Python,
+        [Parameter(Mandatory = $true)]
+        [string]$NodeHome,
+        [int]$TimeoutSeconds = 45
+    )
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
+    $lastReason = "health evidence was not produced"
+    while ([DateTimeOffset]::UtcNow -lt $deadline) {
+        $output = & $Python "-m" "anet" "--home" $NodeHome "supervisor-status" 2>$null
+        $exitCode = $LASTEXITCODE
+        if ($output) {
+            try {
+                $health = ($output -join "`n") | ConvertFrom-Json
+                if ($health.reason) {
+                    $lastReason = [string]$health.reason
+                }
+                if ($exitCode -eq 0 -and $health.ok -eq $true) {
+                    return $health
+                }
+            } catch {
+                $lastReason = "supervisor-status returned invalid JSON"
+            }
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    throw "Anet supervisor did not become healthy: $lastReason"
 }
 
 function Merge-JsonObjects {
@@ -971,6 +1014,9 @@ Register-ScheduledTask `
     -Force | Out-Null
 Start-ScheduledTask -TaskPath $taskPath -TaskName $taskName
 Wait-ManagedSupervisorTask $taskPath $taskName
+$supervisorHealth = Wait-AnetSupervisorHealth `
+    -Python $python `
+    -NodeHome $nodePath
 
 $currentConfig = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
 $runtimeReceipt = [ordered]@{
@@ -998,6 +1044,7 @@ $supervisorReceipt = [ordered]@{
     name = ($taskPath + $taskName)
     state = "running"
     autostart = $true
+    health = $supervisorHealth
 }
 $receipt = [ordered]@{
     kind = "anet.deployment.receipt"

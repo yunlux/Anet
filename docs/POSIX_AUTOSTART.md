@@ -93,7 +93,8 @@ After installation:
 - The final object uses the shared `anet.deployment.receipt` v1 interface;
   systemd and launchd details remain inside `supervisor`. See
   [`DEPLOYMENT_RECEIPT_V1.md`](DEPLOYMENT_RECEIPT_V1.md). Its observed state
-  does not replace a later logout/reboot release gate.
+  includes fresh supervisor and server-child process evidence, but does not
+  replace a later logout/reboot release gate.
 - One-shot `anet control-sync` uses the same home lock, so a manual sync cannot
   race the persistent supervisor while it applies config, Peer Cards, or a
   package update.
@@ -165,13 +166,18 @@ Diagnostics:
 
 ```bash
 # WSL/Linux
+anet --home "$HOME/.local/anet/nodes/default" supervisor-status
 systemctl --user status anet-supervisor.service
 journalctl --user -u anet-supervisor.service -n 100 --no-pager
 
 # macOS
+anet --home "$HOME/Library/Application Support/Anet/nodes/default" supervisor-status
 launchctl print gui/$(id -u)/net.anet.supervisor
 tail -n 100 "$HOME/Library/Application Support/Anet/nodes/default/supervisor.log"
 ```
+
+The cross-platform health semantics are defined in
+[`SUPERVISOR_HEALTH_V1.md`](SUPERVISOR_HEALTH_V1.md).
 
 The one-click entry points accept `--control-key-id` and
 `--control-public-key`. When supplied, the key is written to the node's

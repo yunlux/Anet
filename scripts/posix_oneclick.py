@@ -24,6 +24,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -117,6 +118,41 @@ def read_node_id(python: Path, node_home: Path) -> str:
     if not node_id.startswith("an1") or not 20 <= len(node_id) <= 128:
         raise DeploymentError("Anet status did not return a complete Node ID")
     return node_id
+
+
+def wait_for_supervisor_health(
+    python: Path, node_home: Path, *, timeout: float = 45.0
+) -> dict[str, Any]:
+    """Wait until both the persistent supervisor and its server child are healthy."""
+
+    deadline = time.monotonic() + timeout
+    last: dict[str, Any] = {}
+    while time.monotonic() < deadline:
+        completed = subprocess.run(
+            [
+                str(python),
+                "-m",
+                "anet",
+                "--home",
+                str(node_home),
+                "supervisor-status",
+            ],
+            text=True,
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+        try:
+            candidate = json.loads(completed.stdout)
+        except json.JSONDecodeError:
+            candidate = None
+        if isinstance(candidate, dict):
+            last = candidate
+            if completed.returncode == 0 and candidate.get("ok") is True:
+                return candidate
+        time.sleep(0.5)
+    reason = str(last.get("reason", "health evidence was not produced"))
+    raise DeploymentError(f"Anet supervisor did not become healthy: {reason}")
 
 
 def is_wsl() -> bool:
@@ -972,6 +1008,7 @@ def _main_unlocked(
         )
     else:
         service = install_launchd_service(python, node_home)
+    service["health"] = wait_for_supervisor_health(python, node_home)
     result = build_deployment_receipt(
         platform=platform_name,
         outcome="created" if created else "reused",

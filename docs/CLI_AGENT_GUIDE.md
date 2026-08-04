@@ -170,11 +170,17 @@ must not share a node home or identity.
 Persistent one-click entry points emit one compact Deployment Receipt v1 JSON
 object on stdout only after the control page and supervisor checks pass. An
 Agent must require `kind=anet.deployment.receipt`, `schema_version=1`,
-`ok=true`, `control.verified=true`, and `supervisor.autostart=true`; it must not
+`ok=true`, `control.verified=true`, `supervisor.autostart=true`,
+`supervisor.health.ok=true`, and both health process-alive fields; it must not
 infer success from a zero exit code plus partial human-readable output. Keep the
 complete receipt private because it contains the Node ID, paths, addresses,
 control URL, and service metadata. See
 [`DEPLOYMENT_RECEIPT_V1.md`](DEPLOYMENT_RECEIPT_V1.md).
+
+For current post-install evidence, run `anet --home <ANET_HOME>
+supervisor-status`. A zero exit requires a fresh heartbeat and live supervisor
+plus server-child processes. Missing, stale, degraded, or stopped evidence is a
+nonzero result; see [`SUPERVISOR_HEALTH_V1.md`](SUPERVISOR_HEALTH_V1.md).
 
 ### macOS
 

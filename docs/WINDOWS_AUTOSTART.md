@@ -62,7 +62,9 @@ has to infer identity from the home path, label, host, or port.
 It uses the shared `anet.deployment.receipt` v1 interface and reports the
 Scheduled Task through `supervisor`; see
 [`DEPLOYMENT_RECEIPT_V1.md`](DEPLOYMENT_RECEIPT_V1.md). The observed `running`
-state is an installation-time check, not proof of a later reboot.
+state is accompanied by a fresh `supervisor.health` observation with live
+supervisor and server-child PIDs. It is still an installation-time check, not
+proof of a later reboot.
 
 Every Windows entry point runs a read-only preflight before it downloads a
 wheel, creates a virtual environment, or registers a task. The clean runtime
@@ -249,7 +251,14 @@ Use one bounded sync with:
 anet --home $env:ANET_HOME control-sync --url .\\control.json --no-software
 ```
 
-For diagnostics, inspect:
+For diagnostics, first run the cross-platform machine gate:
+
+```powershell
+anet --home <ANET_HOME> supervisor-status
+```
+
+Its health and staleness semantics are defined in
+[`SUPERVISOR_HEALTH_V1.md`](SUPERVISOR_HEALTH_V1.md). Also inspect:
 
 ```text
 <ANET_HOME>\\remote-control.json

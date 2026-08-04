@@ -95,6 +95,17 @@ def validate_deployment_receipt(value: object) -> dict[str, Any]:
         raise DeploymentReceiptError("supervisor.state is not running")
     if supervisor.get("autostart") is not True:
         raise DeploymentReceiptError("supervisor.autostart must be true")
+    health = _mapping(supervisor.get("health"), "supervisor.health")
+    if health.get("kind") != "anet.supervisor.health":
+        raise DeploymentReceiptError("supervisor.health.kind is invalid")
+    if health.get("schema_version") != 1:
+        raise DeploymentReceiptError("supervisor.health.schema_version is invalid")
+    if health.get("ok") is not True or health.get("fresh") is not True:
+        raise DeploymentReceiptError("supervisor.health is not healthy")
+    if health.get("supervisor_process_alive") is not True:
+        raise DeploymentReceiptError("supervisor process is not alive")
+    if health.get("child_process_alive") is not True:
+        raise DeploymentReceiptError("Anet server child process is not alive")
 
     _mapping(receipt.get("preflight"), "preflight")
     return copy.deepcopy(receipt)

@@ -142,7 +142,9 @@ marking the first software update as already applied.
 On success, every persistent installer prints one versioned
 `anet.deployment.receipt` JSON object with the runtime, independent node,
 verified control page, native supervisor state, autostart flag, and preflight
-report. Platform differences stay inside the `supervisor` object. The receipt
+report. The installer also waits for a fresh `supervisor.health` observation
+that proves both the supervisor and its `anet serve` child are alive after the
+first persistent sync. Platform differences stay inside the `supervisor` object. The receipt
 contains private deployment metadata; keep it local and see
 [`docs/DEPLOYMENT_RECEIPT_V1.md`](docs/DEPLOYMENT_RECEIPT_V1.md) for the exact
 interface and claim limits.
@@ -206,7 +208,8 @@ deployment is explicitly requested. Do not copy identity, TLS private keys,
 SQLite state, or an entire node home from another device.
 Parse the final stdout object only when `kind` is `anet.deployment.receipt`,
 `schema_version` is `1`, `ok` is true, `control.verified` is true, and
-`supervisor.autostart` is true. Treat the complete receipt as private evidence;
+`supervisor.autostart` is true, `supervisor.health.ok` is true, and both health
+process-alive fields are true. Treat the complete receipt as private evidence;
 redact the Node ID, paths, addresses, control URL, and service details before
 sharing it.
 ~~~

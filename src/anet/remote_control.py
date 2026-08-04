@@ -33,6 +33,7 @@ from .encoding import atomic_json, atomic_write, b64d, b64e, canonical_pack
 from .identity import Identity, PeerCard
 from .locator import parse_locator, validate_locator_context
 from .peers import PeerBook
+from .supervisor_health import SupervisorHealthReporter
 
 
 LOGGER = logging.getLogger("anet.remote_control")
@@ -1529,6 +1530,7 @@ async def run_supervisor(
     supervisor_lock.acquire()
     child: asyncio.subprocess.Process | None = None
     next_interval = interval or DEFAULT_POLL_SECONDS
+    health: SupervisorHealthReporter | None = None
 
     async def stop_child() -> None:
         nonlocal child
@@ -1558,6 +1560,8 @@ async def run_supervisor(
         LOGGER.info("Anet server child started: PID=%s", child.pid)
 
     try:
+        if not once:
+            health = SupervisorHealthReporter(home)
         while True:
             try:
                 result = await asyncio.to_thread(
@@ -1570,6 +1574,8 @@ async def run_supervisor(
                 next_interval = interval or float(
                     result.get("poll_seconds", DEFAULT_POLL_SECONDS)
                 )
+                if health is not None:
+                    health.synced(result, poll_seconds=next_interval)
                 LOGGER.info(
                     "remote control sync: changed=%s sequence=%s sources=%s",
                     result.get("changed"),
@@ -1579,21 +1585,38 @@ async def run_supervisor(
                 if result.get("software_updated"):
                     await stop_child()
                     LOGGER.info("restarting supervisor after software update")
+                    if health is not None:
+                        health.restarting()
                     supervisor_lock.release()
-                    os.execv(
-                        sys.executable,
-                        [sys.executable, "-m", "anet", *sys.argv[1:]],
-                    )
+                    try:
+                        os.execv(
+                            sys.executable,
+                            [sys.executable, "-m", "anet", *sys.argv[1:]],
+                        )
+                    except BaseException:
+                        supervisor_lock.acquire()
+                        raise
                 if once:
                     return result
                 if result.get("restart_required"):
                     await stop_child()
                 await start_child()
+                if health is not None and child is not None:
+                    health.child_running(child.pid)
             except Exception as exc:
                 if once:
                     raise
                 LOGGER.warning("remote control sync failed: %s", exc)
                 await start_child()
+                if health is not None:
+                    health.degraded(
+                        exc,
+                        child_pid=(
+                            child.pid
+                            if child is not None and child.returncode is None
+                            else None
+                        ),
+                    )
             if once:
                 return None
             exit_code = await _wait_for_child_or_interval(child, next_interval)
@@ -1603,13 +1626,19 @@ async def run_supervisor(
                     "retrying in 5 seconds",
                     exit_code,
                 )
+                if health is not None:
+                    health.child_exited(exit_code)
                 child = None
                 await asyncio.sleep(5.0)
     finally:
         try:
             await stop_child()
         finally:
-            supervisor_lock.release()
+            try:
+                if health is not None:
+                    health.stopped()
+            finally:
+                supervisor_lock.release()
 
 
 def control_settings_path(home: Path) -> Path:
