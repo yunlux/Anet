@@ -11,6 +11,8 @@
 - checkout-free bootstrap 不再使用未验证控制页的 `repo_url`/`repo_ref` 选择并执行
   辅助脚本；POSIX 默认从官方 Anet `main` 获取，Windows 默认使用官方 helper
   repository/`-GitHubBranch`，fork 入口必须由操作者显式指定。
+- Core CI 现在也会在任意分支 push 时运行，优化分支不再依赖手动 workflow
+  dispatch 才能获得跨平台测试和打包结果。
 - 修正 Windows、POSIX 初始安装器和运行中 remote-control 对顶层
   `default_config` 的 Windows/WSL 端口校验，并让 Windows PowerShell overlay 的空
   JSON 对象保持公共嵌套配置；错误的平台结构现在会在安装早期失败。

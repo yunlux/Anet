@@ -37,6 +37,14 @@ def test_clean_installers_do_not_depend_on_nodes_or_agent_runtimes() -> None:
         assert "agent profile" not in text, name
 
 
+def test_core_ci_runs_on_every_branch_push() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "  push:\n  workflow_dispatch:" in workflow
+    assert "  push:\n    branches:" not in workflow
+
+
 def test_platform_defaults_are_platform_owned() -> None:
     assert '".local" / "anet"' in source("install_wsl.py")
     assert '"application support" / "anet"' in source(
