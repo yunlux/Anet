@@ -41,10 +41,13 @@
       "card_url": "https://example.invalid/network/node-a.card.json"
     }
   ],
+  "control_publishers": {
+    "actor-a": "BASE64URL_ED25519_PUBLIC_KEY"
+  },
   "pages": [
     {
       "url": "https://example.invalid/network/community-page.json",
-      "key_id": "community-main"
+      "key_id": "actor-a"
     }
   ]
 }

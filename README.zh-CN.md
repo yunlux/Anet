@@ -49,6 +49,12 @@ Windows 使用 `-ControlKeyId`/`-ControlPublicKey`，POSIX/Termux 使用
 `key_id=public_key` 对，不会因两组数组错位而把 key 归给错误的 Actor。第一个/旧参数
 发布者会写成 `root_key_id`；新增 Actor key 不能签根页面，只能在嵌套来源点名时生效。
 
+也可以只在本机固定根发布者，由这个已签名根页通过 `control_publishers` 声明它策展的
+子来源发布者。委派 key 只在被 `{url,key_id}` 精确点名的嵌套来源中临时生效，不能签
+根页面或继续委派，也不会写入本机 `trusted_keys`，更不会变成 peer trust、授权、关系
+或信誉。`control-verify` 会以私有 `delegated_publisher_ids` 证据报告本次启用的 ID；
+要求每个发布者都由设备独立固定的操作者仍可继续使用多 key 安装参数。
+
 Windows 普通用户在 PowerShell 中直接执行这一条命令：
 
 ~~~powershell
@@ -164,8 +170,11 @@ checkout-free bootstrap 默认使用官方 Anet 仓库/ref，只有显式传入
 签名 wheel 首次安装/更新还必须提供 `software.sha256`，签名、有效期校验失败时停止。本请求已授权创建一个独立持久节点、服务/自启动
 以及 supervisor 对远程控制页的轮询。注册持久服务前必须完成只读的
 `anet control-verify`，且不能提前消费首次同步状态。自动检测平台并调用对应的 one-click 入口；
-嵌套 pages/kv 来源声明 `key_id` 时，必须确认该 key 已在本机 trusted-key 集合中，
-并要求子页签名精确匹配；不能把另一个受信签名者视为等价，也不能由 pin 自动推断信誉分。
+嵌套 pages/kv 来源声明 `key_id` 时，必须确认该 key 已在本机 `trusted_keys` 或已签名
+根页的 `control_publishers` 中，并要求子页签名精确匹配。委派 key 只能用于被点名的
+子来源，不能签根页、继续委派或持久化为本地信任；检查私有
+`delegated_publisher_ids` 和 `source_publishers` 证据，不能把另一个签名者视为等价，
+也不能由 pin 推断 peer trust、授权、关系或信誉。
 原生 Windows 使用 PowerShell 一条命令，只有需要整机启动时才加入 -Admin；WSL、Linux、
 macOS、Termux 没有 checkout 时使用 `bootstrap_posix.py` 管道并传入对应的 `--platform`，
 已有 checkout 时可直接运行对应的一键脚本。如果 WSL 还必须在 Windows 重启后恢复，

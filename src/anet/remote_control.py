@@ -228,6 +228,34 @@ def _normalise_trusted_keys(value: Any) -> dict[str, str]:
     return result
 
 
+def _normalise_delegated_publishers(
+    value: Any,
+    *,
+    trusted_keys: dict[str, str],
+) -> dict[str, str]:
+    delegated = _normalise_trusted_keys(value)
+    if len(trusted_keys) + len(delegated) > MAX_CONTROL_TRUSTED_KEYS:
+        raise RemoteControlError("combined control publisher set is too large")
+    existing_public_keys = set(trusted_keys.values())
+    delegated_public_keys: dict[str, str] = {}
+    for key_id, public_key in delegated.items():
+        if key_id in trusted_keys:
+            raise RemoteControlError(
+                f"delegated publisher conflicts with local key ID: {key_id}"
+            )
+        if public_key in existing_public_keys:
+            raise RemoteControlError(
+                "a delegated publisher cannot reuse a local publisher public key"
+            )
+        previous = delegated_public_keys.get(public_key)
+        if previous is not None and previous != key_id:
+            raise RemoteControlError(
+                "one delegated public key cannot identify multiple publishers"
+            )
+        delegated_public_keys[public_key] = key_id
+    return delegated
+
+
 def sign_control_page(
     payload: dict[str, Any],
     identity: Identity,
@@ -619,6 +647,7 @@ def _empty_document(
         "sources": [],
         "source_publishers": [],
         "source_pins": [],
+        "control_publishers": {},
         "cross_platform_windows_wsl": False,
         "control_signed": False,
         "control_key_id": "",
@@ -665,6 +694,7 @@ def _normalise_document(
     expected_key_id: str = "",
     record_source_pin: bool = True,
     trusted_keys: dict[str, str] | None = None,
+    delegated_key_ids: set[str] | None = None,
     now_ms: int | None = None,
     default_poll_seconds: float = DEFAULT_POLL_SECONDS,
 ) -> dict[str, Any]:
@@ -688,6 +718,24 @@ def _normalise_document(
                 f"{clean_expected_key_id}, received "
                 f"{signature['key_id'] or 'unsigned'}"
             )
+    delegated_publishers: dict[str, str] = {}
+    if isinstance(value, dict) and "control_publishers" in value:
+        if depth != 0:
+            raise RemoteControlError(
+                "nested control sources cannot delegate publishers"
+            )
+        if not signature["signed"]:
+            raise RemoteControlError(
+                "control publisher delegation requires a signed root page"
+            )
+        delegated_publishers = _normalise_delegated_publishers(
+            value.get("control_publishers"),
+            trusted_keys={} if trusted_keys is None else trusted_keys,
+        )
+    effective_trusted_keys = dict(trusted_keys or {})
+    effective_trusted_keys.update(delegated_publishers)
+    effective_delegated_key_ids = set(delegated_key_ids or ())
+    effective_delegated_key_ids.update(delegated_publishers)
     if source_url in visited:
         return _empty_document(poll_seconds=default_poll_seconds)
     if source_publishers is None:
@@ -737,6 +785,7 @@ def _normalise_document(
     documents = expanded_documents
 
     result = _empty_document(poll_seconds=default_poll_seconds)
+    result["control_publishers"] = dict(delegated_publishers)
     result.update(
         {
             "control_signed": bool(signature["signed"]),
@@ -847,14 +896,21 @@ def _normalise_document(
                             raise RemoteControlError(
                                 "nested control source key_id is invalid"
                             )
-                        if page_key_id not in (trusted_keys or {}):
+                        if page_key_id not in effective_trusted_keys:
                             raise RemoteControlError(
-                                f"nested control source publisher is not locally "
-                                f"trusted: {page_key_id}"
+                                f"nested control source publisher is not approved "
+                                f"by local policy or root delegation: {page_key_id}"
                             )
                 else:
                     raise RemoteControlError("control page entries must be URLs")
                 child_value = _read_json_url(page_url, timeout=20.0)
+                child_trusted_keys = effective_trusted_keys
+                if not page_key_id:
+                    child_trusted_keys = {
+                        key_id: public_key
+                        for key_id, public_key in effective_trusted_keys.items()
+                        if key_id not in effective_delegated_key_ids
+                    }
                 child = _normalise_document(
                     child_value,
                     source_url=page_url,
@@ -864,7 +920,8 @@ def _normalise_document(
                     source_publishers=source_publishers,
                     source_pins=source_pins,
                     expected_key_id=page_key_id,
-                    trusted_keys=trusted_keys,
+                    trusted_keys=child_trusted_keys,
+                    delegated_key_ids=effective_delegated_key_ids,
                     now_ms=now_ms,
                     default_poll_seconds=default_poll_seconds,
                 )
@@ -965,6 +1022,7 @@ def verify_remote_control(
         "control_expires_ms": int(document["control_expires_ms"]),
         "sources": list(document["sources"]),
         "source_publishers": list(document["source_publishers"]),
+        "delegated_publisher_ids": list(document["control_publishers"]),
         "poll_seconds": float(document["poll_seconds"]),
         "node_count": len(document["nodes"]),
         "software_present": bool(document["software"]),
@@ -1480,6 +1538,7 @@ def _sync_remote_control_unlocked(
             "current_sequence": current_sequence,
             "sources": document["sources"],
             "source_publishers": document["source_publishers"],
+            "delegated_publisher_ids": list(document["control_publishers"]),
             "poll_seconds": document["poll_seconds"],
         }
     if (
@@ -1504,6 +1563,7 @@ def _sync_remote_control_unlocked(
             "control_expires_ms": document["control_expires_ms"],
             "sources": document["sources"],
             "source_publishers": document["source_publishers"],
+            "delegated_publisher_ids": list(document["control_publishers"]),
             "poll_seconds": document["poll_seconds"],
         }
 
@@ -1544,6 +1604,7 @@ def _sync_remote_control_unlocked(
             "repo_url": document["repo_url"],
             "sources": document["sources"],
             "source_publishers": document["source_publishers"],
+            "delegated_publisher_ids": list(document["control_publishers"]),
             "last_sync_ms": now_ms,
             "control_signed": document["control_signed"],
             "control_key_id": document["control_key_id"],
@@ -1569,6 +1630,7 @@ def _sync_remote_control_unlocked(
         "repo_url": document["repo_url"],
         "sources": document["sources"],
         "source_publishers": document["source_publishers"],
+        "delegated_publisher_ids": list(document["control_publishers"]),
         "poll_seconds": document["poll_seconds"],
     }
 

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- 签名根控制页现在可通过 `control_publishers` 委派只用于被点名嵌套来源的社区
+  发布者。委派 key 不写入本机 `trusted_keys`、不能签根页面或继续委派，也不改变
+  PeerBook、节点授权、关系或信誉；验证与同步证据新增
+  `delegated_publisher_ids`，委派变更受根签名、有效期和 sequence/digest 约束。
 - Windows、WSL、Linux、macOS、Termux 一键安装现在可在同一命令中原子传入多个
   本地 control publisher：Windows 使用 `-ControlTrustedKey id=key`，POSIX/Termux
   重复使用 `--control-trusted-key id=key`。旧单 key 参数保持兼容；冲突归属在安装前

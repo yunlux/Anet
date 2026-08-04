@@ -69,6 +69,15 @@ silently misaligned. The first/legacy publisher is stored as `root_key_id`;
 additional Actor keys cannot sign the root page and apply only when a nested
 source names them.
 
+Alternatively, pin only the root publisher locally and let that signed root
+page declare a `control_publishers` map for curated child maintainers. A
+delegated key is ephemeral: it works only for a nested `{url,key_id}` source
+that names it, cannot sign the root or delegate again, and is never written to
+local `trusted_keys` or translated into peer trust, authorization, relationship
+state, or reputation. `control-verify` reports the active IDs as private
+`delegated_publisher_ids` evidence. Operators who require every publisher key
+to be an independent local pin can keep using the multi-key installer flags.
+
 Run this in an ordinary PowerShell window for a current-user installation:
 
 ~~~powershell
@@ -208,9 +217,12 @@ also supplies the control publisher pin when the page is signed:
 platform installer flags, require software.sha256 for signed wheel bootstrap or
 updates, and stop if the signature or expiry is invalid.
 When a nested pages/kv source declares `key_id`, require that key to exist in
-the local trusted-key set and require the child signature to match it exactly;
-do not treat a different trusted signer as equivalent or infer a reputation
-score from the pin.
+local `trusted_keys` or in the signed root page's `control_publishers`, and
+require the child signature to match it exactly. A delegated key must be used
+only for that named child source: it cannot sign the root, delegate again, or
+be persisted as local trust. Inspect private `delegated_publisher_ids` and
+`source_publishers` evidence; do not treat a different signer as equivalent or
+infer peer trust, authorization, relationship state, or reputation from a pin.
 Before registering the persistent service, require the installer to complete
 the read-only `anet control-verify`; it must not consume the first sync state.
 This request authorizes one independent persistent node, its service/autostart integration,

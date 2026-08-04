@@ -193,10 +193,12 @@ queue, PeerBook, or physical-device delivery recovery; see
 restart without explicit authority.
 
 For community-composed control pages, prefer nested `{ "url", "key_id" }`
-sources. The key must already be pinned in local `trusted_keys`; require the
-child signature to match exactly and inspect private `source_publishers`
-attribution. Never let a page add trusted keys or translate a publisher pin
-into a reputation, trust, or authorization score. See
+sources. The key must be pinned in local `trusted_keys` or declared by the
+signed root page's `control_publishers`; require the child signature to match
+exactly and inspect private `source_publishers` plus
+`delegated_publisher_ids` evidence. A delegated key cannot sign the root,
+delegate again, persist as local trust, or affect PeerBook, authorization,
+relationships, or reputation. See
 [`CONTROL_SOURCE_PINS_V1.md`](CONTROL_SOURCE_PINS_V1.md).
 On a fresh Windows deployment, pass additional local keys as
 `-ControlTrustedKey "actor-a=<KEY>","actor-b=<KEY>"`. On POSIX/Termux, repeat
@@ -205,6 +207,11 @@ Receipt `control.key_ids` to contain every requested publisher in the same
 order; `control.key_id` remains the first entry for v1 readers and is the
 locally pinned root-page publisher. Additional keys must not be accepted as
 root signers.
+
+When the signed root curates community publishers, only the root key needs to
+appear in the install command and Deployment Receipt. Do not require delegated
+IDs in receipt `control.key_ids`; require each one in the verified root
+`control_publishers` map and in the exact nested source `key_id` instead.
 
 ### macOS
 

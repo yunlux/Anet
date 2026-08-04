@@ -190,8 +190,9 @@ local source. Publisher key rotation and fleet-wide quorum remain deployment
 responsibilities.
 
 Nested sources may use `{ "url", "key_id" }` to require one exact publisher
-from the local trusted-key set. This prevents another approved publisher from
-signing in that source's place and records verified attribution in
+from the local trusted-key set or the signed root page's `control_publishers`
+map. This prevents another approved publisher from signing in that source's
+place and records verified attribution in
 `source_publishers`; see
 [`CONTROL_SOURCE_PINS_V1.md`](CONTROL_SOURCE_PINS_V1.md).
 Enroll additional local publishers during the same install by repeating
@@ -200,3 +201,9 @@ Enroll additional local publishers during the same install by repeating
 is written as `root_key_id`; additional keys cannot sign the root page.
 Conflicting IDs or one public key assigned to several publisher IDs fail before
 runtime mutation.
+
+A root-delegated key is ephemeral and applies only to a child source that names
+it. It cannot sign the root, delegate again, enter local `trusted_keys`, or
+alter PeerBook trust, authorization, relationships, or reputation. Verify
+private `delegated_publisher_ids` and `source_publishers`; Deployment Receipt
+`control.key_ids` continues to list only locally enrolled keys.

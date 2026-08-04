@@ -299,6 +299,283 @@ def test_nested_source_pins_a_distinct_community_publisher(tmp_path: Path) -> No
     assert NodeConfig.load(local.home).max_batch == 64
 
 
+def test_signed_root_delegates_a_scoped_nested_publisher(tmp_path: Path) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43103,
+    )
+    root_publisher = Identity.generate("root-publisher")
+    actor_publisher = Identity.generate("actor-publisher")
+    child_url = _signed_page(
+        tmp_path / "actor-page.json",
+        {"sequence": 2, "config": {"max_batch": 64}},
+        actor_publisher,
+        key_id="actor-a",
+    )
+    root_url = _signed_page(
+        tmp_path / "root.json",
+        {
+            "control_publishers": {"actor-a": b64e(actor_publisher.sign_public)},
+            "pages": [{"url": child_url, "key_id": "actor-a"}],
+        },
+        root_publisher,
+        key_id="root",
+    )
+    write_control_settings(
+        local.home,
+        url=root_url,
+        trusted_keys=_trusted_publishers(root=root_publisher),
+        root_key_id="root",
+    )
+
+    verified = verify_remote_control(local.home)
+    synced = sync_remote_control(local.home, apply_software=False)
+    unchanged = sync_remote_control(local.home, apply_software=False)
+
+    assert verified["delegated_publisher_ids"] == ["actor-a"]
+    assert synced["delegated_publisher_ids"] == ["actor-a"]
+    assert unchanged["changed"] is False
+    assert unchanged["delegated_publisher_ids"] == ["actor-a"]
+    state = json.loads(
+        (local.home / remote_control.CONTROL_STATE_NAME).read_text(encoding="utf-8")
+    )
+    assert state["delegated_publisher_ids"] == ["actor-a"]
+    settings = json.loads(
+        (local.home / remote_control.CONTROL_SETTINGS_NAME).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert settings["trusted_keys"] == _trusted_publishers(root=root_publisher)
+    assert "actor-a" not in settings["trusted_keys"]
+    assert NodeConfig.load(local.home).max_batch == 64
+
+
+def test_nested_source_cannot_redelegate_publishers(tmp_path: Path) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43103,
+    )
+    root_publisher = Identity.generate("root-publisher")
+    actor_a = Identity.generate("actor-a")
+    actor_b = Identity.generate("actor-b")
+    child_url = _signed_page(
+        tmp_path / "actor-page.json",
+        {
+            "sequence": 2,
+            "control_publishers": {"actor-b": b64e(actor_b.sign_public)},
+        },
+        actor_a,
+        key_id="actor-a",
+    )
+    root_url = _signed_page(
+        tmp_path / "root.json",
+        {
+            "control_publishers": {"actor-a": b64e(actor_a.sign_public)},
+            "pages": [{"url": child_url, "key_id": "actor-a"}],
+        },
+        root_publisher,
+        key_id="root",
+    )
+    write_control_settings(
+        local.home,
+        url=root_url,
+        trusted_keys=_trusted_publishers(root=root_publisher),
+        root_key_id="root",
+    )
+
+    with pytest.raises(RemoteControlError, match="cannot delegate"):
+        verify_remote_control(local.home)
+
+
+def test_delegated_publisher_requires_an_explicit_source_pin(tmp_path: Path) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43103,
+    )
+    root_publisher = Identity.generate("root-publisher")
+    actor_publisher = Identity.generate("actor-publisher")
+    child_url = _signed_page(
+        tmp_path / "actor-page.json",
+        {"sequence": 2, "config": {"max_batch": 64}},
+        actor_publisher,
+        key_id="actor-a",
+    )
+    root_url = _signed_page(
+        tmp_path / "root.json",
+        {
+            "control_publishers": {"actor-a": b64e(actor_publisher.sign_public)},
+            "pages": [child_url],
+        },
+        root_publisher,
+        key_id="root",
+    )
+    write_control_settings(
+        local.home,
+        url=root_url,
+        trusted_keys=_trusted_publishers(root=root_publisher),
+        root_key_id="root",
+    )
+
+    with pytest.raises(RemoteControlError, match="not locally trusted: actor-a"):
+        verify_remote_control(local.home)
+
+
+def test_delegated_publisher_does_not_flow_into_unpinned_grandchildren(
+    tmp_path: Path,
+) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43103,
+    )
+    root_publisher = Identity.generate("root-publisher")
+    actor_publisher = Identity.generate("actor-publisher")
+    grandchild_url = _signed_page(
+        tmp_path / "grandchild.json",
+        {"sequence": 3, "config": {"max_batch": 64}},
+        actor_publisher,
+        key_id="actor-a",
+    )
+    child_url = _signed_page(
+        tmp_path / "actor-page.json",
+        {"sequence": 2, "pages": [grandchild_url]},
+        actor_publisher,
+        key_id="actor-a",
+    )
+    root_url = _signed_page(
+        tmp_path / "root.json",
+        {
+            "control_publishers": {"actor-a": b64e(actor_publisher.sign_public)},
+            "pages": [{"url": child_url, "key_id": "actor-a"}],
+        },
+        root_publisher,
+        key_id="root",
+    )
+    write_control_settings(
+        local.home,
+        url=root_url,
+        trusted_keys=_trusted_publishers(root=root_publisher),
+        root_key_id="root",
+    )
+
+    with pytest.raises(RemoteControlError, match="not locally trusted: actor-a"):
+        verify_remote_control(local.home)
+
+
+def test_root_delegation_cannot_shadow_local_publishers(tmp_path: Path) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43103,
+    )
+    root_publisher = Identity.generate("root-publisher")
+    replacement = Identity.generate("replacement")
+    root_url = _signed_page(
+        tmp_path / "root.json",
+        {"control_publishers": {"root": b64e(replacement.sign_public)}},
+        root_publisher,
+        key_id="root",
+    )
+    write_control_settings(
+        local.home,
+        url=root_url,
+        trusted_keys=_trusted_publishers(root=root_publisher),
+        root_key_id="root",
+    )
+
+    with pytest.raises(RemoteControlError, match="conflicts with local key ID"):
+        verify_remote_control(local.home)
+
+
+def test_unsigned_root_cannot_delegate_publishers(tmp_path: Path) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43103,
+    )
+    actor = Identity.generate("actor")
+    root_url = _write_page(
+        tmp_path / "root.json",
+        {"control_publishers": {"actor-a": b64e(actor.sign_public)}},
+    )
+    write_control_settings(local.home, url=root_url)
+
+    with pytest.raises(RemoteControlError, match="requires a signed root"):
+        verify_remote_control(local.home)
+
+
+def test_root_delegation_cannot_reuse_a_local_public_key(tmp_path: Path) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43103,
+    )
+    root_publisher = Identity.generate("root-publisher")
+    root_url = _signed_page(
+        tmp_path / "root.json",
+        {
+            "control_publishers": {
+                "actor-a": b64e(root_publisher.sign_public),
+            }
+        },
+        root_publisher,
+        key_id="root",
+    )
+    write_control_settings(
+        local.home,
+        url=root_url,
+        trusted_keys=_trusted_publishers(root=root_publisher),
+        root_key_id="root",
+    )
+
+    with pytest.raises(RemoteControlError, match="cannot reuse a local"):
+        verify_remote_control(local.home)
+
+
+def test_one_delegated_public_key_cannot_claim_multiple_publishers(
+    tmp_path: Path,
+) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43103,
+    )
+    root_publisher = Identity.generate("root-publisher")
+    actor = Identity.generate("actor")
+    public_key = b64e(actor.sign_public)
+    root_url = _signed_page(
+        tmp_path / "root.json",
+        {
+            "control_publishers": {
+                "actor-a": public_key,
+                "actor-b": public_key,
+            }
+        },
+        root_publisher,
+        key_id="root",
+    )
+    write_control_settings(
+        local.home,
+        url=root_url,
+        trusted_keys=_trusted_publishers(root=root_publisher),
+        root_key_id="root",
+    )
+
+    with pytest.raises(RemoteControlError, match="multiple publishers"):
+        verify_remote_control(local.home)
+
+
 def test_source_attribution_preserves_legacy_signed_state_digest(tmp_path: Path) -> None:
     local = initialize_node(
         tmp_path / "local",
@@ -440,6 +717,61 @@ def test_adding_source_pin_requires_a_new_signed_sequence(tmp_path: Path) -> Non
         sync_remote_control(local.home, apply_software=False)
 
 
+def test_changing_root_delegation_requires_a_new_signed_sequence(tmp_path: Path) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43103,
+    )
+    root_publisher = Identity.generate("root-publisher")
+    actor_a = Identity.generate("actor-a")
+    actor_b = Identity.generate("actor-b")
+    child_a_url = _signed_page(
+        tmp_path / "actor-a.json",
+        {"sequence": 2, "config": {"max_batch": 64}},
+        actor_a,
+        key_id="actor-a",
+    )
+    child_b_url = _signed_page(
+        tmp_path / "actor-b.json",
+        {"sequence": 2, "config": {"max_batch": 64}},
+        actor_b,
+        key_id="actor-b",
+    )
+    root = tmp_path / "root.json"
+    root_url = _signed_page(
+        root,
+        {
+            "control_publishers": {"actor-a": b64e(actor_a.sign_public)},
+            "pages": [{"url": child_a_url, "key_id": "actor-a"}],
+        },
+        root_publisher,
+        sequence=1,
+        key_id="root",
+    )
+    write_control_settings(
+        local.home,
+        url=root_url,
+        trusted_keys=_trusted_publishers(root=root_publisher),
+        root_key_id="root",
+    )
+    sync_remote_control(local.home, apply_software=False)
+    _signed_page(
+        root,
+        {
+            "control_publishers": {"actor-b": b64e(actor_b.sign_public)},
+            "pages": [{"url": child_b_url, "key_id": "actor-b"}],
+        },
+        root_publisher,
+        sequence=1,
+        key_id="root",
+    )
+
+    with pytest.raises(RemoteControlError, match="reused a sequence"):
+        sync_remote_control(local.home, apply_software=False)
+
+
 def test_nested_source_rejects_another_trusted_publishers_signature(
     tmp_path: Path,
 ) -> None:
@@ -503,7 +835,7 @@ def test_nested_source_pin_must_exist_in_local_trust_policy(tmp_path: Path) -> N
         trusted_keys=_trusted_publishers(root=root_publisher),
     )
 
-    with pytest.raises(RemoteControlError, match="not locally trusted: actor-a"):
+    with pytest.raises(RemoteControlError, match="not approved.*actor-a"):
         verify_remote_control(local.home)
 
 
@@ -632,6 +964,9 @@ def test_control_source_pin_contract_is_published() -> None:
     assert "--control-trusted-key" in contract
     assert "-ControlTrustedKey" in contract
     assert "root_key_id" in contract
+    assert '"control_publishers"' in contract
+    assert "delegated_publisher_ids" in contract
+    assert "cannot delegate" in contract
     for path in (
         root / "README.md",
         root / "README.zh-CN.md",
@@ -641,7 +976,9 @@ def test_control_source_pin_contract_is_published() -> None:
         root / "docs" / "POSIX_AUTOSTART.md",
         root / "docs" / "TERMUX_AUTOSTART.md",
     ):
-        assert "CONTROL_SOURCE_PINS_V1.md" in path.read_text(encoding="utf-8")
+        text = path.read_text(encoding="utf-8")
+        assert "CONTROL_SOURCE_PINS_V1.md" in text
+        assert "control_publishers" in text
 
 
 def test_signed_control_page_rejects_same_sequence_with_new_content(

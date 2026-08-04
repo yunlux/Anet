@@ -172,7 +172,8 @@ for the same shape.
 `pages` and `kv` are equivalent lists of JSON URLs or `{ "url", "key_id" }`
 objects. A KV provider can expose one JSON object at a stable key URL; the
 supervisor follows those URLs and merges the returned declarations. An object
-form binds that source to one exact locally trusted publisher key; see
+form binds that source to one exact locally trusted or root-delegated publisher
+key; see
 [`CONTROL_SOURCE_PINS_V1.md`](CONTROL_SOURCE_PINS_V1.md).
 
 The local `remote-control.json` `interval` is used when the composed page and
@@ -222,6 +223,14 @@ first as `root_key_id`. Additional keys cannot sign the root page; they apply
 only to nested sources that name them. Repeating the same ID/key is idempotent;
 conflicting keys for one ID or one public key assigned to multiple publisher
 IDs fail before installation.
+
+If the operator wants to pin only one root key locally, the signed root page
+may instead declare a `control_publishers` map. Those delegated public keys are
+ephemeral and activate only for nested `{ "url", "key_id" }` sources that name
+them. They cannot sign the root, delegate again, enter local `trusted_keys`, or
+alter PeerBook trust, authorization, relationships, or reputation. Inspect
+`delegated_publisher_ids` together with `source_publishers` in private verify or
+sync evidence; Deployment Receipt `control.key_ids` remains the local key set.
 
 Publishers can create the signed JSON offline with the repository helper:
 
