@@ -15,6 +15,7 @@ from anet.remote_control import (
     SupervisorLock,
     sign_control_page,
     sync_remote_control,
+    verify_remote_control,
     write_control_settings,
 )
 
@@ -125,6 +126,43 @@ def test_signed_control_page_requires_local_key_and_records_expiry(
     )
     assert state["control_key_id"] == "community-main"
     assert NodeConfig.load(local.home).sync_interval == 0.5
+
+
+def test_control_verify_is_read_only_before_initial_supervisor_sync(
+    tmp_path: Path,
+) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43102,
+    )
+    publisher = Identity.generate("community-publisher")
+    page = _signed_page(
+        tmp_path / "control.json",
+        {
+            "config": {"sync_interval": 0.5},
+            "software": {
+                "version": "0.12.1",
+                "wheel_url": "https://example.invalid/anet.whl",
+            },
+        },
+        publisher,
+    )
+    write_control_settings(
+        local.home,
+        url=page,
+        trusted_keys=_trusted_publisher(publisher),
+    )
+    config_before = (local.home / "config.json").read_bytes()
+
+    result = verify_remote_control(local.home)
+
+    assert result["ok"] is True
+    assert result["control_signed"] is True
+    assert result["software_present"] is True
+    assert (local.home / "config.json").read_bytes() == config_before
+    assert not (local.home / "remote-control-state.json").exists()
 
 
 def test_signed_control_page_rejects_tampering_and_unsigned_nested_page(

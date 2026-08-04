@@ -113,6 +113,11 @@ only isolate listeners; they do not make the two runtimes' 127.0.0.1 addresses
 interchangeable. Host-scoped locators must use a shared non-loopback address
 (or 0.0.0.0 with explicit -Advertise/--advertise).
 
+Each one-click installer performs a read-only `anet control-verify` after the
+initial runtime/node are created and before registering its persistent service.
+This verifies the signed root/nested pages and local network/Card policy without
+marking the first software update as already applied.
+
 The original runtime-only installers remain available for operators who do not
 want a persistent node or service:
 
@@ -144,6 +149,8 @@ repo_url, an optional repo_ref can pin a branch, tag, or commit. This request
 also supplies the control publisher pin when the page is signed:
 `<CONTROL_KEY_ID>` and `<BASE64URL_ED25519_PUBLIC_KEY>`; pass them through the
 platform installer flags and stop if the signature or expiry is invalid.
+Before registering the persistent service, require the installer to complete
+the read-only `anet control-verify`; it must not consume the first sync state.
 This request authorizes one independent persistent node, its service/autostart integration,
 and the supervisor's remote control-page polling. Detect the platform and use
 its one-click deployment entry point; on native Windows use the PowerShell

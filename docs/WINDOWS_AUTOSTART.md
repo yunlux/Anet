@@ -218,6 +218,13 @@ Each page application also snapshots `config.json`, the local signed
 restores those node-control files before the failed sequence is retried.
 
 The supervisor keeps the last local configuration when a page is unavailable.
+
+Before registering the task, the installer invokes the installed CLI's
+read-only `control-verify` command. It verifies the root and nested `pages`/`kv`
+documents, pinned signatures, expiry, Peer Cards, and Windows/WSL port policy
+without writing `remote-control-state.json`; the first supervisor sync remains
+responsible for applying configuration and installing the page's software.
+
 Use one bounded sync with:
 
 ```powershell

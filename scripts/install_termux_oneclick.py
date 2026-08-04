@@ -397,7 +397,6 @@ def _main_unlocked(args: argparse.Namespace) -> int:
         contexts=contexts,
         advertise=advertise,
     )
-    current_config = json.loads(config_path.read_text(encoding="utf-8"))
 
     try:
         interval = max(5, min(float(page.get("poll_seconds", DEFAULT_POLL_SECONDS)), 86400))
@@ -417,6 +416,22 @@ def _main_unlocked(args: argparse.Namespace) -> int:
         )
         + "\n",
     )
+    # Keep the first persistent service from starting with an unverified
+    # signed page.  Verification does not write sync state, so the supervisor
+    # still performs the initial software installation on its first poll.
+    run(
+        [
+            str(python),
+            "-m",
+            "anet",
+            "--home",
+            str(node_home),
+            "control-verify",
+            "--url",
+            args.control_url,
+        ]
+    )
+    current_config = json.loads(config_path.read_text(encoding="utf-8"))
     node_id = read_node_id(python, node_home)
     service = install_termux_service(prefix, python, node_home)
     boot_script = install_termux_boot(prefix)

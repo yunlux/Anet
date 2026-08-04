@@ -92,6 +92,10 @@ Windows 与 WSL 即使使用镜像网络仍是两个独立节点。两端必须�
 `127.0.0.1` 互相等价。host-scoped 直连必须使用两边都能到达的非回环地址，
 或监听 `0.0.0.0` 并显式设置 `-Advertise`/`--advertise`。
 
+每个 one-click 安装器都会在创建初始 runtime/node 后、注册持久服务前调用只读的
+`anet control-verify`。它会验证签名根页/嵌套页以及本地网络/Card 策略，且不会提前消费
+第一次 supervisor 软件更新所需的 remote-control 状态。
+
 如果只想安装 runtime、不创建持久节点或服务，仍可使用纯净安装入口：
 
 ~~~text
@@ -114,7 +118,8 @@ Linux    skills/install-anet/scripts/install.py
 Git 分支、tag 或 commit。如果页面已签名，还要传入发布者固定信息：
 `<CONTROL_KEY_ID>` 和 `<BASE64URL_ED25519_PUBLIC_KEY>`；把它们传给对应平台入口，
 签名或有效期校验失败时停止。本请求已授权创建一个独立持久节点、服务/自启动
-以及 supervisor 对远程控制页的轮询。自动检测平台并调用对应的 one-click 入口；
+以及 supervisor 对远程控制页的轮询。注册持久服务前必须完成只读的
+`anet control-verify`，且不能提前消费首次同步状态。自动检测平台并调用对应的 one-click 入口；
 原生 Windows 使用 PowerShell 一条命令，只有需要整机启动时才加入 -Admin；WSL、Linux、
 macOS、Termux 使用 checkout 中对应的一键脚本。如果 WSL 还必须在 Windows 重启后恢复，
 且主机侧操作已获授权，再注册 WSL keepalive 任务。Windows 与 WSL 必须视为两个节点：

@@ -84,6 +84,7 @@ from .remote_control import (
     _normalise_trusted_keys,
     run_supervisor,
     sync_remote_control,
+    verify_remote_control,
 )
 from .relationship_claims import (
     MutualRelationshipClaim,
@@ -2734,6 +2735,17 @@ def cmd_control_sync(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_control_verify(args: argparse.Namespace) -> int:
+    _print_json(
+        verify_remote_control(
+            args.home,
+            url=args.url,
+            trusted_keys=_control_trusted_keys(args),
+        )
+    )
+    return 0
+
+
 def cmd_supervisor(args: argparse.Namespace) -> int:
     result = asyncio.run(
         run_supervisor(
@@ -4467,6 +4479,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="apply config and peers but do not install a package update",
     )
     control_sync.set_defaults(func=cmd_control_sync)
+
+    control_verify = sub.add_parser(
+        "control-verify",
+        help="verify one remote JSON control page without applying it",
+    )
+    control_verify.add_argument(
+        "--url", help="control page URL; otherwise use node settings"
+    )
+    control_verify.add_argument(
+        "--control-key-id", help="locally pinned control publisher key ID"
+    )
+    control_verify.add_argument(
+        "--control-public-key",
+        help="base64url Ed25519 public key for the control publisher",
+    )
+    control_verify.set_defaults(func=cmd_control_verify)
 
     supervisor = sub.add_parser(
         "supervisor",

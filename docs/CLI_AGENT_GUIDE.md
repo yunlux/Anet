@@ -82,7 +82,10 @@ machine-wide Windows deployment, run PowerShell as administrator and add
 values when this Windows node must coexist with a WSL node. It is not the clean runtime install above. A pinned
 `-ControlKeyId`/`-ControlPublicKey` makes the supervisor require signed root and
 nested control pages; omit them only for an explicitly trusted compatibility
-bootstrap. The page can install a wheel or Git source; see
+bootstrap. The one-click installer runs a read-only `anet control-verify` after
+the initial runtime/node exist and before registering the persistent service;
+it does not consume remote-control state, so the first supervisor sync can
+still install the page's software artifact. The page can install a wheel or Git source; see
 [`WINDOWS_AUTOSTART.md`](WINDOWS_AUTOSTART.md) before using it.
 
 For direct Windows/WSL connectivity, port numbers only isolate listeners. Bind
@@ -109,7 +112,9 @@ unit; macOS creates and loads `net.anet.supervisor` as a LaunchAgent. These
 paths also create one new node home and are separate from the runtime-only
 installers. See [`POSIX_AUTOSTART.md`](POSIX_AUTOSTART.md).
 The macOS entry point verifies the LaunchAgent reports `state = running`, and
-one-shot `anet control-sync` shares the node-home lock with the supervisor.
+one-click installation runs the same read-only `anet control-verify` before
+service registration. One-shot `anet control-sync` shares the node-home lock
+with the supervisor.
 
 For WSL on Windows, `systemd --user` does not itself launch the distribution
 after a Windows reboot. After the WSL node is installed, the optional host

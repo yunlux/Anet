@@ -39,6 +39,10 @@ and `termux-services`, then:
    existing target is reused;
 4. writes `~/.termux/boot/start-anet-services` for boot startup.
 
+Before enabling the runit service, the installer runs read-only
+`anet control-verify`; it checks the complete control page and local publisher
+policy without consuming the first supervisor sync or its software update.
+
 Install and open the Termux:Boot add-on once. It must come from the same
 distribution/signing source as Termux. On the next Android boot, the script
 acquires a wake lock when available, starts `termux-services`, and brings up

@@ -7,6 +7,9 @@
   Windows、WSL、Linux、macOS 和 Termux 一键部署入口均可写入公钥策略，并新增
   `scripts/sign_control_page.py` 供离线发布者生成页面；旧的无签名页面仍保留为
   明确的兼容 bootstrap 模式。
+- 新增只读 `anet control-verify`。所有跨平台 one-click 安装器在注册持久服务前调用它，
+  验证完整控制页、嵌套来源、Peer Card 和 Windows/WSL 端口策略，同时不提前写入
+  `remote-control-state.json`，避免跳过首次软件更新。
 - Mutual Actor-to-Actor relationship claims now have a signed participant
   withdrawal path. A withdrawal deactivates only the portable claim and records
   a content-free local activity fact; it never automatically changes a local

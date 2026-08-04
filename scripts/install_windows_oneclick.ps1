@@ -765,6 +765,21 @@ $settings | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (
     Join-Path $nodePath "remote-control.json"
 ) -Encoding utf8
 
+$controlVerifyArguments = @(
+    "-m", "anet", "--home", $nodePath,
+    "control-verify", "--url", $ControlUrl
+)
+if ($trustedKeys.Count -gt 0) {
+    $controlVerifyArguments += @(
+        "--control-key-id", $ControlKeyId,
+        "--control-public-key", $ControlPublicKey
+    )
+}
+$controlVerifyOutput = & $python @controlVerifyArguments
+if ($LASTEXITCODE -ne 0) {
+    throw "remote control page verification failed with exit code $LASTEXITCODE"
+}
+
 $statusOutput = & $python "-m" "anet" "--home" $nodePath "status"
 if ($LASTEXITCODE -ne 0) {
     throw "Anet status failed with exit code $LASTEXITCODE"

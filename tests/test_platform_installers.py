@@ -69,6 +69,7 @@ def test_windows_oneclick_is_an_explicit_supervised_deployment_layer() -> None:
     assert "did not stop within 30 seconds" in installer
     assert "wait-managedsupervisortask" in installer
     assert "did not start within 30 seconds" in installer
+    assert '"control-verify"' in installer
     assert "-port" in installer
     assert "-listenhost" in installer
     assert "locatorcontext" in installer
@@ -99,6 +100,7 @@ def test_posix_oneclick_is_an_explicit_native_service_layer() -> None:
     assert "anet-supervisor.service" in text
     assert "net.anet.supervisor" in text
     assert '"restart", systemd_service' in text
+    assert '"control-verify"' in text
     assert "--control-url" in text
     assert "--control-key-id" in text
     assert "--control-public-key" in text
@@ -145,6 +147,7 @@ def test_termux_oneclick_uses_termux_native_service_layer() -> None:
     assert "platform_software" in text
     assert "existing node listens on port" in text
     assert '"restart", termux_service' in text
+    assert '"control-verify"' in text
     assert "repository_source" in text
     assert "repository_ref" in text
     assert "software.wheel_url or software.repo_url" in text

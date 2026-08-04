@@ -866,7 +866,6 @@ def _main_unlocked(
         contexts=contexts,
         advertise=advertise,
     )
-    current_config = json.loads(config_path.read_text(encoding="utf-8"))
 
     interval = page.get("poll_seconds", DEFAULT_POLL_SECONDS)
     try:
@@ -887,6 +886,23 @@ def _main_unlocked(
         )
         + "\n",
     )
+
+    # Verify the complete root/nested page and local policy before a
+    # persistent service is registered.  This is read-only; the first
+    # supervisor sync must still install the page's software artifact.
+    run(
+        [
+            str(python),
+            "-m",
+            "anet",
+            "--home",
+            str(node_home),
+            "control-verify",
+            "--url",
+            args.control_url,
+        ]
+    )
+    current_config = json.loads(config_path.read_text(encoding="utf-8"))
 
     node_id = read_node_id(python, node_home)
     if platform_name in {"wsl", "linux"}:

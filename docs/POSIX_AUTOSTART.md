@@ -66,6 +66,11 @@ After installation:
 - One-shot `anet control-sync` uses the same home lock, so a manual sync cannot
   race the persistent supervisor while it applies config, Peer Cards, or a
   package update.
+- Before registering the systemd/LaunchAgent service, the one-click installer
+  runs read-only `anet control-verify`. It checks the complete root/nested page,
+  local publisher policy, expiry, Peer Cards, and WSL port rules without
+  consuming remote-control state; the first supervisor sync still applies the
+  page's software update.
 - A changed wheel, repository, or repository reference is applied even when its package version is
   unchanged; only the first sync of the already-installed initial version is
   skipped.

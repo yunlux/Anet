@@ -1,9 +1,9 @@
-"""Prototype remote control plane for a self-starting Anet Windows node.
+"""Remote control plane for a self-starting Anet node.
 
-This module deliberately starts with a plain JSON control page so the runtime
-and installer workflow can be exercised before the signed publication protocol
-is introduced.  The page is a data source for configuration, peer cards and
-optional package updates; it is never executed as a script.
+The control page is a data source for configuration, peer cards and optional
+package updates; it is never executed as a script. Unsigned pages remain a
+compatibility mode, while a locally pinned publisher key enables signed-page
+verification and expiry/sequence policy.
 """
 
 from __future__ import annotations
@@ -824,6 +824,68 @@ def _normalise_document(
                 )
     result["sources"] = list(sources)
     return result
+
+
+def verify_remote_control(
+    home: Path,
+    *,
+    url: str | None = None,
+    trusted_keys: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Verify one control page without applying state or changing the node.
+
+    One-click installers use this read-only boundary after the initial
+    runtime and node home exist but before registering a persistent service.
+    It deliberately does not write ``remote-control-state.json``: the first
+    supervisor sync must still be allowed to install the page's software
+    artifact.
+    """
+
+    home = Path(home).expanduser().resolve()
+    settings = _load_control_settings(home, url)
+    page_url = str(settings["url"]).strip()
+    default_poll_seconds = _bounded_interval(
+        settings.get("interval", DEFAULT_POLL_SECONDS)
+    )
+    configured_trusted_keys = _normalise_trusted_keys(
+        settings.get("trusted_keys", {})
+    )
+    effective_trusted_keys = (
+        configured_trusted_keys
+        if trusted_keys is None
+        else _normalise_trusted_keys(trusted_keys)
+    )
+    now_ms = _now_ms()
+    raw = _read_json_url(page_url, timeout=20.0)
+    document = _normalise_document(
+        raw,
+        source_url=page_url,
+        visited=set(),
+        depth=0,
+        sources=[],
+        trusted_keys=effective_trusted_keys,
+        now_ms=now_ms,
+        default_poll_seconds=default_poll_seconds,
+    )
+    _validate_network_config(
+        document["config"],
+        cross_platform_windows_wsl=bool(
+            document.get("cross_platform_windows_wsl", False)
+        ),
+    )
+    return {
+        "ok": True,
+        "url": page_url,
+        "sequence": int(document["sequence"]),
+        "control_signed": bool(document["control_signed"]),
+        "control_key_id": str(document["control_key_id"]),
+        "control_issued_ms": int(document["control_issued_ms"]),
+        "control_expires_ms": int(document["control_expires_ms"]),
+        "sources": list(document["sources"]),
+        "poll_seconds": float(document["poll_seconds"]),
+        "node_count": len(document["nodes"]),
+        "software_present": bool(document["software"]),
+    }
 
 
 def _load_control_settings(home: Path, url: str | None) -> dict[str, Any]:
