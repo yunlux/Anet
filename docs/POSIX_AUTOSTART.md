@@ -54,6 +54,9 @@ After installation:
   the updated runtime.
 - A home-level OS lock prevents a second supervisor from operating the same
   node home concurrently.
+- The final JSON result includes the complete `node.node_id` read from the
+  installed CLI's `status` command; identity is never inferred from a path,
+  label, host, or port.
 - One-shot `anet control-sync` uses the same home lock, so a manual sync cannot
   race the persistent supervisor while it applies config, Peer Cards, or a
   package update.

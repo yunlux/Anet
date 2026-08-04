@@ -83,6 +83,8 @@ def test_windows_oneclick_is_an_explicit_supervised_deployment_layer() -> None:
     assert "-m" in launcher
     assert "supervisor" in launcher
     assert "supervisor.log" in launcher
+    assert "status" in installer
+    assert "node_id" in installer
 
 
 def test_posix_oneclick_is_an_explicit_native_service_layer() -> None:
@@ -101,6 +103,7 @@ def test_posix_oneclick_is_an_explicit_native_service_layer() -> None:
     assert "repository_source" in text
     assert "repository_ref" in text
     assert "software.wheel_url or software.repo_url" in text
+    assert "read_node_id" in text
     assert "installationlock" in text
 
 

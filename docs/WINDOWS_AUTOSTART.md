@@ -51,7 +51,9 @@ and waits for the old supervisor to release the node lock before starting the
 new task, so updated control-page settings take effect immediately.
 After registration it waits up to 30 seconds for the task to enter `Running`;
 a missing start is reported with the task's last result instead of being
-reported as a successful install.
+reported as a successful install. The final JSON result also runs the installed
+CLI's `status` command and includes the complete `node_id`, so an Agent never
+has to infer identity from the home path, label, host, or port.
 
 Every Windows entry point runs a read-only preflight before it downloads a
 wheel, creates a virtual environment, or registers a task. The clean runtime

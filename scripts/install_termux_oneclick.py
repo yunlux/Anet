@@ -29,6 +29,7 @@ from posix_oneclick import (
     download,
     platform_config,
     platform_software,
+    read_node_id,
     repository_ref,
     repository_source,
     read_json_url,
@@ -406,6 +407,7 @@ def _main_unlocked(args: argparse.Namespace) -> int:
     )
     service = install_termux_service(prefix, python, node_home)
     boot_script = install_termux_boot(prefix)
+    node_id = read_node_id(python, node_home)
     result = {
         "ok": True,
         "outcome": "created" if created else "reused",
@@ -413,6 +415,7 @@ def _main_unlocked(args: argparse.Namespace) -> int:
         "runtime": runtime,
         "node": {
             "home": str(node_home),
+            "node_id": node_id,
             "listen_host": str(current_config.get("listen_host", listen_host)),
             "port": port,
             "advertise": current_config.get("advertise", []),

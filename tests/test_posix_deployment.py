@@ -18,6 +18,7 @@ from posix_oneclick import (  # noqa: E402
     launchd_service_state,
     platform_config,
     platform_software,
+    read_node_id,
     repository_ref,
     repository_source,
     systemd_unit,
@@ -39,6 +40,23 @@ def test_systemd_unit_runs_the_remote_supervisor() -> None:
     assert " supervisor" in unit
     assert "Restart=on-failure" in unit
     assert "WantedBy=default.target" in unit
+
+
+def test_read_node_id_uses_verified_cli_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    expected = "an1aaaaaaaaaaaaaaaaa"
+
+    def fake_run(command: list[str], **_kwargs: object) -> str:
+        assert command[-1] == "status"
+        return '{"node_id":"' + expected + '"}'
+
+    monkeypatch.setattr("posix_oneclick.run", fake_run)
+    assert read_node_id(Path("python"), Path("node")) == expected
+
+
+def test_read_node_id_rejects_incomplete_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("posix_oneclick.run", lambda *_args, **_kwargs: "{}")
+    with pytest.raises(DeploymentError, match="complete Node ID"):
+        read_node_id(Path("python"), Path("node"))
 
 
 def test_platform_config_selects_the_platform_specific_node_settings() -> None:

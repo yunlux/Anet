@@ -69,6 +69,31 @@ def run(
     return (completed.stdout or "").strip()
 
 
+def read_node_id(python: Path, node_home: Path) -> str:
+    """Read the complete Node ID through the installed CLI status path."""
+
+    output = run(
+        [
+            str(python),
+            "-m",
+            "anet",
+            "--home",
+            str(node_home),
+            "status",
+        ]
+    )
+    try:
+        status = json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise DeploymentError("Anet status returned invalid JSON") from exc
+    if not isinstance(status, dict):
+        raise DeploymentError("Anet status did not return an object")
+    node_id = str(status.get("node_id", "")).strip()
+    if not node_id.startswith("an1") or not 20 <= len(node_id) <= 128:
+        raise DeploymentError("Anet status did not return a complete Node ID")
+    return node_id
+
+
 def is_wsl() -> bool:
     if sys.platform != "linux":
         return False
@@ -836,6 +861,7 @@ def _main_unlocked(
         )
     else:
         service = install_launchd_service(python, node_home)
+    node_id = read_node_id(python, node_home)
     result = {
         "ok": True,
         "outcome": "created" if created else "reused",
@@ -843,6 +869,7 @@ def _main_unlocked(
         "runtime": runtime,
         "node": {
             "home": str(node_home),
+            "node_id": node_id,
             "listen_host": str(current_config.get("listen_host", listen_host)),
             "port": port,
             "advertise": current_config.get("advertise", []),
