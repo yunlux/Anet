@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- 一键部署入口现在与远程 supervisor 对 `config`/`software` 平台 overlay 使用相同的递归合并和
+  `default_config` 语义；首次安装不会因嵌套字段而与后续控制页同步产生不同结果。WebDAV
+  carrier 的探测回归测试区分唯一 mailbox 路径与安全的传输重试，避免在全量 CI 负载下误报。
 - 远程控制页新增可选的本地 Ed25519 发布者固定：配置 `trusted_keys` 后，根页和
   嵌套 `pages`/`kv` 页必须签名并通过有效期校验；签名序列号不能复用到不同内容。
   Windows、WSL、Linux、macOS 和 Termux 一键部署入口均可写入公钥策略，并新增

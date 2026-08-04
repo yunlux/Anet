@@ -641,6 +641,52 @@ def test_cross_platform_control_pages_reject_equal_listener_ports(
         sync_remote_control(local.home, url=page, apply_software=False)
 
 
+def test_cross_platform_port_validation_reads_default_config_overlays(
+    tmp_path: Path, monkeypatch
+) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43109,
+    )
+    page = _write_page(
+        tmp_path / "control.json",
+        {
+            "sequence": 1,
+            "platforms": {
+                "windows": {
+                    "default_config": {
+                        "listen_host": "0.0.0.0",
+                        "listen_port": 43119,
+                        "locator_contexts": ["host:abcdefgh"],
+                        "advertise": [
+                            "tls://192.0.2.8:43119?scope=host&zone=abcdefgh"
+                        ],
+                    }
+                },
+                "wsl": {
+                    "default_config": {
+                        "listen_host": "0.0.0.0",
+                        "listen_port": 43119,
+                        "locator_contexts": ["host:abcdefgh"],
+                        "advertise": [
+                            "tls://192.0.2.8:43119?scope=host&zone=abcdefgh"
+                        ],
+                    }
+                },
+            },
+        },
+    )
+    monkeypatch.setattr(remote_control, "runtime_platform", lambda: "wsl")
+
+    with pytest.raises(
+        RemoteControlError,
+        match="must use distinct listener ports",
+    ):
+        sync_remote_control(local.home, url=page, apply_software=False)
+
+
 def test_cross_platform_control_pages_reject_mixed_host_scope(
     tmp_path: Path, monkeypatch
 ) -> None:

@@ -112,6 +112,45 @@ function Get-OptionalProperty {
     return [string]$property.Value
 }
 
+function Test-IsJsonObject {
+    param([object]$Value)
+    if ($null -eq $Value -or $Value -is [string]) {
+        return $false
+    }
+    if ($Value -is [System.Collections.IEnumerable]) {
+        return $false
+    }
+    return $Value.PSObject.Properties.Count -gt 0
+}
+
+function Merge-JsonObjects {
+    param(
+        [object]$Base,
+        [object]$Patch
+    )
+    $values = [ordered]@{}
+    if ($null -ne $Base) {
+        foreach ($property in $Base.PSObject.Properties) {
+            $values[$property.Name] = $property.Value
+        }
+    }
+    if ($null -ne $Patch) {
+        foreach ($property in $Patch.PSObject.Properties) {
+            if (
+                $values.Contains($property.Name) -and
+                (Test-IsJsonObject $values[$property.Name]) -and
+                (Test-IsJsonObject $property.Value)
+            ) {
+                $values[$property.Name] = Merge-JsonObjects `
+                    $values[$property.Name] $property.Value
+            } else {
+                $values[$property.Name] = $property.Value
+            }
+        }
+    }
+    return [pscustomobject]$values
+}
+
 function Resolve-WheelSha256 {
     param(
         [string]$Explicit = "",
@@ -166,30 +205,18 @@ function Get-EffectivePlatformConfig {
     if ($null -eq $overlayProperty) {
         return $null
     }
-    $values = [ordered]@{}
-    if ($null -ne $CommonConfig) {
-        foreach ($property in $CommonConfig.PSObject.Properties) {
-            $values[$property.Name] = $property.Value
-        }
-    }
     $overlay = $overlayProperty.Value
+    $config = $null
     if ($null -ne $overlay -and $overlay.PSObject.Properties["config"]) {
         $config = $overlay.config
-        if ($null -ne $config) {
-            foreach ($property in $config.PSObject.Properties) {
-                $values[$property.Name] = $property.Value
-            }
-        }
     } elseif ($null -ne $overlay -and
         $overlay.PSObject.Properties["default_config"]) {
         $config = $overlay.default_config
-        if ($null -ne $config) {
-            foreach ($property in $config.PSObject.Properties) {
-                $values[$property.Name] = $property.Value
-            }
-        }
     }
-    return [pscustomobject]$values
+    if ($null -eq $config) {
+        return $CommonConfig
+    }
+    return Merge-JsonObjects $CommonConfig $config
 }
 
 function Get-EffectivePlatformSoftware {
@@ -198,40 +225,31 @@ function Get-EffectivePlatformSoftware {
         [object]$CommonSoftware,
         [string]$PlatformName
     )
-    $values = [ordered]@{}
-    if ($null -ne $CommonSoftware) {
-        if ($CommonSoftware -isnot [psobject]) {
-            throw "control page software must be an object"
-        }
-        foreach ($property in $CommonSoftware.PSObject.Properties) {
-            $values[$property.Name] = $property.Value
-        }
+    if ($null -ne $CommonSoftware -and $CommonSoftware -isnot [psobject]) {
+        throw "control page software must be an object"
     }
     if ($null -eq $Platforms) {
-        return [pscustomobject]$values
+        return $(if ($null -eq $CommonSoftware) { [pscustomobject]@{} } else { $CommonSoftware })
     }
     $overlayProperty = $Platforms.PSObject.Properties[$PlatformName]
     if ($null -eq $overlayProperty) {
-        return [pscustomobject]$values
+        return $(if ($null -eq $CommonSoftware) { [pscustomobject]@{} } else { $CommonSoftware })
     }
     $overlay = $overlayProperty.Value
     if ($null -eq $overlay) {
-        return [pscustomobject]$values
+        return $(if ($null -eq $CommonSoftware) { [pscustomobject]@{} } else { $CommonSoftware })
     }
     if (-not $overlay.PSObject.Properties["software"]) {
-        return [pscustomobject]$values
+        return $(if ($null -eq $CommonSoftware) { [pscustomobject]@{} } else { $CommonSoftware })
     }
     $software = $overlay.software
     if ($null -eq $software) {
-        return [pscustomobject]$values
+        return $(if ($null -eq $CommonSoftware) { [pscustomobject]@{} } else { $CommonSoftware })
     }
     if ($software -isnot [psobject]) {
         throw "control page platforms.$PlatformName.software must be an object"
     }
-    foreach ($property in $software.PSObject.Properties) {
-        $values[$property.Name] = $property.Value
-    }
-    return [pscustomobject]$values
+    return Merge-JsonObjects $CommonSoftware $software
 }
 
 function Test-HasHostScope {

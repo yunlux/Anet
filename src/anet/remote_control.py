@@ -497,7 +497,9 @@ def _effective_platform_config(
     base = document.get("config", {})
     if not isinstance(base, dict):
         base = {}
-    patch = overlay.get("config", {})
+    patch = overlay.get("config", overlay.get("default_config", {}))
+    if patch is None:
+        patch = {}
     if not isinstance(patch, dict):
         raise RemoteControlError(
             f"control page platforms.{platform_name}.config must be an object"

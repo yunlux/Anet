@@ -118,6 +118,30 @@ def test_platform_config_accepts_default_config_alias() -> None:
     }
 
 
+def test_platform_overlays_deep_merge_initial_config_and_software() -> None:
+    page = {
+        "config": {"capabilities": {"direct": True, "relay": False}},
+        "software": {
+            "version": "0.12.1",
+            "metadata": {"channel": "stable", "track": "lts"},
+        },
+        "platforms": {
+            "wsl": {
+                "default_config": {"capabilities": {"relay": True}},
+                "software": {"metadata": {"track": "edge"}},
+            }
+        },
+    }
+
+    assert platform_config(page, "wsl") == {
+        "capabilities": {"direct": True, "relay": True}
+    }
+    assert platform_software(page, "wsl") == {
+        "version": "0.12.1",
+        "metadata": {"channel": "stable", "track": "edge"},
+    }
+
+
 def test_platform_software_selects_the_platform_specific_artifact() -> None:
     page = {
         "software": {

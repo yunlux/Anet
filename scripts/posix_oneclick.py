@@ -173,6 +173,19 @@ def read_json_url(url: str) -> dict[str, Any]:
     return value
 
 
+def _deep_merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    """Apply an overlay with the same recursive semantics as remote sync."""
+
+    result = dict(base)
+    for key, value in patch.items():
+        previous = result.get(key)
+        if isinstance(previous, dict) and isinstance(value, dict):
+            result[key] = _deep_merge(previous, value)
+        else:
+            result[key] = value
+    return result
+
+
 def platform_config(page: dict[str, Any], platform_name: str) -> dict[str, Any]:
     common = page.get("config", page.get("default_config", {}))
     if common is None:
@@ -193,14 +206,12 @@ def platform_config(page: dict[str, Any], platform_name: str) -> dict[str, Any]:
         )
     config = overlay.get("config", overlay.get("default_config", {}))
     if config is None:
-        return {}
+        return dict(common)
     if not isinstance(config, dict):
         raise DeploymentError(
             f"control page platforms.{platform_name}.config must be an object"
         )
-    merged = dict(common)
-    merged.update(config)
-    return merged
+    return _deep_merge(common, config)
 
 
 def platform_software(page: dict[str, Any], platform_name: str) -> dict[str, Any]:
@@ -228,9 +239,7 @@ def platform_software(page: dict[str, Any], platform_name: str) -> dict[str, Any
         raise DeploymentError(
             f"control page platforms.{platform_name}.software must be an object"
         )
-    merged = dict(common)
-    merged.update(software)
-    return merged
+    return _deep_merge(common, software)
 
 
 def repository_source(
@@ -336,14 +345,14 @@ def _effective_platform_config(
     base = page.get("config", {})
     if not isinstance(base, dict):
         base = {}
-    patch = overlay.get("config", {})
+    patch = overlay.get("config", overlay.get("default_config", {}))
+    if patch is None:
+        patch = {}
     if not isinstance(patch, dict):
         raise DeploymentError(
             f"control page platforms.{platform_name}.config must be an object"
         )
-    merged = dict(base)
-    merged.update(patch)
-    return merged
+    return _deep_merge(base, patch)
 
 
 def _has_host_scope(config: dict[str, Any]) -> bool:

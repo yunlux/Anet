@@ -272,9 +272,11 @@ def test_webdav_carrier_is_outbound_only_opaque_and_acknowledged(
             assert len(handler.collections) == 3
             # First sender pass lists only the base. Receiver pass lists the
             # base and the one existing derived mailbox; it never probes the
-            # other derivable historical/future tokens.
-            assert len(handler.propfind_paths) == 3
-            assert handler.propfind_paths.count("/dav/") == 2
+            # other derivable historical/future tokens. Transport retries may
+            # repeat one of these safe PROPFIND requests, so assert the unique
+            # paths and leave retry count to the transport-specific test.
+            assert set(handler.propfind_paths) == {"/dav/", collection + "/"}
+            assert handler.propfind_paths.count("/dav/") >= 2
             message = next(
                 item for item in b.store.list_inbox() if item["packet_id"] == packet_id
             )
