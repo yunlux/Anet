@@ -6,12 +6,14 @@ from pathlib import Path
 import pytest
 
 from anet.config import NodeConfig, initialize_node
+from anet.encoding import b64e
 from anet.identity import Identity
 from anet.peers import PeerBook
 import anet.remote_control as remote_control
 from anet.remote_control import (
     RemoteControlError,
     SupervisorLock,
+    sign_control_page,
     sync_remote_control,
     write_control_settings,
 )
@@ -20,6 +22,29 @@ from anet.remote_control import (
 def _write_page(path: Path, value: dict) -> str:
     path.write_text(json.dumps(value), encoding="utf-8")
     return path.as_uri()
+
+
+def _signed_page(
+    path: Path,
+    payload: dict,
+    publisher: Identity,
+    *,
+    sequence: int = 1,
+) -> str:
+    now = remote_control._now_ms()
+    value = sign_control_page(
+        {**payload, "sequence": sequence},
+        publisher,
+        key_id="community-main",
+        issued_ms=now - 1000,
+        expires_ms=now + 3600_000,
+    )
+    path.write_text(json.dumps(value), encoding="utf-8")
+    return path.as_uri()
+
+
+def _trusted_publisher(publisher: Identity) -> dict[str, str]:
+    return {"community-main": b64e(publisher.sign_public)}
 
 
 def test_control_page_applies_config_and_peer_cards(tmp_path: Path) -> None:
@@ -61,6 +86,153 @@ def test_control_page_applies_config_and_peer_cards(tmp_path: Path) -> None:
     peers = PeerBook(local.peers_path, own_node_id=Identity.load(local.identity_path).node_id)
     assert len(peers.all()) == 1
     assert (local.home / "remote-control-state.json").exists()
+
+
+def test_signed_control_page_requires_local_key_and_records_expiry(
+    tmp_path: Path,
+) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43102,
+    )
+    publisher = Identity.generate("community-publisher")
+    page = _signed_page(
+        tmp_path / "control.json",
+        {"config": {"sync_interval": 0.5}},
+        publisher,
+    )
+
+    with pytest.raises(
+        RemoteControlError,
+        match="no local trusted key",
+    ):
+        sync_remote_control(local.home, url=page, apply_software=False)
+
+    write_control_settings(
+        local.home,
+        url=page,
+        trusted_keys=_trusted_publisher(publisher),
+    )
+    result = sync_remote_control(local.home, apply_software=False)
+
+    assert result["control_signed"] is True
+    assert result["control_key_id"] == "community-main"
+    assert result["control_expires_ms"] > remote_control._now_ms()
+    state = json.loads(
+        (local.home / "remote-control-state.json").read_text(encoding="utf-8")
+    )
+    assert state["control_key_id"] == "community-main"
+    assert NodeConfig.load(local.home).sync_interval == 0.5
+
+
+def test_signed_control_page_rejects_tampering_and_unsigned_nested_page(
+    tmp_path: Path,
+) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43103,
+    )
+    publisher = Identity.generate("community-publisher")
+    child = tmp_path / "child.json"
+    child_url = _write_page(child, {"sequence": 2, "config": {"max_batch": 64}})
+    root = tmp_path / "root.json"
+    root_url = _signed_page(root, {"pages": [child_url]}, publisher)
+    write_control_settings(
+        local.home,
+        url=root_url,
+        trusted_keys=_trusted_publisher(publisher),
+    )
+
+    with pytest.raises(RemoteControlError, match="signed control page required"):
+        sync_remote_control(local.home, apply_software=False)
+
+    signed_child = sign_control_page(
+        {"sequence": 2, "config": {"max_batch": 64}},
+        publisher,
+        key_id="community-main",
+        issued_ms=remote_control._now_ms() - 1000,
+        expires_ms=remote_control._now_ms() + 3600_000,
+    )
+    child.write_text(json.dumps(signed_child), encoding="utf-8")
+    sync_remote_control(local.home, apply_software=False)
+
+    tampered = json.loads(root.read_text(encoding="utf-8"))
+    tampered["config"] = {"sync_interval": 99.0}
+    root.write_text(json.dumps(tampered), encoding="utf-8")
+    with pytest.raises(RemoteControlError, match="signature verification failed"):
+        sync_remote_control(local.home, apply_software=False)
+
+
+def test_signed_control_page_rejects_same_sequence_with_new_content(
+    tmp_path: Path,
+) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43104,
+    )
+    publisher = Identity.generate("community-publisher")
+    page_path = tmp_path / "control.json"
+    page = _signed_page(
+        page_path,
+        {"config": {"sync_interval": 0.5}},
+        publisher,
+    )
+    write_control_settings(
+        local.home,
+        url=page,
+        trusted_keys=_trusted_publisher(publisher),
+    )
+    sync_remote_control(local.home, apply_software=False)
+
+    _signed_page(
+        page_path,
+        {"config": {"sync_interval": 0.7}},
+        publisher,
+        sequence=1,
+    )
+    with pytest.raises(RemoteControlError, match="reused a sequence"):
+        sync_remote_control(local.home, apply_software=False)
+
+
+def test_signed_control_page_rejects_expired_publisher_data(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43105,
+    )
+    publisher = Identity.generate("community-publisher")
+    now = remote_control._now_ms()
+    issued = now - 2 * 24 * 60 * 60 * 1000
+    expires = now - 24 * 60 * 60 * 1000
+    with monkeypatch.context() as context:
+        context.setattr(remote_control, "_now_ms", lambda: issued)
+        signed = sign_control_page(
+            {"sequence": 1, "config": {"sync_interval": 0.5}},
+            publisher,
+            key_id="community-main",
+            issued_ms=issued,
+            expires_ms=expires,
+        )
+    page = tmp_path / "expired.json"
+    page.write_text(json.dumps(signed), encoding="utf-8")
+    write_control_settings(
+        local.home,
+        url=page.as_uri(),
+        trusted_keys=_trusted_publisher(publisher),
+    )
+
+    with pytest.raises(RemoteControlError, match="has expired"):
+        sync_remote_control(local.home, apply_software=False)
 
 
 def test_invalid_peer_card_does_not_partially_apply_the_control_page(

@@ -11,7 +11,9 @@ pkg update
 pkg install -y python python-pip git
 
 python3 scripts/install_termux_oneclick.py \
-  --control-url https://example.invalid/anet/control.json
+  --control-url https://example.invalid/anet/control.json \
+  --control-key-id community-main \
+  --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 ```
 
 The installer performs its read-only duplicate check before it runs `pkg`.
@@ -59,6 +61,11 @@ background processes or remove wake locks; battery-optimization exemptions may
 be necessary for a node expected to stay online. The phone is normally an
 outbound/reachable edge node rather than a public Internet listener.
 
-This is the same unsigned remote-control bootstrap prototype as the other
-platforms. Signed manifests, publisher quorum, rollback, and local policy
-gates are still required before using a public update channel.
+When `--control-key-id` and `--control-public-key` are supplied, the installer
+writes the pinned Ed25519 key into `remote-control.json`. The supervisor then
+requires signed root and nested `pages`/`kv` control pages, checks expiry, and
+rejects signed sequence reuse with different content. Use
+`scripts/sign_control_page.py` on the publisher side. Omitting the key retains
+the unsigned compatibility bootstrap and should be limited to an explicitly
+trusted local source; publisher rotation and fleet-wide quorum remain outside
+the Termux service.

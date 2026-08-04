@@ -25,17 +25,31 @@ wheel 加 `software.sha256` 是可重复的安装路径；如果只提供仓库�
 页面格式见 [控制页示例](docs/windows-control-page.example.json) 和
 [Windows 自动启动文档](docs/WINDOWS_AUTOSTART.md)。
 
+如果控制页来自公开或社区维护的来源，建议在安装命令中同时固定发布者：
+Windows 使用 `-ControlKeyId`/`-ControlPublicKey`，POSIX/Termux 使用
+`--control-key-id`/`--control-public-key`。这样 supervisor 会要求根页面和
+嵌套 pages/kv 页面使用本地固定的 Ed25519 公钥签名，检查有效期，并拒绝
+签名页面复用序列号却改变内容。公钥可以公开分发，发布者私钥必须离线保存；
+不提供公钥时仍保留无签名兼容模式，但只适合明确可信的 bootstrap 来源。
+
 Windows 普通用户在 PowerShell 中直接执行这一条命令：
 
 ~~~powershell
-& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/yunlux/Anet/main/scripts/install_windows_oneclick.ps1))) -ControlUrl https://example.invalid/anet/control.json
+& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/yunlux/Anet/main/scripts/install_windows_oneclick.ps1))) `
+  -ControlUrl https://example.invalid/anet/control.json `
+  -ControlKeyId community-main `
+  -ControlPublicKey <BASE64URL_ED25519_PUBLIC_KEY>
 ~~~
 
 如果需要整机启动、无需用户登录，请在“以管理员身份运行”的 PowerShell 中加入
 `-Admin`：
 
 ~~~powershell
-& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/yunlux/Anet/main/scripts/install_windows_oneclick.ps1))) -Admin -ControlUrl https://example.invalid/anet/control.json
+& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/yunlux/Anet/main/scripts/install_windows_oneclick.ps1))) `
+  -Admin `
+  -ControlUrl https://example.invalid/anet/control.json `
+  -ControlKeyId community-main `
+  -ControlPublicKey <BASE64URL_ED25519_PUBLIC_KEY>
 ~~~
 
 普通用户模式使用 `%LOCALAPPDATA%\Anet` 和 `AtLogOn` 计划任务；
@@ -49,16 +63,20 @@ Windows PowerShell 命令不需要先 checkout）：
 
 ~~~bash
 # WSL
-python3 scripts/install_wsl_oneclick.py --control-url <CONTROL_URL>
+python3 scripts/install_wsl_oneclick.py --control-url <CONTROL_URL> \
+  --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 
 # 非 WSL Linux
-python3 scripts/install_linux_oneclick.py --control-url <CONTROL_URL>
+python3 scripts/install_linux_oneclick.py --control-url <CONTROL_URL> \
+  --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 
 # macOS
-python3 scripts/install_macos_oneclick.py --control-url <CONTROL_URL>
+python3 scripts/install_macos_oneclick.py --control-url <CONTROL_URL> \
+  --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 
 # Android Termux
-python3 scripts/install_termux_oneclick.py --control-url <CONTROL_URL>
+python3 scripts/install_termux_oneclick.py --control-url <CONTROL_URL> \
+  --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 ~~~
 
 WSL 和 Linux 使用当前用户的 `systemd --user`，macOS 加载 `LaunchAgent`，
@@ -93,7 +111,9 @@ Linux    skills/install-anet/scripts/install.py
 从 https://github.com/yunlux/Anet 安装并部署 Anet。使用这个控制页 URL：
 <CONTROL_URL>（执行前替换占位符）。控制页必须提供 `software.version` 以及
 `software.wheel_url` 或 `software.repo_url`；使用仓库地址时，可选的 `repo_ref` 可以固定
-Git 分支、tag 或 commit。本请求已授权创建一个独立持久节点、服务/自启动
+Git 分支、tag 或 commit。如果页面已签名，还要传入发布者固定信息：
+`<CONTROL_KEY_ID>` 和 `<BASE64URL_ED25519_PUBLIC_KEY>`；把它们传给对应平台入口，
+签名或有效期校验失败时停止。本请求已授权创建一个独立持久节点、服务/自启动
 以及 supervisor 对远程控制页的轮询。自动检测平台并调用对应的 one-click 入口；
 原生 Windows 使用 PowerShell 一条命令，只有需要整机启动时才加入 -Admin；WSL、Linux、
 macOS、Termux 使用 checkout 中对应的一键脚本。如果 WSL 还必须在 Windows 重启后恢复，

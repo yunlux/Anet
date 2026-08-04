@@ -19,6 +19,7 @@ include scripts/install_macos_oneclick.py
 include scripts/install_termux_oneclick.py
 include scripts/posix_runtime_installer.py
 include scripts/install_preflight.py
+include scripts/sign_control_page.py
 include scripts/wsl_multi_node_release_gate.py
 include scripts/windows_release_gate.ps1
 include mcp-stdio.example.json

@@ -8,15 +8,21 @@ control client, and the platform-native auto-start unit:
 ```bash
 # WSL
 python3 scripts/install_wsl_oneclick.py \
-  --control-url https://example.invalid/anet/control.json
+  --control-url https://example.invalid/anet/control.json \
+  --control-key-id community-main \
+  --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 
 # non-WSL Linux
 python3 scripts/install_linux_oneclick.py \
-  --control-url https://example.invalid/anet/control.json
+  --control-url https://example.invalid/anet/control.json \
+  --control-key-id community-main \
+  --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 
 # macOS
 python3 scripts/install_macos_oneclick.py \
-  --control-url https://example.invalid/anet/control.json
+  --control-url https://example.invalid/anet/control.json \
+  --control-key-id community-main \
+  --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 ```
 
 The control page must contain `software.version` and either an initial
@@ -131,7 +137,12 @@ launchctl print gui/$(id -u)/net.anet.supervisor
 tail -n 100 "$HOME/Library/Application Support/Anet/nodes/default/supervisor.log"
 ```
 
-This is a functional unsigned bootstrap prototype. It can apply remote
-configuration, import Peer Cards, and install a wheel or Git source through
-the control page. Signed manifests, publisher quorum, rollback policy, and
-local approval gates are still required before using a public update channel.
+The one-click entry points accept `--control-key-id` and
+`--control-public-key`. When supplied, the key is written to the node's
+`remote-control.json`; the supervisor then requires an Ed25519-signed root
+page and every nested `pages`/`kv` page, checks the page expiry, and rejects
+signed sequence reuse with different content. Create pages with
+`scripts/sign_control_page.py`. Omitting the key retains the unsigned
+compatibility bootstrap and is appropriate only for an explicitly trusted
+local source. Publisher key rotation and fleet-wide quorum remain deployment
+responsibilities.

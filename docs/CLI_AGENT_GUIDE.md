@@ -68,7 +68,9 @@ provided a remote control page, use the separate deployment prototype:
 
 ```powershell
 .\scripts\install_windows_oneclick.ps1 `
-  -ControlUrl https://example.invalid/anet/control.json
+  -ControlUrl https://example.invalid/anet/control.json `
+  -ControlKeyId community-main `
+  -ControlPublicKey <BASE64URL_ED25519_PUBLIC_KEY>
 ```
 
 This path creates or reuses one node home after its preflight, imports the
@@ -77,8 +79,10 @@ scheduled task, and starts the supervisor with an `anet serve` child. For a
 machine-wide Windows deployment, run PowerShell as administrator and add
 `-Admin`; this uses `%ProgramData%\Anet`, the `SYSTEM` task principal, and an
 `AtStartup` trigger. Use explicit `-Port`, `-LocatorContext`, and `-Advertise`
-values when this Windows node must coexist with a WSL node. It is not the clean runtime install above. The prototype
-page is unsigned and can install a wheel or Git source; see
+values when this Windows node must coexist with a WSL node. It is not the clean runtime install above. A pinned
+`-ControlKeyId`/`-ControlPublicKey` makes the supervisor require signed root and
+nested control pages; omit them only for an explicitly trusted compatibility
+bootstrap. The page can install a wheel or Git source; see
 [`WINDOWS_AUTOSTART.md`](WINDOWS_AUTOSTART.md) before using it.
 
 For direct Windows/WSL connectivity, port numbers only isolate listeners. Bind
@@ -89,9 +93,15 @@ shared `host:` locator context.
 The equivalent explicit POSIX deployment paths are:
 
 ```bash
-python3 scripts/install_wsl_oneclick.py --control-url <CONTROL_URL>
-python3 scripts/install_linux_oneclick.py --control-url <CONTROL_URL>
-python3 scripts/install_macos_oneclick.py --control-url <CONTROL_URL>
+python3 scripts/install_wsl_oneclick.py --control-url <CONTROL_URL> \
+  --control-key-id community-main \
+  --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
+python3 scripts/install_linux_oneclick.py --control-url <CONTROL_URL> \
+  --control-key-id community-main \
+  --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
+python3 scripts/install_macos_oneclick.py --control-url <CONTROL_URL> \
+  --control-key-id community-main \
+  --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 ```
 
 The first two create and enable `anet-supervisor.service` as a systemd user
@@ -109,7 +119,9 @@ bridge can be registered with
 For Android inside Termux, use the separate Termux entry point:
 
 ```bash
-python3 scripts/install_termux_oneclick.py --control-url <CONTROL_URL>
+python3 scripts/install_termux_oneclick.py --control-url <CONTROL_URL> \
+  --control-key-id community-main \
+  --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 ```
 
 It uses Termux-native packages, `termux-services`/runit, and a

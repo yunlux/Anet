@@ -1,6 +1,8 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$ControlUrl,
+    [string]$ControlKeyId = "",
+    [string]$ControlPublicKey = "",
     [ValidateSet("core", "mcp", "full")]
     [string]$Feature = "mcp",
     [string]$Version = "",
@@ -353,6 +355,35 @@ function Test-IsAdministrator {
     )
 }
 
+function Get-ControlTrustedKeys {
+    param(
+        [string]$KeyId,
+        [string]$PublicKey
+    )
+    $cleanId = $KeyId.Trim()
+    $encoded = $PublicKey.Trim()
+    if (-not $cleanId -and -not $encoded) {
+        return [ordered]@{}
+    }
+    if (-not $cleanId -or -not $encoded) {
+        throw "-ControlKeyId and -ControlPublicKey must be provided together"
+    }
+    if ($cleanId -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$') {
+        throw "-ControlKeyId is invalid"
+    }
+    try {
+        $standard = $encoded.Replace('-', '+').Replace('_', '/')
+        while (($standard.Length % 4) -ne 0) { $standard += '=' }
+        $bytes = [Convert]::FromBase64String($standard)
+    } catch {
+        throw "-ControlPublicKey is not valid base64url"
+    }
+    if ($bytes.Length -ne 32) {
+        throw "-ControlPublicKey must contain 32 bytes"
+    }
+    return [ordered]@{ $cleanId = $encoded }
+}
+
 function Enter-InstallMutex {
     param(
         [string]$Scope,
@@ -449,6 +480,7 @@ if (-not $Root) {
 $rootPath = [System.IO.Path]::GetFullPath($Root)
 $installMutex = Enter-InstallMutex "deployment" $rootPath
 $page = Read-ControlPage $ControlUrl
+$trustedKeys = Get-ControlTrustedKeys $ControlKeyId $ControlPublicKey
 $commonSoftware = if ($page.PSObject.Properties["software"]) {
     $page.software
 } else {
@@ -725,6 +757,9 @@ $settings = [ordered]@{
         300
     }
 }
+if ($trustedKeys.Count -gt 0) {
+    $settings["trusted_keys"] = $trustedKeys
+}
 New-Item -ItemType Directory -Path $nodePath -Force | Out-Null
 $settings | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (
     Join-Path $nodePath "remote-control.json"
@@ -822,6 +857,7 @@ $result = [ordered]@{
         (Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json).locator_contexts
     )
     control_url = $ControlUrl
+    control_key_id = $ControlKeyId
     task = ($taskPath + $taskName)
     mode = $mode
     preflight = $preflight

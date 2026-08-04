@@ -10,12 +10,15 @@ LaunchAgent on macOS.
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import getpass
 import hashlib
 import ipaddress
 import json
 import os
 import plistlib
+import re
 import shutil
 import socket
 import subprocess
@@ -41,10 +44,31 @@ PACKAGE_MAX_BYTES = 256 * 1024 * 1024
 DEFAULT_POLL_SECONDS = 300
 SYSTEMD_SERVICE = "anet-supervisor.service"
 LAUNCHD_LABEL = "net.anet.supervisor"
+CONTROL_KEY_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
 class DeploymentError(RuntimeError):
     """Raised when the explicit one-click deployment cannot be completed."""
+
+
+def trusted_keys_from_args(key_id: str, public_key: str) -> dict[str, str]:
+    clean_key_id = str(key_id or "").strip()
+    encoded = str(public_key or "").strip()
+    if not clean_key_id and not encoded:
+        return {}
+    if not clean_key_id or not encoded:
+        raise DeploymentError(
+            "--control-key-id and --control-public-key must be provided together"
+        )
+    if not CONTROL_KEY_ID_PATTERN.fullmatch(clean_key_id):
+        raise DeploymentError("--control-key-id is invalid")
+    try:
+        decoded = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+    except (ValueError, binascii.Error) as exc:
+        raise DeploymentError("--control-public-key is not valid base64url") from exc
+    if len(decoded) != 32:
+        raise DeploymentError("--control-public-key must contain 32 bytes")
+    return {clean_key_id: encoded}
 
 
 def run(
@@ -633,6 +657,8 @@ def parser(platform_name: str, default_root: Path) -> argparse.ArgumentParser:
         )
     )
     result.add_argument("--control-url", required=True)
+    result.add_argument("--control-key-id", default="")
+    result.add_argument("--control-public-key", default="")
     result.add_argument("--feature", choices=("core", "mcp", "full"), default="mcp")
     result.add_argument("--version", default="")
     result.add_argument("--wheel", type=Path)
@@ -694,6 +720,10 @@ def _main_unlocked(
     except PreflightConflict as exc:
         raise DeploymentError(str(exc)) from exc
     page = read_json_url(args.control_url)
+    trusted_keys = trusted_keys_from_args(
+        args.control_key_id,
+        args.control_public_key,
+    )
     software = platform_software(page, platform_name)
     if not isinstance(software, dict):
         raise DeploymentError("control page must contain a software object")
@@ -846,7 +876,12 @@ def _main_unlocked(
     atomic_text(
         node_home / "remote-control.json",
         json.dumps(
-            {"version": 1, "url": args.control_url, "interval": interval},
+            {
+                "version": 1,
+                "url": args.control_url,
+                "interval": interval,
+                **({"trusted_keys": trusted_keys} if trusted_keys else {}),
+            },
             indent=2,
             sort_keys=True,
         )
@@ -877,6 +912,7 @@ def _main_unlocked(
             "control_url": args.control_url,
         },
         "service": service,
+        "control_key_id": args.control_key_id,
         "preflight": preflight,
     }
     print(json.dumps(result, separators=(",", ":")))

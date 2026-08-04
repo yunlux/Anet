@@ -36,6 +36,7 @@ _COLLECTION_RE = re.compile(r"^(?:[A-Za-z0-9_-]{27}|ch-[A-Za-z0-9_-]{27})$")
 _TRANSPORT_RETRY_METHODS = frozenset(
     {"DELETE", "GET", "MKCOL", "PROPFIND"}
 )
+_TRANSPORT_RETRY_ATTEMPTS = 3
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -100,12 +101,17 @@ class WebDAVCarrier:
         request_headers = {
             "User-Agent": "Anet-WebDAV/1",
             "Accept": "*/*",
+            "Connection": "close",
             **(headers or {}),
         }
         if self._authorization:
             request_headers["Authorization"] = self._authorization
         method = str(method).upper()
-        attempts = 2 if method in _TRANSPORT_RETRY_METHODS else 1
+        attempts = (
+            _TRANSPORT_RETRY_ATTEMPTS
+            if method in _TRANSPORT_RETRY_METHODS
+            else 1
+        )
         for attempt in range(attempts):
             request = urllib.request.Request(
                 url, data=data, headers=request_headers, method=method
@@ -125,7 +131,13 @@ class WebDAVCarrier:
                     raise ConnectionError(
                         f"WebDAV {method} transport failed"
                     ) from exc
-                time.sleep(min(0.1, max(0.01, self.config.timeout / 10.0)))
+                time.sleep(
+                    min(
+                        0.25,
+                        max(0.01, self.config.timeout / 10.0)
+                        * (attempt + 1),
+                    )
+                )
                 continue
             try:
                 with response:
@@ -142,7 +154,13 @@ class WebDAVCarrier:
                     raise ConnectionError(
                         f"WebDAV {method} transport failed"
                     ) from exc
-                time.sleep(min(0.1, max(0.01, self.config.timeout / 10.0)))
+                time.sleep(
+                    min(
+                        0.25,
+                        max(0.01, self.config.timeout / 10.0)
+                        * (attempt + 1),
+                    )
+                )
                 continue
             if status not in expected:
                 raise ConnectionError(

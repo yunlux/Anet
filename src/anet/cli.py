@@ -80,7 +80,11 @@ from .relationship_disclosure_recovery import (
 from .reported_relationship_views import (
     ReportedRelationshipViewProjector,
 )
-from .remote_control import run_supervisor, sync_remote_control
+from .remote_control import (
+    _normalise_trusted_keys,
+    run_supervisor,
+    sync_remote_control,
+)
 from .relationship_claims import (
     MutualRelationshipClaim,
     RelationshipClaimBook,
@@ -2706,11 +2710,24 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     return 0
 
 
+def _control_trusted_keys(args: argparse.Namespace) -> dict[str, str] | None:
+    key_id = str(getattr(args, "control_key_id", "") or "").strip()
+    public_key = str(getattr(args, "control_public_key", "") or "").strip()
+    if not key_id and not public_key:
+        return None
+    if not key_id or not public_key:
+        raise ValueError(
+            "--control-key-id and --control-public-key must be provided together"
+        )
+    return _normalise_trusted_keys({key_id: public_key})
+
+
 def cmd_control_sync(args: argparse.Namespace) -> int:
     _print_json(
         sync_remote_control(
             args.home,
             url=args.url,
+            trusted_keys=_control_trusted_keys(args),
             apply_software=not args.no_software,
         )
     )
@@ -2722,6 +2739,7 @@ def cmd_supervisor(args: argparse.Namespace) -> int:
         run_supervisor(
             args.home,
             url=args.url,
+            trusted_keys=_control_trusted_keys(args),
             interval=args.interval,
             once=args.once,
             apply_software=not args.no_software,
@@ -4438,6 +4456,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="fetch and apply one remote JSON control page",
     )
     control_sync.add_argument("--url", help="control page URL; otherwise use node settings")
+    control_sync.add_argument("--control-key-id", help="locally pinned control publisher key ID")
+    control_sync.add_argument(
+        "--control-public-key",
+        help="base64url Ed25519 public key for the control publisher",
+    )
     control_sync.add_argument(
         "--no-software",
         action="store_true",
@@ -4450,6 +4473,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="run the remote control client and supervise an Anet server child",
     )
     supervisor.add_argument("--url", help="control page URL; otherwise use node settings")
+    supervisor.add_argument("--control-key-id", help="locally pinned control publisher key ID")
+    supervisor.add_argument(
+        "--control-public-key",
+        help="base64url Ed25519 public key for the control publisher",
+    )
     supervisor.add_argument("--interval", type=float)
     supervisor.add_argument(
         "--no-software",

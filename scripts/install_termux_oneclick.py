@@ -37,6 +37,7 @@ from posix_oneclick import (
     run,
     sha256,
     string_list,
+    trusted_keys_from_args,
 )
 from posix_runtime_installer import InstallError, install_runtime
 
@@ -193,6 +194,8 @@ def parser() -> argparse.ArgumentParser:
         description="Install one self-starting Anet node in Termux."
     )
     result.add_argument("--control-url", required=True)
+    result.add_argument("--control-key-id", default="")
+    result.add_argument("--control-public-key", default="")
     result.add_argument("--feature", choices=("core", "mcp"), default="core")
     result.add_argument("--version", default="")
     result.add_argument("--wheel", type=Path)
@@ -249,6 +252,10 @@ def _main_unlocked(args: argparse.Namespace) -> int:
     ensure_termux_packages(prefix, update=not args.no_package_update)
 
     page = read_json_url(args.control_url)
+    trusted_keys = trusted_keys_from_args(
+        args.control_key_id,
+        args.control_public_key,
+    )
     software = platform_software(page, "termux")
     if not isinstance(software, dict):
         raise DeploymentError("control page must contain a software object")
@@ -399,7 +406,12 @@ def _main_unlocked(args: argparse.Namespace) -> int:
     atomic_text(
         node_home / "remote-control.json",
         json.dumps(
-            {"version": 1, "url": args.control_url, "interval": interval},
+            {
+                "version": 1,
+                "url": args.control_url,
+                "interval": interval,
+                **({"trusted_keys": trusted_keys} if trusted_keys else {}),
+            },
             indent=2,
             sort_keys=True,
         )
@@ -423,6 +435,7 @@ def _main_unlocked(args: argparse.Namespace) -> int:
             "control_url": args.control_url,
         },
         "service": service,
+        "control_key_id": args.control_key_id,
         "boot_script": str(boot_script),
         "boot_plugin": "Termux:Boot must be installed and opened once",
         "preflight": preflight,

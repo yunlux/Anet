@@ -39,17 +39,32 @@ repo_ref) to pin a Git branch, tag, or commit; helper scripts and runtime
 updates use that same reference. See docs/windows-control-page.example.json and
 docs/WINDOWS_AUTOSTART.md.
 
+For a public or community-maintained page, also pin the publisher in the
+deployment command with `-ControlKeyId`/`-ControlPublicKey` on Windows or
+`--control-key-id`/`--control-public-key` on POSIX/Termux. The supervisor then
+requires signed root and nested pages/KV sources, checks expiry, and rejects
+signed sequence reuse with different content. The key is public; keep the
+publisher identity offline. Omitting it retains the unsigned compatibility
+mode and is only appropriate for an explicitly trusted bootstrap source.
+
 Run this in an ordinary PowerShell window for a current-user installation:
 
 ~~~powershell
-& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/yunlux/Anet/main/scripts/install_windows_oneclick.ps1))) -ControlUrl https://example.invalid/anet/control.json
+& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/yunlux/Anet/main/scripts/install_windows_oneclick.ps1))) `
+  -ControlUrl https://example.invalid/anet/control.json `
+  -ControlKeyId community-main `
+  -ControlPublicKey <BASE64URL_ED25519_PUBLIC_KEY>
 ~~~
 
 For a machine-wide installation that starts at Windows boot, open PowerShell
 with Run as administrator and add -Admin:
 
 ~~~powershell
-& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/yunlux/Anet/main/scripts/install_windows_oneclick.ps1))) -Admin -ControlUrl https://example.invalid/anet/control.json
+& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/yunlux/Anet/main/scripts/install_windows_oneclick.ps1))) `
+  -Admin `
+  -ControlUrl https://example.invalid/anet/control.json `
+  -ControlKeyId community-main `
+  -ControlPublicKey <BASE64URL_ED25519_PUBLIC_KEY>
 ~~~
 
 Current-user mode uses %LOCALAPPDATA%/Anet and an AtLogOn task. Administrator
@@ -67,16 +82,20 @@ checkout-free entry point):
 
 ~~~bash
 # WSL
-python3 scripts/install_wsl_oneclick.py --control-url <CONTROL_URL>
+python3 scripts/install_wsl_oneclick.py --control-url <CONTROL_URL> \
+  --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 
 # non-WSL Linux
-python3 scripts/install_linux_oneclick.py --control-url <CONTROL_URL>
+python3 scripts/install_linux_oneclick.py --control-url <CONTROL_URL> \
+  --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 
 # macOS
-python3 scripts/install_macos_oneclick.py --control-url <CONTROL_URL>
+python3 scripts/install_macos_oneclick.py --control-url <CONTROL_URL> \
+  --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 
 # Android Termux
-python3 scripts/install_termux_oneclick.py --control-url <CONTROL_URL>
+python3 scripts/install_termux_oneclick.py --control-url <CONTROL_URL> \
+  --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 ~~~
 
 WSL and Linux create and start a systemd --user supervisor, macOS loads a
@@ -122,7 +141,10 @@ Install and deploy Anet from https://github.com/yunlux/Anet. Use this control
 page URL: <CONTROL_URL> (replace the placeholder before running). The page
 must provide software.version plus software.wheel_url or repo_url; when using
 repo_url, an optional repo_ref can pin a branch, tag, or commit. This request
-authorizes one independent persistent node, its service/autostart integration,
+also supplies the control publisher pin when the page is signed:
+`<CONTROL_KEY_ID>` and `<BASE64URL_ED25519_PUBLIC_KEY>`; pass them through the
+platform installer flags and stop if the signature or expiry is invalid.
+This request authorizes one independent persistent node, its service/autostart integration,
 and the supervisor's remote control-page polling. Detect the platform and use
 its one-click deployment entry point; on native Windows use the PowerShell
 one-command entry, adding -Admin only for machine-wide startup. On WSL, Linux,

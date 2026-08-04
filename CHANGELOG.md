@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- 远程控制页新增可选的本地 Ed25519 发布者固定：配置 `trusted_keys` 后，根页和
+  嵌套 `pages`/`kv` 页必须签名并通过有效期校验；签名序列号不能复用到不同内容。
+  Windows、WSL、Linux、macOS 和 Termux 一键部署入口均可写入公钥策略，并新增
+  `scripts/sign_control_page.py` 供离线发布者生成页面；旧的无签名页面仍保留为
+  明确的兼容 bootstrap 模式。
 - Mutual Actor-to-Actor relationship claims now have a signed participant
   withdrawal path. A withdrawal deactivates only the portable claim and records
   a content-free local activity fact; it never automatically changes a local

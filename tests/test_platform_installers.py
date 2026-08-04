@@ -46,6 +46,9 @@ def test_windows_oneclick_is_an_explicit_supervised_deployment_layer() -> None:
     installer = source("install_windows_oneclick.ps1")
     launcher = source("run-supervisor.ps1")
     assert "-controlurl" in installer
+    assert "-controlkeyid" in installer
+    assert "-controlpublickey" in installer
+    assert "trusted_keys" in installer
     assert "register-scheduledtask" in installer
     assert "start-scheduledtask" in installer
     assert "-admin" in installer
@@ -97,6 +100,9 @@ def test_posix_oneclick_is_an_explicit_native_service_layer() -> None:
     assert "net.anet.supervisor" in text
     assert '"restart", systemd_service' in text
     assert "--control-url" in text
+    assert "--control-key-id" in text
+    assert "--control-public-key" in text
+    assert "trusted_keys_from_args" in text
     assert "install_runtime" in text
     assert "validate_cross_platform_ports" in text
     assert "platform_software" in text
@@ -129,6 +135,9 @@ def test_termux_oneclick_uses_termux_native_service_layer() -> None:
     assert "termux-services" in text
     assert "start-anet-services" in text
     assert "--control-url" in text
+    assert "--control-key-id" in text
+    assert "--control-public-key" in text
+    assert "trusted_keys_from_args" in text
     assert "install_preflight" in text
     assert "allow-existing" in text
     assert "--listen-host" in text

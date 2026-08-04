@@ -22,6 +22,7 @@ from posix_oneclick import (  # noqa: E402
     repository_ref,
     repository_source,
     systemd_unit,
+    trusted_keys_from_args,
     validate_cross_platform_locators,
     validate_cross_platform_ports,
 )
@@ -131,6 +132,17 @@ def test_repository_ref_falls_back_to_the_page_ref() -> None:
         {"repo_ref": "v0.12.1"},
         {"version": "0.12.1"},
     ) == "v0.12.1"
+
+
+def test_control_publisher_pin_requires_a_valid_public_key() -> None:
+    public_key = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
+    assert trusted_keys_from_args("community-main", public_key) == {
+        "community-main": public_key
+    }
+    with pytest.raises(DeploymentError, match="provided together"):
+        trusted_keys_from_args("community-main", "")
+    with pytest.raises(DeploymentError, match="32 bytes"):
+        trusted_keys_from_args("community-main", "AA")
 
 
 def test_source_requirement_preserves_feature_extras() -> None:
@@ -326,6 +338,7 @@ def test_posix_entrypoints_and_documentation_are_packaged() -> None:
         "install_preflight.py",
         "windows_install_preflight.ps1",
         "register_wsl_keepalive.ps1",
+        "sign_control_page.py",
     ):
         assert (ROOT / "scripts" / name).is_file()
     guide = (ROOT / "docs" / "POSIX_AUTOSTART.md").read_text(encoding="utf-8")
@@ -334,6 +347,7 @@ def test_posix_entrypoints_and_documentation_are_packaged() -> None:
     assert "install_wsl_oneclick.py" in guide
     assert "install_linux_oneclick.py" in guide
     assert "install_macos_oneclick.py" in guide
+    assert "control-key-id" in guide
     assert "register_wsl_keepalive.ps1" in guide
     termux_guide = (ROOT / "docs" / "TERMUX_AUTOSTART.md").read_text(
         encoding="utf-8"
@@ -341,3 +355,4 @@ def test_posix_entrypoints_and_documentation_are_packaged() -> None:
     assert "termux-services" in termux_guide
     assert "Termux:Boot" in termux_guide
     assert "install_termux_oneclick.py" in termux_guide
+    assert "control-key-id" in termux_guide

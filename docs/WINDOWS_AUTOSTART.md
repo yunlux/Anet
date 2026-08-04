@@ -157,6 +157,49 @@ The local `remote-control.json` `interval` is used when the composed page and
 its child pages omit `poll_seconds`; an explicit page value overrides it. This
 keeps a device's polling cadence configurable without changing the page.
 
+## Pin a signed control publisher
+
+The compatibility mode accepts a plain JSON page when the local settings do
+not contain `trusted_keys`. For a persistent deployment, pin one or more
+publisher Ed25519 public keys in the node home instead:
+
+```json
+{
+  "version": 1,
+  "url": "https://example.invalid/anet/control.json",
+  "interval": 300,
+  "trusted_keys": {
+    "community-main": "BASE64URL_ED25519_PUBLIC_KEY"
+  }
+}
+```
+
+Once `trusted_keys` is non-empty, the root page and every nested `pages` or
+`kv` page must carry an `_anet_control` object. The signature covers the full
+page with that object removed, plus its `key_id`, `issued_ms`, and
+`expires_ms`. The runtime verifies the Ed25519 signature against the local
+pin, rejects expired or future-dated pages, and rejects a signed page that
+reuses a sequence number with different content. Peer Cards remain separately
+verified with their own Node IDs and signatures.
+
+Publishers can create the signed JSON offline with the repository helper:
+
+```powershell
+python scripts/sign_control_page.py `
+  --identity .\publisher-identity.json `
+  --input .\control.payload.json `
+  --output .\control.json `
+  --key-id community-main
+```
+
+Pass the reported public key and key ID to a fresh install. Windows uses
+`-ControlKeyId` and `-ControlPublicKey`; WSL/Linux/macOS/Termux use
+`--control-key-id` and `--control-public-key`. The value is public and may be
+distributed with the install command; the publisher identity stays offline.
+The initial bootstrap still needs the wheel hash or an explicitly trusted
+repository source. After the supervisor starts, the same pinned policy covers
+configuration, nested community pages, Peer Cards, and package updates.
+
 `repo_url` is recorded as the advertised project source. When `repo_ref` is
 present, it is recorded and passed to Git for the initial and subsequent source
 installations. A package update is
@@ -191,9 +234,10 @@ For diagnostics, inspect:
 %ProgramData%\\Anet\\current.json     # administrator mode
 ```
 
-This page format is a functional bootstrap prototype, not yet a production
-trust protocol. In particular, the current implementation accepts unsigned
-JSON, applies remote configuration, imports Peer Cards, and can install a
-remote wheel or Git repository. Do not use it as a public update channel until
-the signed manifest, publisher quorum, rollback, and local policy gates are
-implemented.
+This page format remains a bootstrap/deployment protocol rather than a
+publisher quorum or fleet-management system. Without `trusted_keys` it still
+accepts unsigned JSON for compatibility and must be treated as an explicitly
+trusted local input. With pinned keys, signature, expiry, sequence rollback
+protection, node-file rollback, and package rollback are enforced locally;
+external TLS, publisher key rotation policy, and multi-device admission policy
+remain deployment responsibilities.
