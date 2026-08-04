@@ -77,6 +77,8 @@ def test_discord_social_cli_config_and_redacted_status(
     assert status["configured"] is True
     assert status["enabled"] is False
     assert status["events"] == 0
+    assert status["runtime_state"] == "never_run"
+    assert status["consecutive_failures"] == 0
     assert "guild_id" not in status
 
 

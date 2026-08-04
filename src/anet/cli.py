@@ -3039,14 +3039,26 @@ def cmd_discord_social_status(args: argparse.Namespace) -> int:
         return 0
     config = DiscordSocialConfig.load(args.home)
     database_path = discord_social_database_path(args.home)
-    status = {"actors": 0, "events": 0, "routed": 0, "replied": 0}
+    status = {
+        "actors": 0,
+        "events": 0,
+        "routed": 0,
+        "replied": 0,
+        "runtime_state": "never_run",
+        "last_attempt_ms": 0,
+        "last_success_ms": 0,
+        "last_error_ms": 0,
+        "last_error_category": "",
+        "consecutive_failures": 0,
+        "next_retry_ms": 0,
+    }
     if database_path.exists():
         store = DiscordSocialStore(
             database_path,
             discord_social_key_path(args.home),
         )
         try:
-            status = store.status()
+            status = {**store.status(), **store.runtime_status()}
         finally:
             store.close()
     _print_json(

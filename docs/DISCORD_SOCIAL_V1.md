@@ -83,7 +83,9 @@ Content restriction. `metadata` mode retains no message content at all.
 
 The client verifies each configured channel belongs to the configured Guild
 before ingesting it. It follows Discord's `Retry-After` response on HTTP 429 and
-does not hard-code platform rate limits.
+does not hard-code platform rate limits. HTTP 401/403 responses are recorded as
+permission failures. Other API and transport failures use bounded exponential
+retry backoff, capped at one hour; a successful poll resets the active backoff.
 
 Official references:
 
@@ -191,6 +193,11 @@ anet --home "$ANET_HOME" discord-social-status
 ```
 
 The status omits Guild IDs, Channel IDs, user IDs, event content and the token.
+It includes only runtime timestamps, a coarse error category, the consecutive
+failure count and the next retry timestamp. `runtime_state` is `never_run`,
+`healthy` or `degraded`; `last_error_category` is retained after recovery so an
+operator can verify that a revoked permission or outage was observed and later
+cleared.
 
 If relationship projection was unavailable after the Discord event had already
 been persisted, stop the owning runtime and replay the durable metadata:
@@ -250,7 +257,8 @@ the same event is rejected.
 
 1. Run against a dedicated test Guild/channel with a non-production bot token.
 2. Verify WSL restart, token rotation, HTTP 429, revoked channel permission and
-   Anet destination outage behavior.
+   Anet destination outage behavior through the redacted runtime status and
+   durable event/cursor ledger.
 3. Add signed operator feedback events instead of relying only on mutable local
    labels.
 4. Add a versioned `SignalProfile/Subscription` matcher only after the direct

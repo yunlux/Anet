@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 import io
 import json
@@ -11,11 +12,13 @@ import pytest
 
 from anet.config import initialize_node
 from anet.discord_social import (
+    DiscordPermissionError,
     DiscordRateLimited,
     DiscordRESTClient,
     DiscordSocialBridge,
     DiscordSocialConfig,
     DiscordSocialStore,
+    _discord_retry_delay,
     discord_social_database_path,
     discord_social_key_path,
 )
@@ -194,6 +197,95 @@ def test_rest_client_obeys_retry_after_without_leaking_token() -> None:
     assert "secret-token-value" not in str(captured.value)
 
 
+def test_rest_client_classifies_auth_failures_without_leaking_token() -> None:
+    def opener(request, _timeout):
+        raise urllib.error.HTTPError(
+            request.full_url,
+            403,
+            "forbidden",
+            {},
+            io.BytesIO(b'{"message":"missing permissions"}'),
+        )
+
+    client = DiscordRESTClient("secret-token-value", opener=opener)
+    with pytest.raises(DiscordPermissionError) as captured:
+        client.current_user()
+    assert "secret-token-value" not in str(captured.value)
+
+
+def test_runtime_status_is_redacted_and_records_recovery(
+    store: DiscordSocialStore,
+) -> None:
+    initial = store.runtime_status()
+    assert initial == {
+        "runtime_state": "never_run",
+        "last_attempt_ms": 0,
+        "last_success_ms": 0,
+        "last_error_ms": 0,
+        "last_error_category": "",
+        "consecutive_failures": 0,
+        "next_retry_ms": 0,
+    }
+    store.record_poll_attempt()
+    failed = store.record_poll_failure(
+        "permission",
+        base_interval_seconds=5,
+    )
+    assert failed["runtime_state"] == "degraded"
+    assert failed["last_error_category"] == "permission"
+    assert failed["consecutive_failures"] == 1
+    assert failed["next_retry_ms"] >= failed["last_error_ms"] + 5000
+    assert GUILD_ID not in repr(failed)
+    assert CHANNEL_ID not in repr(failed)
+    store.record_poll_success()
+    recovered = store.runtime_status()
+    assert recovered["runtime_state"] == "healthy"
+    assert recovered["consecutive_failures"] == 0
+    assert recovered["next_retry_ms"] == 0
+    assert recovered["last_error_category"] == "permission"
+
+
+def test_retry_delay_is_exponential_but_bounded() -> None:
+    assert _discord_retry_delay(15, 1) == 15
+    assert _discord_retry_delay(15, 2) == 30
+    assert _discord_retry_delay(15, 3, 90) == 90
+    assert _discord_retry_delay(15, 100) == 3600
+
+
+def test_run_records_permission_failure_and_uses_backoff(
+    store: DiscordSocialStore,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FailingClient:
+        timeout = 1.0
+
+        def current_user(self) -> dict[str, Any]:
+            raise DiscordPermissionError("permission revoked")
+
+    config = DiscordSocialConfig(
+        guild_id=GUILD_ID,
+        channel_ids=(CHANNEL_ID,),
+        poll_interval_seconds=5,
+    )
+    bridge = DiscordSocialBridge(config, store, FailingClient())
+    stop = asyncio.Event()
+    observed_delays: list[float] = []
+
+    async def stop_after_delay(awaitable, timeout):
+        observed_delays.append(timeout)
+        awaitable.close()
+        stop.set()
+        raise asyncio.TimeoutError
+
+    monkeypatch.setattr(asyncio, "wait_for", stop_after_delay)
+    asyncio.run(bridge.run(stop, lambda *_args: "ab" * 16))
+    assert observed_delays == [5]
+    runtime = store.runtime_status()
+    assert runtime["runtime_state"] == "degraded"
+    assert runtime["last_error_category"] == "permission"
+    assert runtime["consecutive_failures"] == 1
+
+
 def test_ingest_uses_pseudonyms_content_levels_and_idempotency(
     store: DiscordSocialStore,
 ) -> None:
@@ -339,6 +431,9 @@ def test_poll_rejects_channel_outside_configured_guild(
     with pytest.raises(PermissionError, match="outside"):
         bridge.poll_once()
     assert store.status()["events"] == 0
+    runtime = store.runtime_status()
+    assert runtime["runtime_state"] == "degraded"
+    assert runtime["last_error_category"] == "permission"
 
 
 def test_relationship_projection_failure_keeps_durable_event_and_cursor(
