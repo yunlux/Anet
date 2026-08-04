@@ -39,6 +39,10 @@ Windows 使用 `-ControlKeyId`/`-ControlPublicKey`，POSIX/Termux 使用
 嵌套 pages/kv 页面使用本地固定的 Ed25519 公钥签名，检查有效期，并拒绝
 签名页面复用序列号却改变内容。公钥可以公开分发，发布者私钥必须离线保存；
 不提供公钥时仍保留无签名兼容模式，但只适合明确可信的 bootstrap 来源。
+若控制页组合多个社区维护者，可把嵌套来源写成
+`{"url":"<SOURCE>","key_id":"<PUBLISHER>"}`，要求它只能由本机已固定的指定
+发布者签名。验证后的归属通过私有 `source_publishers` 证据返回；详见
+[`docs/CONTROL_SOURCE_PINS_V1.md`](docs/CONTROL_SOURCE_PINS_V1.md)。
 
 Windows 普通用户在 PowerShell 中直接执行这一条命令：
 
@@ -155,6 +159,8 @@ checkout-free bootstrap 默认使用官方 Anet 仓库/ref，只有显式传入
 签名 wheel 首次安装/更新还必须提供 `software.sha256`，签名、有效期校验失败时停止。本请求已授权创建一个独立持久节点、服务/自启动
 以及 supervisor 对远程控制页的轮询。注册持久服务前必须完成只读的
 `anet control-verify`，且不能提前消费首次同步状态。自动检测平台并调用对应的 one-click 入口；
+嵌套 pages/kv 来源声明 `key_id` 时，必须确认该 key 已在本机 trusted-key 集合中，
+并要求子页签名精确匹配；不能把另一个受信签名者视为等价，也不能由 pin 自动推断信誉分。
 原生 Windows 使用 PowerShell 一条命令，只有需要整机启动时才加入 -Admin；WSL、Linux、
 macOS、Termux 没有 checkout 时使用 `bootstrap_posix.py` 管道并传入对应的 `--platform`，
 已有 checkout 时可直接运行对应的一键脚本。如果 WSL 还必须在 Windows 重启后恢复，

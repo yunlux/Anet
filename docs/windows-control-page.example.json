@@ -42,6 +42,9 @@
     }
   ],
   "pages": [
-    "https://example.invalid/network/community-page.json"
+    {
+      "url": "https://example.invalid/network/community-page.json",
+      "key_id": "community-main"
+    }
   ]
 }

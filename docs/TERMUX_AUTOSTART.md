@@ -95,3 +95,8 @@ rejects signed sequence reuse with different content. Use
 the unsigned compatibility bootstrap and should be limited to an explicitly
 trusted local source; publisher rotation and fleet-wide quorum remain outside
 the Termux service.
+
+For multiple community maintainers, a nested `pages`/`kv` entry may use
+`{ "url", "key_id" }`. The key must already be pinned locally and the child
+signature must match it exactly; see
+[`CONTROL_SOURCE_PINS_V1.md`](CONTROL_SOURCE_PINS_V1.md).

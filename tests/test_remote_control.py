@@ -31,12 +31,13 @@ def _signed_page(
     publisher: Identity,
     *,
     sequence: int = 1,
+    key_id: str = "community-main",
 ) -> str:
     now = remote_control._now_ms()
     value = sign_control_page(
         {**payload, "sequence": sequence},
         publisher,
-        key_id="community-main",
+        key_id=key_id,
         issued_ms=now - 1000,
         expires_ms=now + 3600_000,
     )
@@ -46,6 +47,13 @@ def _signed_page(
 
 def _trusted_publisher(publisher: Identity) -> dict[str, str]:
     return {"community-main": b64e(publisher.sign_public)}
+
+
+def _trusted_publishers(**publishers: Identity) -> dict[str, str]:
+    return {
+        key_id.replace("_", "-"): b64e(identity.sign_public)
+        for key_id, identity in publishers.items()
+    }
 
 
 def test_control_page_applies_config_and_peer_cards(tmp_path: Path) -> None:
@@ -228,13 +236,348 @@ def test_signed_control_page_rejects_tampering_and_unsigned_nested_page(
         expires_ms=remote_control._now_ms() + 3600_000,
     )
     child.write_text(json.dumps(signed_child), encoding="utf-8")
-    sync_remote_control(local.home, apply_software=False)
+    result = sync_remote_control(local.home, apply_software=False)
+    assert result["source_publishers"] == [
+        {"url": root_url, "signed": True, "key_id": "community-main"},
+        {"url": child_url, "signed": True, "key_id": "community-main"},
+    ]
 
     tampered = json.loads(root.read_text(encoding="utf-8"))
     tampered["config"] = {"sync_interval": 99.0}
     root.write_text(json.dumps(tampered), encoding="utf-8")
     with pytest.raises(RemoteControlError, match="signature verification failed"):
         sync_remote_control(local.home, apply_software=False)
+
+
+def test_nested_source_pins_a_distinct_community_publisher(tmp_path: Path) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43103,
+    )
+    root_publisher = Identity.generate("root-publisher")
+    actor_publisher = Identity.generate("actor-publisher")
+    child = tmp_path / "actor-page.json"
+    child_url = _signed_page(
+        child,
+        {"sequence": 2, "config": {"max_batch": 64}},
+        actor_publisher,
+        key_id="actor-a",
+    )
+    root = tmp_path / "root.json"
+    root_url = _signed_page(
+        root,
+        {"sequence": 1, "pages": [{"url": child_url, "key_id": "actor-a"}]},
+        root_publisher,
+        key_id="root",
+    )
+    trusted = _trusted_publishers(root=root_publisher, actor_a=actor_publisher)
+    write_control_settings(local.home, url=root_url, trusted_keys=trusted)
+
+    verified = verify_remote_control(local.home)
+    result = sync_remote_control(local.home, apply_software=False)
+    unchanged = sync_remote_control(local.home, apply_software=False)
+
+    expected = [
+        {"url": root_url, "signed": True, "key_id": "root"},
+        {"url": child_url, "signed": True, "key_id": "actor-a"},
+    ]
+    assert verified["source_publishers"] == expected
+    assert result["source_publishers"] == expected
+    assert unchanged["changed"] is False
+    assert unchanged["source_publishers"] == expected
+    state = json.loads(
+        (local.home / remote_control.CONTROL_STATE_NAME).read_text(encoding="utf-8")
+    )
+    assert state["source_publishers"] == expected
+    assert NodeConfig.load(local.home).max_batch == 64
+
+
+def test_source_attribution_preserves_legacy_signed_state_digest(tmp_path: Path) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43103,
+    )
+    publisher = Identity.generate("publisher")
+    page = tmp_path / "control.json"
+    page_url = _signed_page(
+        page,
+        {"config": {"max_batch": 64}},
+        publisher,
+        key_id="publisher",
+    )
+    trusted = _trusted_publishers(publisher=publisher)
+    write_control_settings(local.home, url=page_url, trusted_keys=trusted)
+    raw = json.loads(page.read_text(encoding="utf-8"))
+    document = remote_control._normalise_document(
+        raw,
+        source_url=page_url,
+        visited=set(),
+        depth=0,
+        sources=[],
+        trusted_keys=trusted,
+        now_ms=remote_control._now_ms(),
+    )
+    legacy_document = dict(document)
+    legacy_document.pop("source_publishers")
+    legacy_document.pop("source_pins")
+    legacy_digest = remote_control._json_digest(legacy_document)
+    (local.home / remote_control.CONTROL_STATE_NAME).write_text(
+        json.dumps({"sequence": 1, "digest": legacy_digest}),
+        encoding="utf-8",
+    )
+
+    result = sync_remote_control(local.home, apply_software=False)
+
+    assert result["changed"] is False
+    assert result["digest"] == legacy_digest
+    assert result["source_publishers"] == [
+        {"url": page_url, "signed": True, "key_id": "publisher"}
+    ]
+
+
+def test_adding_source_pin_requires_a_new_signed_sequence(tmp_path: Path) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43103,
+    )
+    publisher = Identity.generate("publisher")
+    child_url = _signed_page(
+        tmp_path / "child.json",
+        {"sequence": 2, "config": {"max_batch": 64}},
+        publisher,
+        key_id="publisher",
+    )
+    root = tmp_path / "root.json"
+    root_url = _signed_page(
+        root,
+        {"pages": [child_url]},
+        publisher,
+        sequence=1,
+        key_id="publisher",
+    )
+    write_control_settings(
+        local.home,
+        url=root_url,
+        trusted_keys=_trusted_publishers(publisher=publisher),
+    )
+    sync_remote_control(local.home, apply_software=False)
+    _signed_page(
+        root,
+        {"pages": [{"url": child_url, "key_id": "publisher"}]},
+        publisher,
+        sequence=1,
+        key_id="publisher",
+    )
+
+    with pytest.raises(RemoteControlError, match="reused a sequence"):
+        sync_remote_control(local.home, apply_software=False)
+
+
+def test_nested_source_rejects_another_trusted_publishers_signature(
+    tmp_path: Path,
+) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43103,
+    )
+    root_publisher = Identity.generate("root-publisher")
+    actor_a = Identity.generate("actor-a")
+    actor_b = Identity.generate("actor-b")
+    child = tmp_path / "actor-page.json"
+    child_url = _signed_page(
+        child,
+        {"sequence": 2, "config": {}},
+        actor_b,
+        key_id="actor-b",
+    )
+    root_url = _signed_page(
+        tmp_path / "root.json",
+        {"pages": [{"url": child_url, "key_id": "actor-a"}]},
+        root_publisher,
+        key_id="root",
+    )
+    trusted = _trusted_publishers(
+        root=root_publisher,
+        actor_a=actor_a,
+        actor_b=actor_b,
+    )
+    write_control_settings(local.home, url=root_url, trusted_keys=trusted)
+
+    with pytest.raises(RemoteControlError, match="publisher mismatch"):
+        verify_remote_control(local.home)
+
+
+def test_nested_source_pin_must_exist_in_local_trust_policy(tmp_path: Path) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43103,
+    )
+    root_publisher = Identity.generate("root-publisher")
+    root_url = _signed_page(
+        tmp_path / "root.json",
+        {
+            "pages": [
+                {
+                    "url": "https://unreachable.invalid/actor.json",
+                    "key_id": "actor-a",
+                }
+            ]
+        },
+        root_publisher,
+        key_id="root",
+    )
+    write_control_settings(
+        local.home,
+        url=root_url,
+        trusted_keys=_trusted_publishers(root=root_publisher),
+    )
+
+    with pytest.raises(RemoteControlError, match="not locally trusted: actor-a"):
+        verify_remote_control(local.home)
+
+
+def test_duplicate_nested_source_cannot_claim_conflicting_publishers(
+    tmp_path: Path,
+) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43103,
+    )
+    root_publisher = Identity.generate("root-publisher")
+    actor_a = Identity.generate("actor-a")
+    actor_b = Identity.generate("actor-b")
+    child_url = _signed_page(
+        tmp_path / "actor-page.json",
+        {"sequence": 2, "config": {}},
+        actor_a,
+        key_id="actor-a",
+    )
+    root_url = _signed_page(
+        tmp_path / "root.json",
+        {
+            "pages": [
+                {"url": child_url, "key_id": "actor-a"},
+                {"url": child_url, "key_id": "actor-b"},
+            ]
+        },
+        root_publisher,
+        key_id="root",
+    )
+    write_control_settings(
+        local.home,
+        url=root_url,
+        trusted_keys=_trusted_publishers(
+            root=root_publisher,
+            actor_a=actor_a,
+            actor_b=actor_b,
+        ),
+    )
+
+    with pytest.raises(RemoteControlError, match="publisher mismatch"):
+        sync_remote_control(local.home, apply_software=False)
+
+
+def test_stale_control_page_reports_verified_source_publishers(tmp_path: Path) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43103,
+    )
+    publisher = Identity.generate("publisher")
+    page = tmp_path / "control.json"
+    page_url = _signed_page(
+        page,
+        {"config": {"max_batch": 64}},
+        publisher,
+        sequence=2,
+        key_id="publisher",
+    )
+    write_control_settings(
+        local.home,
+        url=page_url,
+        trusted_keys=_trusted_publishers(publisher=publisher),
+    )
+    sync_remote_control(local.home, apply_software=False)
+    _signed_page(
+        page,
+        {"config": {"max_batch": 32}},
+        publisher,
+        sequence=1,
+        key_id="publisher",
+    )
+
+    stale = sync_remote_control(local.home, apply_software=False)
+
+    assert stale["stale"] is True
+    assert stale["current_sequence"] == 2
+    assert stale["source_publishers"] == [
+        {"url": page_url, "signed": True, "key_id": "publisher"}
+    ]
+
+
+def test_nested_source_rejects_unsupported_policy_fields(tmp_path: Path) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43103,
+    )
+    publisher = Identity.generate("publisher")
+    root_url = _signed_page(
+        tmp_path / "root.json",
+        {
+            "pages": [
+                {
+                    "url": "https://unreachable.invalid/actor.json",
+                    "key_id": "publisher",
+                    "reputation": 100,
+                }
+            ]
+        },
+        publisher,
+        key_id="publisher",
+    )
+    write_control_settings(
+        local.home,
+        url=root_url,
+        trusted_keys=_trusted_publishers(publisher=publisher),
+    )
+
+    with pytest.raises(RemoteControlError, match="unsupported fields"):
+        verify_remote_control(local.home)
+
+
+def test_control_source_pin_contract_is_published() -> None:
+    root = Path(__file__).resolve().parents[1]
+    contract = (root / "docs" / "CONTROL_SOURCE_PINS_V1.md").read_text(
+        encoding="utf-8"
+    )
+    assert '"key_id": "actor-a"' in contract
+    assert "source_publishers" in contract
+    assert "reputation score" in contract
+    for path in (
+        root / "README.md",
+        root / "README.zh-CN.md",
+        root / "docs" / "CLI_AGENT_GUIDE.md",
+        root / "docs" / "HERMES_SKILL_INSTALL.md",
+        root / "docs" / "WINDOWS_AUTOSTART.md",
+        root / "docs" / "POSIX_AUTOSTART.md",
+        root / "docs" / "TERMUX_AUTOSTART.md",
+    ):
+        assert "CONTROL_SOURCE_PINS_V1.md" in path.read_text(encoding="utf-8")
 
 
 def test_signed_control_page_rejects_same_sequence_with_new_content(

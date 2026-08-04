@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- 嵌套 remote-control `pages`/`kv` 来源现在可使用 `{url,key_id}` 精确固定社区
+  发布者。key 必须预先存在于本机 `trusted_keys`，子页必须由该 key 签名；即使另一个
+  发布者同样受信也不能冒充。`control-verify`、同步结果和私有状态新增
+  `source_publishers` 归属记录，旧字符串 URL 格式保持兼容。
 - 新增跨平台两阶段 Deployment Continuity Gate v1。`continuity-prepare` 在重启前
   固定健康 supervisor 实例、启动会话、Node ID 与 identity/TLS 哈希；
   `continuity-verify` 在重启后要求新实例、新同步、身份材料不变，并可用

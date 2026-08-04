@@ -169,9 +169,11 @@ and nested page/KV URLs:
 See the copyable file [`windows-control-page.example.json`](windows-control-page.example.json)
 for the same shape.
 
-`pages` and `kv` are equivalent lists of JSON URLs. A KV provider can expose
-one JSON object at a stable key URL; the supervisor follows those URLs and
-merges the returned declarations.
+`pages` and `kv` are equivalent lists of JSON URLs or `{ "url", "key_id" }`
+objects. A KV provider can expose one JSON object at a stable key URL; the
+supervisor follows those URLs and merges the returned declarations. An object
+form binds that source to one exact locally trusted publisher key; see
+[`CONTROL_SOURCE_PINS_V1.md`](CONTROL_SOURCE_PINS_V1.md).
 
 The local `remote-control.json` `interval` is used when the composed page and
 its child pages omit `poll_seconds`; an explicit page value overrides it. This
@@ -201,6 +203,12 @@ page with that object removed, plus its `key_id`, `issued_ms`, and
 pin, rejects expired or future-dated pages, and rejects a signed page that
 reuses a sequence number with different content. Peer Cards remain separately
 verified with their own Node IDs and signatures.
+
+For multiple community publishers, add every approved public key to local
+`trusted_keys`, then set `key_id` on each nested source object. A child signed
+by another trusted key is still rejected when it does not match that source's
+pin. Verification and sync results expose private `source_publishers`
+attribution records; source pages cannot add trusted keys themselves.
 
 Publishers can create the signed JSON offline with the repository helper:
 

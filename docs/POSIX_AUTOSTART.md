@@ -188,3 +188,9 @@ signed sequence reuse with different content. Create pages with
 compatibility bootstrap and is appropriate only for an explicitly trusted
 local source. Publisher key rotation and fleet-wide quorum remain deployment
 responsibilities.
+
+Nested sources may use `{ "url", "key_id" }` to require one exact publisher
+from the local trusted-key set. This prevents another approved publisher from
+signing in that source's place and records verified attribution in
+`source_publishers`; see
+[`CONTROL_SOURCE_PINS_V1.md`](CONTROL_SOURCE_PINS_V1.md).

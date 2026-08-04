@@ -149,6 +149,17 @@ def _json_digest(value: Any) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+def _control_document_digest(document: dict[str, Any]) -> str:
+    """Digest applied policy while preserving pre-source-pin state compatibility."""
+
+    value = dict(document)
+    value.pop("source_publishers", None)
+    source_pins = list(value.pop("source_pins", []))
+    if source_pins:
+        value["source_pins"] = source_pins
+    return _json_digest(value)
+
+
 def _control_signing_fields(
     payload: dict[str, Any],
     *,
@@ -606,6 +617,8 @@ def _empty_document(
         "software": {},
         "nodes": [],
         "sources": [],
+        "source_publishers": [],
+        "source_pins": [],
         "cross_platform_windows_wsl": False,
         "control_signed": False,
         "control_key_id": "",
@@ -647,15 +660,16 @@ def _normalise_document(
     visited: set[str],
     depth: int,
     sources: list[str],
+    source_publishers: list[dict[str, Any]] | None = None,
+    source_pins: list[dict[str, str]] | None = None,
+    expected_key_id: str = "",
     trusted_keys: dict[str, str] | None = None,
     now_ms: int | None = None,
     default_poll_seconds: float = DEFAULT_POLL_SECONDS,
 ) -> dict[str, Any]:
     if depth > MAX_PAGE_DEPTH:
         raise RemoteControlError("control page nesting exceeds the prototype limit")
-    if source_url in visited:
-        return _empty_document(poll_seconds=default_poll_seconds)
-    if len(sources) >= MAX_PAGE_COUNT:
+    if source_url not in visited and len(sources) >= MAX_PAGE_COUNT:
         raise RemoteControlError("control page fan-out exceeds the prototype limit")
     value, signature = _verify_control_page(
         value,
@@ -663,8 +677,35 @@ def _normalise_document(
         source_url=source_url,
         now_ms=now_ms,
     )
+    clean_expected_key_id = str(expected_key_id).strip()
+    if clean_expected_key_id:
+        if not _CONTROL_KEY_ID_PATTERN.fullmatch(clean_expected_key_id):
+            raise RemoteControlError("nested control source key_id is invalid")
+        if signature["key_id"] != clean_expected_key_id:
+            raise RemoteControlError(
+                f"nested control source publisher mismatch: expected "
+                f"{clean_expected_key_id}, received "
+                f"{signature['key_id'] or 'unsigned'}"
+            )
+    if source_url in visited:
+        return _empty_document(poll_seconds=default_poll_seconds)
+    if source_publishers is None:
+        source_publishers = []
+    if source_pins is None:
+        source_pins = []
     visited.add(source_url)
     sources.append(source_url)
+    source_publishers.append(
+        {
+            "url": source_url,
+            "signed": bool(signature["signed"]),
+            "key_id": str(signature["key_id"]),
+        }
+    )
+    if clean_expected_key_id:
+        source_pins.append(
+            {"url": source_url, "key_id": clean_expected_key_id}
+        )
 
     documents: list[dict[str, Any]]
     if isinstance(value, list):
@@ -789,10 +830,27 @@ def _normalise_document(
             if not isinstance(raw_pages, list):
                 raise RemoteControlError(f"control page {page_key} must be a list")
             for page in raw_pages:
+                page_key_id = ""
                 if isinstance(page, str):
                     page_url = _resolve_reference(source_url, page)
                 elif isinstance(page, dict) and page.get("url"):
+                    unknown_fields = set(page) - {"url", "key_id"}
+                    if unknown_fields:
+                        raise RemoteControlError(
+                            "nested control source contains unsupported fields"
+                        )
                     page_url = _resolve_reference(source_url, str(page["url"]))
+                    if "key_id" in page:
+                        page_key_id = str(page["key_id"]).strip()
+                        if not _CONTROL_KEY_ID_PATTERN.fullmatch(page_key_id):
+                            raise RemoteControlError(
+                                "nested control source key_id is invalid"
+                            )
+                        if page_key_id not in (trusted_keys or {}):
+                            raise RemoteControlError(
+                                f"nested control source publisher is not locally "
+                                f"trusted: {page_key_id}"
+                            )
                 else:
                     raise RemoteControlError("control page entries must be URLs")
                 child_value = _read_json_url(page_url, timeout=20.0)
@@ -802,6 +860,9 @@ def _normalise_document(
                     visited=visited,
                     depth=depth + 1,
                     sources=sources,
+                    source_publishers=source_publishers,
+                    source_pins=source_pins,
+                    expected_key_id=page_key_id,
                     trusted_keys=trusted_keys,
                     now_ms=now_ms,
                     default_poll_seconds=default_poll_seconds,
@@ -826,6 +887,8 @@ def _normalise_document(
                     or child.get("cross_platform_windows_wsl", False)
                 )
     result["sources"] = list(sources)
+    result["source_publishers"] = list(source_publishers)
+    result["source_pins"] = list(source_pins)
     return result
 
 
@@ -892,6 +955,7 @@ def verify_remote_control(
         "control_issued_ms": int(document["control_issued_ms"]),
         "control_expires_ms": int(document["control_expires_ms"]),
         "sources": list(document["sources"]),
+        "source_publishers": list(document["source_publishers"]),
         "poll_seconds": float(document["poll_seconds"]),
         "node_count": len(document["nodes"]),
         "software_present": bool(document["software"]),
@@ -1367,7 +1431,7 @@ def _sync_remote_control_unlocked(
         now_ms=now_ms,
         default_poll_seconds=default_poll_seconds,
     )
-    digest = _json_digest(document)
+    digest = _control_document_digest(document)
     sequence = int(document.get("sequence", 0))
     current_sequence = int(state.get("sequence", -1))
     current_digest = str(state.get("digest", ""))
@@ -1379,6 +1443,7 @@ def _sync_remote_control_unlocked(
             "sequence": sequence,
             "current_sequence": current_sequence,
             "sources": document["sources"],
+            "source_publishers": document["source_publishers"],
             "poll_seconds": document["poll_seconds"],
         }
     if (
@@ -1402,6 +1467,7 @@ def _sync_remote_control_unlocked(
             "control_key_id": document["control_key_id"],
             "control_expires_ms": document["control_expires_ms"],
             "sources": document["sources"],
+            "source_publishers": document["source_publishers"],
             "poll_seconds": document["poll_seconds"],
         }
 
@@ -1441,6 +1507,7 @@ def _sync_remote_control_unlocked(
             "network": document["network"],
             "repo_url": document["repo_url"],
             "sources": document["sources"],
+            "source_publishers": document["source_publishers"],
             "last_sync_ms": now_ms,
             "control_signed": document["control_signed"],
             "control_key_id": document["control_key_id"],
@@ -1465,6 +1532,7 @@ def _sync_remote_control_unlocked(
         "network": document["network"],
         "repo_url": document["repo_url"],
         "sources": document["sources"],
+        "source_publishers": document["source_publishers"],
         "poll_seconds": document["poll_seconds"],
     }
 

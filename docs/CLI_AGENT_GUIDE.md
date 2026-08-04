@@ -192,6 +192,13 @@ queue, PeerBook, or physical-device delivery recovery; see
 [`CONTINUITY_GATE_V1.md`](CONTINUITY_GATE_V1.md). Do not initiate a disruptive
 restart without explicit authority.
 
+For community-composed control pages, prefer nested `{ "url", "key_id" }`
+sources. The key must already be pinned in local `trusted_keys`; require the
+child signature to match exactly and inspect private `source_publishers`
+attribution. Never let a page add trusted keys or translate a publisher pin
+into a reputation, trust, or authorization score. See
+[`CONTROL_SOURCE_PINS_V1.md`](CONTROL_SOURCE_PINS_V1.md).
+
 ### macOS
 
 ```bash

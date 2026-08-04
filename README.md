@@ -56,6 +56,11 @@ requires signed root and nested pages/KV sources, checks expiry, and rejects
 signed sequence reuse with different content. The key is public; keep the
 publisher identity offline. Omitting it retains the unsigned compatibility
 mode and is only appropriate for an explicitly trusted bootstrap source.
+For several community maintainers, nested sources can use
+`{"url":"<SOURCE>","key_id":"<PUBLISHER>"}` to require one exact locally
+pinned publisher. Verified attribution is returned as private
+`source_publishers` evidence; see
+[`docs/CONTROL_SOURCE_PINS_V1.md`](docs/CONTROL_SOURCE_PINS_V1.md).
 
 Run this in an ordinary PowerShell window for a current-user installation:
 
@@ -195,6 +200,10 @@ also supplies the control publisher pin when the page is signed:
 `<CONTROL_KEY_ID>` and `<BASE64URL_ED25519_PUBLIC_KEY>`; pass them through the
 platform installer flags, require software.sha256 for signed wheel bootstrap or
 updates, and stop if the signature or expiry is invalid.
+When a nested pages/kv source declares `key_id`, require that key to exist in
+the local trusted-key set and require the child signature to match it exactly;
+do not treat a different trusted signer as equivalent or infer a reputation
+score from the pin.
 Before registering the persistent service, require the installer to complete
 the read-only `anet control-verify`; it must not consume the first sync state.
 This request authorizes one independent persistent node, its service/autostart integration,
