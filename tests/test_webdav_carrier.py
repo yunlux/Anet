@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from anet.carriers.webdav import sync_webdav_once
+from anet.carriers.webdav import WebDAVCarrier, sync_webdav_once
 from anet.config import NodeConfig, RoutingConfig, WebDAVCarrierConfig, initialize_node
 from anet.identity import Identity
 from anet.node import AnetNode
@@ -184,6 +184,52 @@ def make_nodes(root: Path) -> tuple[AnetNode, AnetNode]:
     PeerBook(a_config.peers_path, own_node_id=a_identity.node_id).add(b_card)
     PeerBook(b_config.peers_path, own_node_id=b_identity.node_id).add(a_card)
     return AnetNode(a_config), AnetNode(b_config)
+
+
+def test_webdav_retries_safe_transport_request_once(tmp_path, monkeypatch) -> None:
+    config = WebDAVCarrierConfig.from_dict(
+        {
+            "name": "dav",
+            "base_url": "http://127.0.0.1:9/dav",
+            "allow_insecure_http": True,
+        }
+    )
+    carrier = WebDAVCarrier(
+        config,
+        Identity.generate("webdav-retry"),
+        codec_cache=tmp_path / "cache",
+    )
+    calls = 0
+
+    class Response:
+        status = 207
+        headers: dict[str, str] = {}
+
+        def __enter__(self):  # noqa: ANN204
+            return self
+
+        def __exit__(self, *_args):  # noqa: ANN001, ANN201
+            return None
+
+        def read(self, _limit: int) -> bytes:
+            return b"response"
+
+    def open_request(_request, *, timeout):  # noqa: ANN001, ANN202
+        del timeout
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise ConnectionAbortedError("temporary loopback failure")
+        return Response()
+
+    monkeypatch.setattr(carrier._opener, "open", open_request)
+    status, body, headers = carrier._request(
+        "PROPFIND",
+        f"{config.base_url}/",
+        data=b"request",
+        expected={207},
+    )
+    assert (status, body, headers, calls) == (207, b"response", {}, 2)
 
 
 def test_webdav_carrier_is_outbound_only_opaque_and_acknowledged(

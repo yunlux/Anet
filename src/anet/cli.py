@@ -2874,7 +2874,7 @@ def cmd_ahub_serve(args: argparse.Namespace) -> int:
         ) from exc
 
     from .ahub import AhubService
-    from .ahub_http import AhubASGI
+    from .ahub_http import AhubASGI, AhubRateLimit
 
     root = _ahub_root(args.root)
     if not 1 <= args.port <= 65535:
@@ -2883,13 +2883,25 @@ def cmd_ahub_serve(args: argparse.Namespace) -> int:
         raise ValueError("Ahub concurrency limit must be between 1 and 10000")
     if not 1 <= args.keep_alive_seconds <= 60:
         raise ValueError("Ahub keep-alive must be between 1 and 60 seconds")
+    if not 1 <= args.rate_limit_per_minute <= 1_000_000:
+        raise ValueError(
+            "Ahub rate-limit per minute must be between 1 and 1000000"
+        )
+    if not 1 <= args.rate_limit_burst <= 100_000:
+        raise ValueError("Ahub rate-limit burst must be between 1 and 100000")
     if not _ahub_bind_is_loopback(args.host) and not args.allow_non_loopback:
         raise ValueError(
             "non-loopback Ahub binding requires --allow-non-loopback and "
             "must be protected by a TLS reverse proxy or private network"
         )
     service = AhubService(root)
-    app = AhubASGI(service)
+    app = AhubASGI(
+        service,
+        rate_limit=AhubRateLimit(
+            requests_per_minute=args.rate_limit_per_minute,
+            burst=args.rate_limit_burst,
+        ),
+    )
     LOGGER.info(
         "starting_ahub root=%s bind=%s:%d access_log=false proxy_headers=false",
         root,
@@ -4521,6 +4533,18 @@ def build_parser() -> argparse.ArgumentParser:
     ahub_serve.add_argument("--allow-non-loopback", action="store_true")
     ahub_serve.add_argument("--limit-concurrency", type=int, default=100)
     ahub_serve.add_argument("--keep-alive-seconds", type=int, default=5)
+    ahub_serve.add_argument(
+        "--rate-limit-per-minute",
+        type=int,
+        default=600,
+        help="maximum HTTP/WebSocket handshakes per peer per minute",
+    )
+    ahub_serve.add_argument(
+        "--rate-limit-burst",
+        type=int,
+        default=120,
+        help="initial burst allowance per peer",
+    )
     ahub_serve.set_defaults(func=cmd_ahub_serve)
 
     bundle_export = sub.add_parser(

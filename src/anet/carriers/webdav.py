@@ -33,6 +33,9 @@ if TYPE_CHECKING:
 MAX_LISTING_BYTES = 1024 * 1024
 _OBJECT_RE = re.compile(r"^(?:[0-9a-f]{48}|[0-9a-f]{40}\.drop)$")
 _COLLECTION_RE = re.compile(r"^(?:[A-Za-z0-9_-]{27}|ch-[A-Za-z0-9_-]{27})$")
+_TRANSPORT_RETRY_METHODS = frozenset(
+    {"DELETE", "GET", "MKCOL", "PROPFIND"}
+)
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -101,28 +104,52 @@ class WebDAVCarrier:
         }
         if self._authorization:
             request_headers["Authorization"] = self._authorization
-        request = urllib.request.Request(
-            url, data=data, headers=request_headers, method=method
-        )
-        try:
-            response = self._opener.open(request, timeout=self.config.timeout)
-        except urllib.error.HTTPError as exc:
-            if exc.code not in expected:
+        method = str(method).upper()
+        attempts = 2 if method in _TRANSPORT_RETRY_METHODS else 1
+        for attempt in range(attempts):
+            request = urllib.request.Request(
+                url, data=data, headers=request_headers, method=method
+            )
+            try:
+                response = self._opener.open(
+                    request, timeout=self.config.timeout
+                )
+            except urllib.error.HTTPError as exc:
+                if exc.code not in expected:
+                    raise ConnectionError(
+                        f"WebDAV {method} failed with HTTP {exc.code}"
+                    ) from exc
+                response = exc
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                if attempt + 1 >= attempts:
+                    raise ConnectionError(
+                        f"WebDAV {method} transport failed"
+                    ) from exc
+                time.sleep(min(0.1, max(0.01, self.config.timeout / 10.0)))
+                continue
+            try:
+                with response:
+                    status = int(response.status)
+                    body = response.read(max_bytes + 1)
+                    if len(body) > max_bytes:
+                        raise ValueError("WebDAV response exceeds size limit")
+                    response_headers = {
+                        str(key).lower(): str(value)
+                        for key, value in response.headers.items()
+                    }
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                if attempt + 1 >= attempts:
+                    raise ConnectionError(
+                        f"WebDAV {method} transport failed"
+                    ) from exc
+                time.sleep(min(0.1, max(0.01, self.config.timeout / 10.0)))
+                continue
+            if status not in expected:
                 raise ConnectionError(
-                    f"WebDAV {method} failed with HTTP {exc.code}"
-                ) from exc
-            response = exc
-        with response:
-            status = int(response.status)
-            body = response.read(max_bytes + 1)
-            if len(body) > max_bytes:
-                raise ValueError("WebDAV response exceeds size limit")
-            response_headers = {
-                str(key).lower(): str(value) for key, value in response.headers.items()
-            }
-        if status not in expected:
-            raise ConnectionError(f"WebDAV {method} returned unexpected HTTP {status}")
-        return status, body, response_headers
+                    f"WebDAV {method} returned unexpected HTTP {status}"
+                )
+            return status, body, response_headers
+        raise AssertionError("unreachable WebDAV request retry state")
 
     def _channel_url(self, channel: Any) -> str:
         name = urllib.parse.quote(str(channel.locator), safe="")
