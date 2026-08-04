@@ -120,6 +120,13 @@ Windows 与 WSL 即使使用镜像网络仍是两个独立节点。两端必须�
 同步后 supervisor 与 `anet serve` 子进程都真实存活。收据包含私有部署元数据，必须留在本机；精确接口和声明限制见
 [`docs/DEPLOYMENT_RECEIPT_V1.md`](docs/DEPLOYMENT_RECEIPT_V1.md)。
 
+如果还要证明后续服务重启或设备重启后的连续性，应在已授权的重启前运行
+`continuity-prepare`，重启后运行 `continuity-verify`；实际 OS/WSL/Android
+启动会话变化时再加入 `--require-boot-change`。一次性收据会检查新 supervisor
+实例、准备之后的新控制页同步，以及 Node ID 与 identity/TLS 材料均未改变，但不替代
+路由恢复或双物理设备投递测试。详见
+[`docs/CONTINUITY_GATE_V1.md`](docs/CONTINUITY_GATE_V1.md)。
+
 如果只想安装 runtime、不创建持久节点或服务，仍可使用纯净安装入口：
 
 ~~~text
@@ -161,8 +168,13 @@ node home。
 `schema_version` 为 `1`、`ok` 为 true、`control.verified` 为 true 且
 `supervisor.autostart`、`supervisor.health.ok`、
 `supervisor.health.supervisor_process_alive` 和
-`supervisor.health.child_process_alive` 均为 true 时才解析为成功。完整收据属于私有证据；分享前必须
+`supervisor.health.child_process_alive`、`supervisor.health.sync_complete` 均为 true，
+且 supervisor instance/boot-session ID 非空时才解析为成功。完整收据属于私有证据；分享前必须
 脱敏 Node ID、路径、地址、控制 URL 和服务详情。
+若还要验证重启后存活，应在操作者授权的重启前执行 `continuity-prepare`，重启后执行
+`continuity-verify`；只有真实设备/OS/WSL 重启才加入 `--require-boot-change`。
+没有明确授权时不得重启设备或停止用户拥有的 runtime，continuity challenge/receipt
+也必须作为私有证据保存。
 ~~~
 
 这段提示词只是把上面的命令交给 Agent 执行，不改变各平台的 node home、身份隔离和重复检测规则。

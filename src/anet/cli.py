@@ -28,6 +28,7 @@ from .config import (
     WebDAVCarrierConfig,
     initialize_node,
 )
+from .continuity import prepare_continuity, verify_continuity
 from .control_plane import (
     HUMAN_DEVICE_GRANT_TYPE,
     HUMAN_DEVICE_REVOCATION_TYPE,
@@ -2769,6 +2770,28 @@ def cmd_supervisor_status(args: argparse.Namespace) -> int:
     return 0 if result["ok"] else 1
 
 
+def cmd_continuity_prepare(args: argparse.Namespace) -> int:
+    _print_json(
+        prepare_continuity(
+            args.home,
+            output=args.out,
+            ttl_seconds=args.ttl_seconds,
+        )
+    )
+    return 0
+
+
+def cmd_continuity_verify(args: argparse.Namespace) -> int:
+    _print_json(
+        verify_continuity(
+            args.home,
+            args.challenge,
+            require_boot_change=args.require_boot_change,
+        )
+    )
+    return 0
+
+
 _NODE_HOME_MARKERS = (
     "identity.json",
     "tls-key.pem",
@@ -4531,6 +4554,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="inspect durable supervisor, control-sync, and server-child health",
     )
     supervisor_status.set_defaults(func=cmd_supervisor_status)
+
+    continuity_prepare = sub.add_parser(
+        "continuity-prepare",
+        help="create private evidence before restarting a supervisor or device",
+    )
+    continuity_prepare.add_argument("--out", type=Path)
+    continuity_prepare.add_argument("--ttl-seconds", type=int, default=24 * 60 * 60)
+    continuity_prepare.set_defaults(func=cmd_continuity_prepare)
+
+    continuity_verify = sub.add_parser(
+        "continuity-verify",
+        help="verify identity and supervisor continuity after a restart",
+    )
+    continuity_verify.add_argument("challenge", type=Path)
+    continuity_verify.add_argument("--require-boot-change", action="store_true")
+    continuity_verify.set_defaults(func=cmd_continuity_verify)
 
     wake_bridge = sub.add_parser(
         "wake-bridge",

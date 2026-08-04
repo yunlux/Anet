@@ -174,6 +174,9 @@ function Assert-DeploymentReceipt {
         $health.schema_version -ne 1 -or
         $health.ok -ne $true -or
         $health.fresh -ne $true -or
+        -not $health.instance_id -or
+        -not $health.boot_session_id -or
+        $health.sync_complete -ne $true -or
         $health.supervisor_process_alive -ne $true -or
         $health.child_process_alive -ne $true
     ) {

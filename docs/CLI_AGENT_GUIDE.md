@@ -171,7 +171,8 @@ Persistent one-click entry points emit one compact Deployment Receipt v1 JSON
 object on stdout only after the control page and supervisor checks pass. An
 Agent must require `kind=anet.deployment.receipt`, `schema_version=1`,
 `ok=true`, `control.verified=true`, `supervisor.autostart=true`,
-`supervisor.health.ok=true`, and both health process-alive fields; it must not
+`supervisor.health.ok=true`, `supervisor.health.sync_complete=true`, both
+health process-alive fields, and non-empty instance/boot-session IDs; it must not
 infer success from a zero exit code plus partial human-readable output. Keep the
 complete receipt private because it contains the Node ID, paths, addresses,
 control URL, and service metadata. See
@@ -181,6 +182,15 @@ For current post-install evidence, run `anet --home <ANET_HOME>
 supervisor-status`. A zero exit requires a fresh heartbeat and live supervisor
 plus server-child processes. Missing, stale, degraded, or stopped evidence is a
 nonzero result; see [`SUPERVISOR_HEALTH_V1.md`](SUPERVISOR_HEALTH_V1.md).
+
+When an operator asks for restart evidence, run `continuity-prepare` before the
+authorized restart and `continuity-verify` after it. Add
+`--require-boot-change` only when the OS, WSL distribution, or Android boot
+session was actually restarted. The challenge is one-time and both artifacts
+are private. This narrow gate proves supervisor/identity continuity, not route,
+queue, PeerBook, or physical-device delivery recovery; see
+[`CONTINUITY_GATE_V1.md`](CONTINUITY_GATE_V1.md). Do not initiate a disruptive
+restart without explicit authority.
 
 ### macOS
 

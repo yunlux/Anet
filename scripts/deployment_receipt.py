@@ -102,6 +102,10 @@ def validate_deployment_receipt(value: object) -> dict[str, Any]:
         raise DeploymentReceiptError("supervisor.health.schema_version is invalid")
     if health.get("ok") is not True or health.get("fresh") is not True:
         raise DeploymentReceiptError("supervisor.health is not healthy")
+    _text(health.get("instance_id"), "supervisor.health.instance_id")
+    _text(health.get("boot_session_id"), "supervisor.health.boot_session_id")
+    if health.get("sync_complete") is not True:
+        raise DeploymentReceiptError("supervisor health sync is incomplete")
     if health.get("supervisor_process_alive") is not True:
         raise DeploymentReceiptError("supervisor process is not alive")
     if health.get("child_process_alive") is not True:

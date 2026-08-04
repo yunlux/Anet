@@ -16,6 +16,7 @@ from anet.supervisor_health import (
     SUPERVISOR_HEALTH_KIND,
     SUPERVISOR_HEALTH_NAME,
     SupervisorHealthReporter,
+    current_boot_session_id,
     inspect_supervisor_health,
 )
 
@@ -26,6 +27,14 @@ def test_missing_health_is_machine_readable_and_unhealthy(tmp_path: Path) -> Non
     assert result["kind"] == SUPERVISOR_HEALTH_KIND
     assert result["ok"] is False
     assert result["state"] == "missing"
+
+
+def test_boot_session_id_is_stable_for_the_current_machine_session() -> None:
+    first = current_boot_session_id()
+    second = current_boot_session_id()
+
+    assert first == second
+    assert first != "unknown"
 
 
 def test_reporter_exposes_fresh_running_supervisor_and_child(tmp_path: Path) -> None:
@@ -41,6 +50,18 @@ def test_reporter_exposes_fresh_running_supervisor_and_child(tmp_path: Path) -> 
     assert result["supervisor_process_alive"] is True
     assert result["child_process_alive"] is True
     assert result["fresh"] is True
+    assert result["sync_complete"] is True
+
+
+def test_running_child_without_control_sync_is_not_healthy(tmp_path: Path) -> None:
+    reporter = SupervisorHealthReporter(tmp_path, now_ms=1_000)
+    reporter.child_running(os.getpid(), now_ms=2_000)
+
+    result = inspect_supervisor_health(tmp_path, now_ms=3_000)
+
+    assert result["ok"] is False
+    assert result["sync_complete"] is False
+    assert result["reason"] == "supervisor has not completed a control sync"
 
 
 def test_stale_heartbeat_fails_closed(tmp_path: Path) -> None:

@@ -14,6 +14,9 @@ The command exits `0` only when all of these observations are true:
 - `kind` is `anet.supervisor.health` and `schema_version` is `1`;
 - the supervisor state and server-child state are both `running`;
 - both recorded process IDs still identify live local processes;
+- `instance_id` identifies this supervisor incarnation and `boot_session_id`
+  identifies the current Windows/macOS/Linux/WSL/Android boot session;
+- at least one control-page sync completed during this incarnation;
 - the heartbeat is no older than the configured poll interval plus 30 seconds
   (with a minimum 30-second window).
 
@@ -33,3 +36,5 @@ v1 embeds the resulting observation as `supervisor.health`. This proves the
 first persistent sync and child start observed during installation; it does
 not prove a later reboot. After reboot or logout, run `supervisor-status` again
 and combine it with the native service manager's state for release evidence.
+For a one-time before/after identity and restart comparison, use
+[`CONTINUITY_GATE_V1.md`](CONTINUITY_GATE_V1.md).

@@ -149,6 +149,14 @@ contains private deployment metadata; keep it local and see
 [`docs/DEPLOYMENT_RECEIPT_V1.md`](docs/DEPLOYMENT_RECEIPT_V1.md) for the exact
 interface and claim limits.
 
+To prove continuity across a later service or device restart, run
+`continuity-prepare` before the authorized restart and `continuity-verify`
+afterward. Add `--require-boot-change` for an actual OS/WSL/Android boot-session
+change. The one-time receipt checks a new supervisor instance, a post-prepare
+control sync, and unchanged Node ID plus identity/TLS material; it does not
+replace route or physical-device delivery tests. See
+[`docs/CONTINUITY_GATE_V1.md`](docs/CONTINUITY_GATE_V1.md).
+
 The original runtime-only installers remain available for operators who do not
 want a persistent node or service:
 
@@ -209,9 +217,15 @@ SQLite state, or an entire node home from another device.
 Parse the final stdout object only when `kind` is `anet.deployment.receipt`,
 `schema_version` is `1`, `ok` is true, `control.verified` is true, and
 `supervisor.autostart` is true, `supervisor.health.ok` is true, and both health
-process-alive fields are true. Treat the complete receipt as private evidence;
+process-alive fields plus `supervisor.health.sync_complete` are true; require
+non-empty supervisor instance and boot-session IDs. Treat the complete receipt as private evidence;
 redact the Node ID, paths, addresses, control URL, and service details before
 sharing it.
+If restart survival must be verified, run `continuity-prepare` before the
+operator-authorized restart and `continuity-verify` afterward; use
+`--require-boot-change` only for a real device/OS/WSL restart. Never reboot or
+stop a user-owned runtime without explicit authorization. Keep both continuity
+artifacts private.
 ~~~
 
 This prompt only delegates the commands above to an agent; it does not change

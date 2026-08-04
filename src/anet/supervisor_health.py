@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import ctypes
+import hashlib
 import json
 import os
+import subprocess
+import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -76,6 +80,71 @@ def _safe_error(error: BaseException | str) -> str:
     return text[:_MAX_ERROR_LENGTH]
 
 
+def current_boot_session_id() -> str:
+    """Return a stable, non-secret identifier for the current OS boot session."""
+
+    material = ""
+    platform_name = "unknown"
+    if os.name == "nt":
+        class SystemTimeOfDayInformation(ctypes.Structure):
+            _fields_ = (
+                ("boot_time", ctypes.c_longlong),
+                ("current_time", ctypes.c_longlong),
+                ("time_zone_bias", ctypes.c_longlong),
+                ("time_zone_id", ctypes.c_ulong),
+                ("reserved", ctypes.c_ulong),
+                ("boot_time_bias", ctypes.c_ulonglong),
+                ("sleep_time_bias", ctypes.c_ulonglong),
+            )
+
+        ntdll = ctypes.WinDLL("ntdll", use_last_error=True)
+        ntdll.NtQuerySystemInformation.argtypes = (
+            ctypes.c_ulong,
+            ctypes.c_void_p,
+            ctypes.c_ulong,
+            ctypes.c_void_p,
+        )
+        ntdll.NtQuerySystemInformation.restype = ctypes.c_long
+        value = SystemTimeOfDayInformation()
+        status = ntdll.NtQuerySystemInformation(
+            3,
+            ctypes.byref(value),
+            ctypes.sizeof(value),
+            None,
+        )
+        if status == 0 and value.boot_time > 0:
+            platform_name = "windows"
+            material = str(value.boot_time)
+    elif sys.platform.startswith("linux"):
+        try:
+            material = Path("/proc/sys/kernel/random/boot_id").read_text(
+                encoding="ascii"
+            ).strip()
+        except OSError:
+            material = ""
+        if material:
+            platform_name = "linux"
+    elif sys.platform == "darwin":
+        try:
+            completed = subprocess.run(
+                ["sysctl", "-n", "kern.boottime"],
+                text=True,
+                capture_output=True,
+                timeout=2,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            completed = None
+        if completed is not None and completed.returncode == 0:
+            material = completed.stdout.strip()
+        if material:
+            platform_name = "macos"
+    if not material:
+        return "unknown"
+    digest = hashlib.sha256(material.encode("utf-8")).hexdigest()
+    return f"{platform_name}:{digest[:32]}"
+
+
 class SupervisorHealthReporter:
     """Own the private health document for one running supervisor process."""
 
@@ -86,6 +155,8 @@ class SupervisorHealthReporter:
             "kind": SUPERVISOR_HEALTH_KIND,
             "schema_version": SUPERVISOR_HEALTH_SCHEMA_VERSION,
             "state": "starting",
+            "instance_id": uuid.uuid4().hex,
+            "boot_session_id": current_boot_session_id(),
             "supervisor_pid": os.getpid(),
             "started_at_ms": started_at_ms,
             "heartbeat_at_ms": started_at_ms,
@@ -231,9 +302,13 @@ def inspect_supervisor_health(
         if int(value.get("schema_version", -1)) != SUPERVISOR_HEALTH_SCHEMA_VERSION:
             raise ValueError("unsupported health schema")
         pid = int(value["supervisor_pid"])
+        started_at_ms = int(value["started_at_ms"])
         heartbeat_at_ms = int(value["heartbeat_at_ms"])
         poll_seconds = float(value["poll_seconds"])
-        if poll_seconds <= 0:
+        instance_id = str(value["instance_id"])
+        uuid.UUID(hex=instance_id)
+        boot_session_id = str(value["boot_session_id"])
+        if started_at_ms <= 0 or poll_seconds <= 0 or not boot_session_id:
             raise ValueError("invalid poll interval")
     except (KeyError, TypeError, ValueError):
         return {
@@ -261,8 +336,19 @@ def inspect_supervisor_health(
     child_running = (
         value.get("child_state") == "running" and child_process_alive
     )
+    try:
+        last_sync_at_ms = int(value.get("last_sync_at_ms"))
+    except (TypeError, ValueError):
+        last_sync_at_ms = 0
+    sync_complete = last_sync_at_ms >= started_at_ms
     fresh = heartbeat_age_ms <= stale_after_ms
-    ok = state == "running" and child_running and process_alive and fresh
+    ok = (
+        state == "running"
+        and child_running
+        and process_alive
+        and fresh
+        and sync_complete
+    )
     result = dict(value)
     result.update(
         {
@@ -273,6 +359,7 @@ def inspect_supervisor_health(
             "supervisor_process_alive": process_alive,
             "child_process_alive": child_process_alive,
             "fresh": fresh,
+            "sync_complete": sync_complete,
             "path": str(path),
         }
     )
@@ -283,6 +370,8 @@ def inspect_supervisor_health(
             result["reason"] = "supervisor heartbeat is stale"
         elif not child_running:
             result["reason"] = "Anet server child is not running"
+        elif not sync_complete:
+            result["reason"] = "supervisor has not completed a control sync"
         else:
             result["reason"] = f"supervisor state is {state}"
     return result

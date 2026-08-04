@@ -43,6 +43,9 @@ Human-readable preflight diagnostics remain on stderr. The common interface is:
       "ok": true,
       "state": "running",
       "fresh": true,
+      "instance_id": "<SUPERVISOR_INSTANCE_ID>",
+      "boot_session_id": "<BOOT_SESSION_ID>",
+      "sync_complete": true,
       "supervisor_process_alive": true,
       "child_process_alive": true
     }
@@ -62,7 +65,8 @@ platform-specific paths or prerequisites may appear under `supervisor` or
 `control-verify` gate before service registration. `supervisor.health` is read
 through the installed CLI after service registration and requires a fresh
 heartbeat plus live supervisor and `anet serve` child processes. It therefore
-proves the first persistent sync and child start observed during installation.
+requires `sync_complete`, records the supervisor incarnation and OS boot
+session, and proves the first persistent sync and child start observed during installation.
 It does not prove survival of a later logout, reboot, network transition, or
 operating-system policy change. Re-run `anet --home <ANET_HOME>
 supervisor-status` for current evidence; see

@@ -41,6 +41,9 @@ The repository also verifies:
 - agent-neutral source and Ahub import-surface isolation;
 - clean Windows, Linux/WSL, and macOS runtime installers;
 - self-contained Linux Skill installation with a pinned wheel hash.
+- fail-closed supervisor health transitions and signed, one-time continuity
+  challenge semantics using simulated service/boot-session changes. These
+  automated checks do not claim that a physical device was rebooted.
 
 Observed counts, artifact hashes, and build timestamps must be recorded in the
 GitHub Actions run and release checksums generated from the exact release tag.

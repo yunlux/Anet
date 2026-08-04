@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- 新增跨平台两阶段 Deployment Continuity Gate v1。`continuity-prepare` 在重启前
+  固定健康 supervisor 实例、启动会话、Node ID 与 identity/TLS 哈希；
+  `continuity-verify` 在重启后要求新实例、新同步、身份材料不变，并可用
+  `--require-boot-change` 强制验证真实 OS/WSL/Android 启动会话变化。成功 challenge
+  只能消费一次，完整 challenge/receipt 均为本机私有证据。
+- TLS 完整性检查现在同时验证证书公钥与 `tls-key.pem` 私钥匹配，避免只检查证书
+  Common Name 却接受不配对密钥。
 - 新增持久 `Supervisor Health v1`：supervisor 原子记录心跳、首次/最近控制页同步、
   子进程 PID、退化错误和连续失败次数；`anet supervisor-status` 只有在心跳新鲜且
   supervisor/`anet serve` 两个进程都存活时返回成功。所有 one-click 安装器现在等待

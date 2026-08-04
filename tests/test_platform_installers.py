@@ -138,6 +138,7 @@ def test_windows_oneclick_is_an_explicit_supervised_deployment_layer() -> None:
     assert "wait-anetsupervisorhealth" in installer
     assert '"supervisor-status"' in installer
     assert "child_process_alive" in installer
+    assert "sync_complete" in installer
     assert '-runtimeroot `"$rootpath`" -controlurl' not in installer
 
 

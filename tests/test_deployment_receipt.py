@@ -23,6 +23,9 @@ def sample_health() -> dict[str, object]:
         "ok": True,
         "state": "running",
         "fresh": True,
+        "instance_id": "0123456789abcdef0123456789abcdef",
+        "boot_session_id": "test:boot-session",
+        "sync_complete": True,
         "supervisor_process_alive": True,
         "child_process_alive": True,
     }
@@ -97,6 +100,11 @@ def test_receipt_rejects_unverified_control_or_inactive_contract() -> None:
     with pytest.raises(DeploymentReceiptError, match="child process"):
         validate_deployment_receipt(receipt)
 
+    receipt = sample_receipt()
+    receipt["supervisor"]["health"]["sync_complete"] = False  # type: ignore[index]
+    with pytest.raises(DeploymentReceiptError, match="sync is incomplete"):
+        validate_deployment_receipt(receipt)
+
 
 @pytest.mark.parametrize(
     ("field", "value", "message"),
@@ -165,6 +173,7 @@ def test_receipt_contract_is_published_for_people_and_agents() -> None:
     assert "private deployment evidence" in contract
     assert "does not prove survival" in contract
     assert "SUPERVISOR_HEALTH_V1.md" in contract
+    assert '"boot_session_id"' in contract
 
     for path in (
         ROOT / "README.md",
@@ -175,3 +184,22 @@ def test_receipt_contract_is_published_for_people_and_agents() -> None:
         ROOT / "docs" / "TERMUX_AUTOSTART.md",
     ):
         assert "DEPLOYMENT_RECEIPT_V1.md" in path.read_text(encoding="utf-8")
+
+
+def test_continuity_contract_is_published_for_people_and_agents() -> None:
+    contract = (ROOT / "docs" / "CONTINUITY_GATE_V1.md").read_text(
+        encoding="utf-8"
+    )
+    assert "continuity-prepare" in contract
+    assert "continuity-verify" in contract
+    assert "--require-boot-change" in contract
+    assert "listener ownership" in contract
+    assert "physical-device checks" in contract
+    for path in (
+        ROOT / "README.md",
+        ROOT / "README.zh-CN.md",
+        ROOT / "docs" / "CLI_AGENT_GUIDE.md",
+        ROOT / "docs" / "PLATFORM_RELEASES.md",
+        ROOT / "docs" / "SUPERVISOR_HEALTH_V1.md",
+    ):
+        assert "CONTINUITY_GATE_V1.md" in path.read_text(encoding="utf-8")

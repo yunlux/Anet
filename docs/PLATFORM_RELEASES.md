@@ -93,6 +93,13 @@ Release gates may back up and verify existing identities. Clean installers
 never read them. Neither layer creates, copies, renames, or infers a persistent
 node identity.
 
+For a platform-neutral service/device restart check, use the two-phase
+`continuity-prepare` / `continuity-verify` interface documented in
+[`CONTINUITY_GATE_V1.md`](CONTINUITY_GATE_V1.md). It proves a new supervisor
+incarnation, post-prepare sync, and unchanged identity/TLS material; add
+`--require-boot-change` only after an actual OS, WSL, or Android boot-session
+change. It is narrower than the complete route/store/peer recovery gate.
+
 ## Windows automatic deployment prototype
 
 For the requested self-starting Windows behavior, use the separate prototype
