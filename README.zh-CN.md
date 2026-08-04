@@ -113,6 +113,12 @@ Windows 与 WSL 即使使用镜像网络仍是两个独立节点。两端必须�
 `anet control-verify`。它会验证签名根页/嵌套页以及本地网络/Card 策略，且不会提前消费
 第一次 supervisor 软件更新所需的 remote-control 状态。
 
+成功后，每个平台的持久安装器都会在 stdout 输出一个版本化的
+`anet.deployment.receipt` JSON 对象，统一包含 runtime、独立节点、已验证控制页、
+原生 supervisor 状态、自动启动标志和预检报告。平台差异只保留在
+`supervisor` 内。收据包含私有部署元数据，必须留在本机；精确接口和声明限制见
+[`docs/DEPLOYMENT_RECEIPT_V1.md`](docs/DEPLOYMENT_RECEIPT_V1.md)。
+
 如果只想安装 runtime、不创建持久节点或服务，仍可使用纯净安装入口：
 
 ~~~text
@@ -150,6 +156,10 @@ peer 地址发布。最后报告 runtime、独立节点、服务/任务状态、
 先取得按目标目录隔离的安装锁，再执行有界重复检测。遇到已有部署、身份、哈希、权限或控制页格式冲突时停止；只有明确要求第二套部署时才使用
 -AllowExisting/--allow-existing。禁止从其他设备复制 identity、TLS 私钥、SQLite 状态或整个
 node home。
+只有最终 stdout 对象的 `kind` 为 `anet.deployment.receipt`、
+`schema_version` 为 `1`、`ok` 为 true、`control.verified` 为 true 且
+`supervisor.autostart` 为 true 时才解析为成功。完整收据属于私有证据；分享前必须
+脱敏 Node ID、路径、地址、控制 URL 和服务详情。
 ~~~
 
 这段提示词只是把上面的命令交给 Agent 执行，不改变各平台的 node home、身份隔离和重复检测规则。

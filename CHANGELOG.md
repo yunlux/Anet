@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Windows、WSL、Linux、macOS 和 Termux 持久 one-click 安装器现在统一输出
+  Deployment Receipt v1：版本化 JSON 接口分别报告 runtime、独立节点、已验证
+  控制页、原生 supervisor 状态、autostart 与 preflight。Agent 必须校验必需字段，
+  且完整收据因包含 Node ID、路径、地址和控制 URL 而只能作为本地私有部署证据。
 - 新增 `scripts/bootstrap_posix.py` checkout-free bootstrap。WSL、Linux、macOS 和
   Termux 可通过一条 `curl | python3` 命令下载临时平台入口，复用现有重复检测、
   控制页校验和原生服务注册流程；已有 checkout 时仍可直接运行平台脚本。

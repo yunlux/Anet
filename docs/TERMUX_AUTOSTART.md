@@ -55,6 +55,10 @@ and `termux-services`, then:
 Before enabling the runit service, the installer runs read-only
 `anet control-verify`; it checks the complete control page and local publisher
 policy without consuming the first supervisor sync or its software update.
+The final stdout object uses the shared `anet.deployment.receipt` v1 interface.
+Runit state is under `supervisor`, while the boot script and Termux:Boot
+prerequisite remain under `platform_details`; see
+[`DEPLOYMENT_RECEIPT_V1.md`](DEPLOYMENT_RECEIPT_V1.md).
 
 Install and open the Termux:Boot add-on once. It must come from the same
 distribution/signing source as Termux. On the next Android boot, the script

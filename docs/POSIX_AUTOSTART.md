@@ -90,6 +90,10 @@ After installation:
 - The final JSON result includes the complete `node.node_id` read from the
   installed CLI's `status` command; identity is never inferred from a path,
   label, host, or port.
+- The final object uses the shared `anet.deployment.receipt` v1 interface;
+  systemd and launchd details remain inside `supervisor`. See
+  [`DEPLOYMENT_RECEIPT_V1.md`](DEPLOYMENT_RECEIPT_V1.md). Its observed state
+  does not replace a later logout/reboot release gate.
 - One-shot `anet control-sync` uses the same home lock, so a manual sync cannot
   race the persistent supervisor while it applies config, Peer Cards, or a
   package update.

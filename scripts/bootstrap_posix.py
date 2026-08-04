@@ -28,6 +28,7 @@ SCRIPT_FILES = {
     "termux": "install_termux_oneclick.py",
 }
 MODULE_FILES = (
+    "deployment_receipt.py",
     "install_preflight.py",
     "posix_oneclick.py",
     "posix_runtime_installer.py",

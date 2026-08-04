@@ -139,6 +139,14 @@ initial runtime/node are created and before registering its persistent service.
 This verifies the signed root/nested pages and local network/Card policy without
 marking the first software update as already applied.
 
+On success, every persistent installer prints one versioned
+`anet.deployment.receipt` JSON object with the runtime, independent node,
+verified control page, native supervisor state, autostart flag, and preflight
+report. Platform differences stay inside the `supervisor` object. The receipt
+contains private deployment metadata; keep it local and see
+[`docs/DEPLOYMENT_RECEIPT_V1.md`](docs/DEPLOYMENT_RECEIPT_V1.md) for the exact
+interface and claim limits.
+
 The original runtime-only installers remain available for operators who do not
 want a persistent node or service:
 
@@ -196,6 +204,11 @@ preflight. Stop on an existing deployment, identity, hash, permission, or
 control-page conflict; use -AllowExisting/--allow-existing only when a second
 deployment is explicitly requested. Do not copy identity, TLS private keys,
 SQLite state, or an entire node home from another device.
+Parse the final stdout object only when `kind` is `anet.deployment.receipt`,
+`schema_version` is `1`, `ok` is true, `control.verified` is true, and
+`supervisor.autostart` is true. Treat the complete receipt as private evidence;
+redact the Node ID, paths, addresses, control URL, and service details before
+sharing it.
 ~~~
 
 This prompt only delegates the commands above to an agent; it does not change

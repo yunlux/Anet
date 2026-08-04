@@ -146,6 +146,12 @@ the Git ref used for its temporary helper files. Use
 from a fork. The control page's `repo_url` remains the runtime/software source;
 it does not select executable bootstrap code.
 
+Windows, WSL, Linux, macOS, and Termux persistent installers share one
+versioned stdout interface after successful service registration. The
+`anet.deployment.receipt` object separates runtime, node, verified control
+source, and supervisor state while retaining platform-specific detail inside
+the supervisor Adapter. See [`DEPLOYMENT_RECEIPT_V1.md`](DEPLOYMENT_RECEIPT_V1.md).
+
 ## Android Termux automatic deployment prototype
 
 Termux has its own entry point and does not use the Linux systemd entry point:

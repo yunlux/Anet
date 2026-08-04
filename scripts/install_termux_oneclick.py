@@ -13,6 +13,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from deployment_receipt import build_deployment_receipt
 from install_preflight import (
     InstallationLock,
     PreflightConflict,
@@ -167,6 +168,8 @@ def install_termux_service(
         "kind": "termux-services",
         "name": TERMUX_SERVICE,
         "service_dir": str(service_dir),
+        "state": "running",
+        "autostart": True,
         "status": status,
     }
 
@@ -470,26 +473,27 @@ def _main_unlocked(args: argparse.Namespace) -> int:
     node_id = read_node_id(python, node_home)
     service = install_termux_service(prefix, python, node_home)
     boot_script = install_termux_boot(prefix)
-    result = {
-        "ok": True,
-        "outcome": "created" if created else "reused",
-        "platform": "termux",
-        "runtime": runtime,
-        "node": {
+    result = build_deployment_receipt(
+        platform="termux",
+        outcome="created" if created else "reused",
+        runtime=runtime,
+        node={
             "home": str(node_home),
             "node_id": node_id,
             "listen_host": str(current_config.get("listen_host", listen_host)),
             "port": port,
             "advertise": current_config.get("advertise", []),
             "locator_contexts": current_config.get("locator_contexts", []),
-            "control_url": args.control_url,
         },
-        "service": service,
-        "control_key_id": args.control_key_id,
-        "boot_script": str(boot_script),
-        "boot_plugin": "Termux:Boot must be installed and opened once",
-        "preflight": preflight,
-    }
+        control_url=args.control_url,
+        control_key_id=args.control_key_id,
+        supervisor=service,
+        preflight=preflight,
+        platform_details={
+            "boot_script": str(boot_script),
+            "boot_plugin": "Termux:Boot must be installed and opened once",
+        },
+    )
     print(json.dumps(result, separators=(",", ":")))
     return 0
 

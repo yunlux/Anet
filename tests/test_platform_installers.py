@@ -125,6 +125,16 @@ def test_windows_oneclick_is_an_explicit_supervised_deployment_layer() -> None:
     assert "supervisor.log" in launcher
     assert "status" in installer
     assert "node_id" in installer
+    assert 'kind = "anet.deployment.receipt"' in installer
+    assert "schema_version = 1" in installer
+    assert "assert-deploymentreceipt" in installer
+    assert "assert-deploymentreceipt $receipt" in installer
+    assert "runtimereceipt" in installer
+    assert "nodereceipt" in installer
+    assert "controlreceipt" in installer
+    assert "supervisorreceipt" in installer
+    assert 'state = "running"' in installer
+    assert "autostart = $true" in installer
     assert '-runtimeroot `"$rootpath`" -controlurl' not in installer
 
 
@@ -152,6 +162,7 @@ def test_posix_oneclick_is_an_explicit_native_service_layer() -> None:
     assert "pinned control page requires software.sha256" in text
     assert "does not match software.sha256" in text
     assert "read_node_id" in text
+    assert "build_deployment_receipt" in text
     assert "installationlock" in text
     assert "node_homes=(node_home,)" in text
 
@@ -168,6 +179,7 @@ def test_checkout_free_posix_bootstrap_fetches_only_known_entrypoints(
     assert "install_macos_oneclick.py" in bootstrap
     assert "install_termux_oneclick.py" in bootstrap
     assert "posix_runtime_installer.py" in bootstrap
+    assert "deployment_receipt.py" in bootstrap
     assert "runpy.run_path" in bootstrap
     assert "temporarydirectory" in bootstrap
     assert "control_page_hints" not in bootstrap
@@ -269,6 +281,7 @@ def test_termux_oneclick_uses_termux_native_service_layer() -> None:
     assert "repository_ref" in text
     assert "software.wheel_url or software.repo_url" in text
     assert "wheel_hash_for_install" in text
+    assert "build_deployment_receipt" in text
     assert "require_hash=bool(trusted_keys)" in text
     assert "installationlock" in text
 

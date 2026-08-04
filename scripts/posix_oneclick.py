@@ -29,6 +29,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from deployment_receipt import build_deployment_receipt
 from install_preflight import (
     InstallationLock,
     PreflightConflict,
@@ -622,6 +623,7 @@ def install_systemd_service(python: Path, home: Path, *, enable_linger: bool) ->
         "name": SYSTEMD_SERVICE,
         "unit": str(unit_path),
         "state": active,
+        "autostart": True,
         "linger": linger,
     }
 
@@ -686,6 +688,7 @@ def install_launchd_service(python: Path, home: Path) -> dict[str, Any]:
         "name": LAUNCHD_LABEL,
         "plist": str(plist_path),
         "state": state,
+        "autostart": True,
     }
 
 
@@ -969,24 +972,23 @@ def _main_unlocked(
         )
     else:
         service = install_launchd_service(python, node_home)
-    result = {
-        "ok": True,
-        "outcome": "created" if created else "reused",
-        "platform": platform_name,
-        "runtime": runtime,
-        "node": {
+    result = build_deployment_receipt(
+        platform=platform_name,
+        outcome="created" if created else "reused",
+        runtime=runtime,
+        node={
             "home": str(node_home),
             "node_id": node_id,
             "listen_host": str(current_config.get("listen_host", listen_host)),
             "port": port,
             "advertise": current_config.get("advertise", []),
             "locator_contexts": current_config.get("locator_contexts", []),
-            "control_url": args.control_url,
         },
-        "service": service,
-        "control_key_id": args.control_key_id,
-        "preflight": preflight,
-    }
+        control_url=args.control_url,
+        control_key_id=args.control_key_id,
+        supervisor=service,
+        preflight=preflight,
+    )
     print(json.dumps(result, separators=(",", ":")))
     return 0
 

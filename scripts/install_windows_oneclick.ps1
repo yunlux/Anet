@@ -124,6 +124,54 @@ function Test-IsJsonObject {
     return $Value -is [pscustomobject]
 }
 
+function Assert-DeploymentReceipt {
+    param([System.Collections.IDictionary]$Receipt)
+    if (
+        $Receipt["kind"] -ne "anet.deployment.receipt" -or
+        $Receipt["schema_version"] -ne 1 -or
+        $Receipt["ok"] -ne $true -or
+        $Receipt["platform"] -ne "windows" -or
+        $Receipt["outcome"] -notin @("created", "reused")
+    ) {
+        throw "Windows deployment receipt header is invalid"
+    }
+    $runtime = $Receipt["runtime"]
+    if (
+        -not $runtime["version"] -or
+        $runtime["feature"] -notin @("core", "mcp", "full") -or
+        -not $runtime["runtime"] -or
+        -not $runtime["cli"]
+    ) {
+        throw "Windows deployment receipt runtime is incomplete"
+    }
+    $node = $Receipt["node"]
+    if (
+        -not $node["home"] -or
+        $node["node_id"] -notmatch '^an1[a-z2-7]{17,125}$' -or
+        -not $node["listen_host"] -or
+        [int]$node["port"] -lt 1 -or
+        [int]$node["port"] -gt 65535
+    ) {
+        throw "Windows deployment receipt node is incomplete"
+    }
+    $control = $Receipt["control"]
+    if (-not $control["url"] -or $control["verified"] -ne $true) {
+        throw "Windows deployment receipt control verification is incomplete"
+    }
+    $supervisor = $Receipt["supervisor"]
+    if (
+        -not $supervisor["kind"] -or
+        -not $supervisor["name"] -or
+        $supervisor["state"] -notin @("active", "running") -or
+        $supervisor["autostart"] -ne $true
+    ) {
+        throw "Windows deployment receipt supervisor is incomplete"
+    }
+    if ($null -eq $Receipt["preflight"]) {
+        throw "Windows deployment receipt preflight is missing"
+    }
+}
+
 function Merge-JsonObjects {
     param(
         [object]$Base,
@@ -786,7 +834,8 @@ if (-not $NodeHome) {
 }
 $nodePath = [System.IO.Path]::GetFullPath($NodeHome)
 $configPath = Join-Path $nodePath "config.json"
-if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
+$nodeCreated = -not (Test-Path -LiteralPath $configPath -PathType Leaf)
+if ($nodeCreated) {
     if ($Port -eq 0 -and $ListenHost -ne "127.0.0.1") {
         throw "-Port is required when -ListenHost is not 127.0.0.1"
     }
@@ -923,26 +972,47 @@ Register-ScheduledTask `
 Start-ScheduledTask -TaskPath $taskPath -TaskName $taskName
 Wait-ManagedSupervisorTask $taskPath $taskName
 
-$result = [ordered]@{
-    ok = $true
+$currentConfig = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+$runtimeReceipt = [ordered]@{
+    platform = "windows"
+    version = [string]$current.version
+    feature = [string]$current.feature
     runtime = [string]$current.runtime
     cli = [string]$current.cli
-    node_home = $nodePath
+}
+$nodeReceipt = [ordered]@{
+    home = $nodePath
     node_id = $nodeId
     listen_host = $ListenHost
     port = $port
-    advertise = @(
-        (Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json).advertise
-    )
-    locator_contexts = @(
-        (Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json).locator_contexts
-    )
-    control_url = $ControlUrl
-    control_key_id = $ControlKeyId
-    task = ($taskPath + $taskName)
-    mode = $mode
+    advertise = @($currentConfig.advertise)
+    locator_contexts = @($currentConfig.locator_contexts)
+}
+$controlReceipt = [ordered]@{
+    url = $ControlUrl
+    key_id = $ControlKeyId
+    verified = $true
+}
+$supervisorReceipt = [ordered]@{
+    kind = $mode
+    name = ($taskPath + $taskName)
+    state = "running"
+    autostart = $true
+}
+$receipt = [ordered]@{
+    kind = "anet.deployment.receipt"
+    schema_version = 1
+    ok = $true
+    outcome = if ($nodeCreated) { "created" } else { "reused" }
+    platform = "windows"
+    runtime = $runtimeReceipt
+    node = $nodeReceipt
+    control = $controlReceipt
+    supervisor = $supervisorReceipt
     preflight = $preflight
-} | ConvertTo-Json -Depth 10 -Compress
+}
+Assert-DeploymentReceipt $receipt
+$result = $receipt | ConvertTo-Json -Depth 10 -Compress
 $installMutex.ReleaseMutex()
 $installMutex.Dispose()
 $result

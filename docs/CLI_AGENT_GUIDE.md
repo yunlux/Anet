@@ -167,6 +167,15 @@ Use `-AllowExisting` on Windows or `--allow-existing` on POSIX/Termux only as
 an explicit override. Windows and WSL are separate preflight boundaries and
 must not share a node home or identity.
 
+Persistent one-click entry points emit one compact Deployment Receipt v1 JSON
+object on stdout only after the control page and supervisor checks pass. An
+Agent must require `kind=anet.deployment.receipt`, `schema_version=1`,
+`ok=true`, `control.verified=true`, and `supervisor.autostart=true`; it must not
+infer success from a zero exit code plus partial human-readable output. Keep the
+complete receipt private because it contains the Node ID, paths, addresses,
+control URL, and service metadata. See
+[`DEPLOYMENT_RECEIPT_V1.md`](DEPLOYMENT_RECEIPT_V1.md).
+
 ### macOS
 
 ```bash
