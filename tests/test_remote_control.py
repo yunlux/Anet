@@ -273,7 +273,12 @@ def test_nested_source_pins_a_distinct_community_publisher(tmp_path: Path) -> No
         key_id="root",
     )
     trusted = _trusted_publishers(root=root_publisher, actor_a=actor_publisher)
-    write_control_settings(local.home, url=root_url, trusted_keys=trusted)
+    write_control_settings(
+        local.home,
+        url=root_url,
+        trusted_keys=trusted,
+        root_key_id="root",
+    )
 
     verified = verify_remote_control(local.home)
     result = sync_remote_control(local.home, apply_software=False)
@@ -310,7 +315,12 @@ def test_source_attribution_preserves_legacy_signed_state_digest(tmp_path: Path)
         key_id="publisher",
     )
     trusted = _trusted_publishers(publisher=publisher)
-    write_control_settings(local.home, url=page_url, trusted_keys=trusted)
+    write_control_settings(
+        local.home,
+        url=page_url,
+        trusted_keys=trusted,
+        root_key_id="publisher",
+    )
     raw = json.loads(page.read_text(encoding="utf-8"))
     document = remote_control._normalise_document(
         raw,
@@ -337,6 +347,57 @@ def test_source_attribution_preserves_legacy_signed_state_digest(tmp_path: Path)
     assert result["source_publishers"] == [
         {"url": page_url, "signed": True, "key_id": "publisher"}
     ]
+
+
+def test_root_source_is_bound_separately_from_nested_publishers(tmp_path: Path) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43103,
+    )
+    root_publisher = Identity.generate("root-publisher")
+    actor_publisher = Identity.generate("actor-publisher")
+    root_url = _signed_page(
+        tmp_path / "root.json",
+        {"config": {"max_batch": 64}},
+        actor_publisher,
+        key_id="actor-a",
+    )
+    write_control_settings(
+        local.home,
+        url=root_url,
+        trusted_keys=_trusted_publishers(
+            root=root_publisher,
+            actor_a=actor_publisher,
+        ),
+        root_key_id="root",
+    )
+
+    with pytest.raises(RemoteControlError, match="publisher mismatch"):
+        verify_remote_control(local.home)
+
+    overridden = verify_remote_control(
+        local.home,
+        trusted_keys=_trusted_publishers(actor_a=actor_publisher),
+    )
+    assert overridden["control_key_id"] == "actor-a"
+
+
+def test_root_source_pin_must_exist_in_local_policy(tmp_path: Path) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43103,
+    )
+    with pytest.raises(RemoteControlError, match="not locally trusted"):
+        write_control_settings(
+            local.home,
+            url="https://unreachable.invalid/root.json",
+            trusted_keys={},
+            root_key_id="root",
+        )
 
 
 def test_adding_source_pin_requires_a_new_signed_sequence(tmp_path: Path) -> None:
@@ -568,6 +629,9 @@ def test_control_source_pin_contract_is_published() -> None:
     assert '"key_id": "actor-a"' in contract
     assert "source_publishers" in contract
     assert "reputation score" in contract
+    assert "--control-trusted-key" in contract
+    assert "-ControlTrustedKey" in contract
+    assert "root_key_id" in contract
     for path in (
         root / "README.md",
         root / "README.zh-CN.md",

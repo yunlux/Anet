@@ -194,3 +194,9 @@ from the local trusted-key set. This prevents another approved publisher from
 signing in that source's place and records verified attribution in
 `source_publishers`; see
 [`CONTROL_SOURCE_PINS_V1.md`](CONTROL_SOURCE_PINS_V1.md).
+Enroll additional local publishers during the same install by repeating
+`--control-trusted-key actor-a=<BASE64URL_KEY>`. The existing
+`--control-key-id`/`--control-public-key` pair remains the first publisher and
+is written as `root_key_id`; additional keys cannot sign the root page.
+Conflicting IDs or one public key assigned to several publisher IDs fail before
+runtime mutation.

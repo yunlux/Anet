@@ -74,6 +74,7 @@ def test_receipt_has_one_cross_platform_interface() -> None:
     assert receipt["control"] == {
         "url": "https://example.test/anet/control.json",
         "key_id": "community-main",
+        "key_ids": ["community-main"],
         "verified": True,
     }
     assert receipt["supervisor"]["autostart"] is True  # type: ignore[index]
@@ -104,6 +105,26 @@ def test_receipt_rejects_unverified_control_or_inactive_contract() -> None:
     receipt["supervisor"]["health"]["sync_complete"] = False  # type: ignore[index]
     with pytest.raises(DeploymentReceiptError, match="sync is incomplete"):
         validate_deployment_receipt(receipt)
+
+
+def test_receipt_reports_multiple_control_publishers_and_accepts_v1_legacy() -> None:
+    receipt = sample_receipt(
+        control_key_id="root",
+        control_key_ids=["root", "actor-a", "actor-b"],
+    )
+    assert receipt["control"]["key_ids"] == ["root", "actor-a", "actor-b"]  # type: ignore[index]
+
+    legacy = sample_receipt()
+    del legacy["control"]["key_ids"]  # type: ignore[index]
+    assert validate_deployment_receipt(legacy)["control"]["key_id"] == "community-main"  # type: ignore[index]
+
+    invalid = sample_receipt(
+        control_key_id="root",
+        control_key_ids=["root", "actor-a"],
+    )
+    invalid["control"]["key_ids"] = ["actor-a", "root"]  # type: ignore[index]
+    with pytest.raises(DeploymentReceiptError, match="first key_ids"):
+        validate_deployment_receipt(invalid)
 
 
 @pytest.mark.parametrize(
@@ -170,6 +191,7 @@ def test_receipt_contract_is_published_for_people_and_agents() -> None:
     )
     assert '"kind": "anet.deployment.receipt"' in contract
     assert '"schema_version": 1' in contract
+    assert '"key_ids"' in contract
     assert "private deployment evidence" in contract
     assert "does not prove survival" in contract
     assert "SUPERVISOR_HEALTH_V1.md" in contract

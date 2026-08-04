@@ -190,6 +190,7 @@ publisher Ed25519 public keys in the node home instead:
   "version": 1,
   "url": "https://example.invalid/anet/control.json",
   "interval": 300,
+  "root_key_id": "community-main",
   "trusted_keys": {
     "community-main": "BASE64URL_ED25519_PUBLIC_KEY"
   }
@@ -209,6 +210,18 @@ For multiple community publishers, add every approved public key to local
 by another trusted key is still rejected when it does not match that source's
 pin. Verification and sync results expose private `source_publishers`
 attribution records; source pages cannot add trusted keys themselves.
+On a new Windows device, enroll all additional publishers atomically in the
+one-click command:
+
+```powershell
+-ControlTrustedKey "actor-a=<BASE64URL_KEY>","actor-b=<BASE64URL_KEY>"
+```
+
+The legacy `-ControlKeyId`/`-ControlPublicKey` pair remains valid and is listed
+first as `root_key_id`. Additional keys cannot sign the root page; they apply
+only to nested sources that name them. Repeating the same ID/key is idempotent;
+conflicting keys for one ID or one public key assigned to multiple publisher
+IDs fail before installation.
 
 Publishers can create the signed JSON offline with the repository helper:
 

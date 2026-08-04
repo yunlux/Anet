@@ -66,6 +66,9 @@ def test_windows_oneclick_is_an_explicit_supervised_deployment_layer() -> None:
     assert "[string]$controlurl" in installer
     assert "-controlkeyid" in installer
     assert "-controlpublickey" in installer
+    assert "-controltrustedkey" in installer
+    assert "key_ids" in installer
+    assert "root_key_id" in installer
     assert "trusted_keys" in installer
     assert "register-scheduledtask" in installer
     assert "start-scheduledtask" in installer
@@ -155,6 +158,8 @@ def test_posix_oneclick_is_an_explicit_native_service_layer() -> None:
     assert "--control-url" in text
     assert "--control-key-id" in text
     assert "--control-public-key" in text
+    assert "--control-trusted-key" in text
+    assert "root_key_id" in text
     assert "trusted_keys_from_args" in text
     assert "install_runtime" in text
     assert "validate_cross_platform_ports" in text
@@ -171,6 +176,47 @@ def test_posix_oneclick_is_an_explicit_native_service_layer() -> None:
     assert '"supervisor-status"' in text
     assert "installationlock" in text
     assert "node_homes=(node_home,)" in text
+
+
+def test_windows_control_publishers_are_parsed_as_atomic_pairs() -> None:
+    powershell = (
+        shutil.which("pwsh")
+        or shutil.which("powershell")
+        or shutil.which("powershell.exe")
+    )
+    if powershell is None:
+        pytest.skip("PowerShell is unavailable")
+    installer = ROOT / "scripts" / "install_windows_oneclick.ps1"
+    command = rf"""
+$tokens = $null
+$errors = $null
+$ast = [System.Management.Automation.Language.Parser]::ParseFile(
+    '{installer}', [ref]$tokens, [ref]$errors
+)
+$function = $ast.Find({{
+    param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Get-ControlTrustedKeys'
+}}, $true)
+. ([scriptblock]::Create($function.Extent.Text))
+$root = 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8'
+$actor = 'ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8'
+$keys = Get-ControlTrustedKeys 'root' $root @("actor-a=$actor")
+[pscustomobject]@{{ count = $keys.Count; ids = @($keys.Keys) }} |
+    ConvertTo-Json -Compress
+"""
+    completed = subprocess.run(
+        [powershell, "-NoProfile", "-NonInteractive", "-Command", command],
+        text=True,
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert json.loads(completed.stdout) == {
+        "count": 2,
+        "ids": ["root", "actor-a"],
+    }
 
 
 def test_checkout_free_posix_bootstrap_fetches_only_known_entrypoints(
@@ -272,6 +318,8 @@ def test_termux_oneclick_uses_termux_native_service_layer() -> None:
     assert "--control-url" in text
     assert "--control-key-id" in text
     assert "--control-public-key" in text
+    assert "--control-trusted-key" in text
+    assert "root_key_id" in text
     assert "trusted_keys_from_args" in text
     assert "install_preflight" in text
     assert "allow-existing" in text

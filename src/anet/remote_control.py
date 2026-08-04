@@ -663,6 +663,7 @@ def _normalise_document(
     source_publishers: list[dict[str, Any]] | None = None,
     source_pins: list[dict[str, str]] | None = None,
     expected_key_id: str = "",
+    record_source_pin: bool = True,
     trusted_keys: dict[str, str] | None = None,
     now_ms: int | None = None,
     default_poll_seconds: float = DEFAULT_POLL_SECONDS,
@@ -680,10 +681,10 @@ def _normalise_document(
     clean_expected_key_id = str(expected_key_id).strip()
     if clean_expected_key_id:
         if not _CONTROL_KEY_ID_PATTERN.fullmatch(clean_expected_key_id):
-            raise RemoteControlError("nested control source key_id is invalid")
+            raise RemoteControlError("control source key_id is invalid")
         if signature["key_id"] != clean_expected_key_id:
             raise RemoteControlError(
-                f"nested control source publisher mismatch: expected "
+                f"control source publisher mismatch: expected "
                 f"{clean_expected_key_id}, received "
                 f"{signature['key_id'] or 'unsigned'}"
             )
@@ -702,7 +703,7 @@ def _normalise_document(
             "key_id": str(signature["key_id"]),
         }
     )
-    if clean_expected_key_id:
+    if clean_expected_key_id and record_source_pin:
         source_pins.append(
             {"url": source_url, "key_id": clean_expected_key_id}
         )
@@ -916,10 +917,16 @@ def verify_remote_control(
     configured_trusted_keys = _normalise_trusted_keys(
         settings.get("trusted_keys", {})
     )
+    trusted_keys_overridden = trusted_keys is not None
     effective_trusted_keys = (
         configured_trusted_keys
         if trusted_keys is None
         else _normalise_trusted_keys(trusted_keys)
+    )
+    root_key_id = (
+        next(iter(effective_trusted_keys), "")
+        if trusted_keys_overridden
+        else _expected_root_key_id(settings, effective_trusted_keys)
     )
     now_ms = _now_ms()
     raw = _read_json_url(page_url, timeout=20.0)
@@ -929,6 +936,8 @@ def verify_remote_control(
         visited=set(),
         depth=0,
         sources=[],
+        expected_key_id=root_key_id,
+        record_source_pin=len(effective_trusted_keys) > 1,
         trusted_keys=effective_trusted_keys,
         now_ms=now_ms,
         default_poll_seconds=default_poll_seconds,
@@ -974,12 +983,14 @@ def _load_control_settings(home: Path, url: str | None) -> dict[str, Any]:
             raise RemoteControlError(f"control settings must be an object: {path}")
         local_value = dict(raw_local)
     trusted_keys = _normalise_trusted_keys(local_value.get("trusted_keys", {}))
+    root_key_id = str(local_value.get("root_key_id", "")).strip()
     if url:
         return {
             "version": CONTROL_VERSION,
             "url": str(url),
             "interval": DEFAULT_POLL_SECONDS,
             "trusted_keys": trusted_keys,
+            "root_key_id": root_key_id,
         }
     configured = os.environ.get("ANET_CONTROL_URL", "").strip()
     if configured:
@@ -988,6 +999,7 @@ def _load_control_settings(home: Path, url: str | None) -> dict[str, Any]:
             "url": configured,
             "interval": DEFAULT_POLL_SECONDS,
             "trusted_keys": trusted_keys,
+            "root_key_id": root_key_id,
         }
     if not local_value:
         raise RemoteControlError(
@@ -997,11 +1009,27 @@ def _load_control_settings(home: Path, url: str | None) -> dict[str, Any]:
         raise RemoteControlError(f"control settings require a url: {path}")
     value = local_value
     value["trusted_keys"] = trusted_keys
+    value["root_key_id"] = root_key_id
     value["interval"] = _bounded_interval(
         value.get("interval", DEFAULT_POLL_SECONDS),
         label=f"control settings interval: {path}",
     )
     return value
+
+
+def _expected_root_key_id(
+    settings: dict[str, Any], trusted_keys: dict[str, str]
+) -> str:
+    root_key_id = str(settings.get("root_key_id", "")).strip()
+    if not root_key_id:
+        return ""
+    if not _CONTROL_KEY_ID_PATTERN.fullmatch(root_key_id):
+        raise RemoteControlError("control root_key_id is invalid")
+    if root_key_id not in trusted_keys:
+        raise RemoteControlError(
+            f"control root publisher is not locally trusted: {root_key_id}"
+        )
+    return root_key_id
 
 
 def _load_state(home: Path) -> dict[str, Any]:
@@ -1413,10 +1441,16 @@ def _sync_remote_control_unlocked(
     configured_trusted_keys = _normalise_trusted_keys(
         settings.get("trusted_keys", {})
     )
+    trusted_keys_overridden = trusted_keys is not None
     trusted_keys = (
         configured_trusted_keys
         if trusted_keys is None
         else _normalise_trusted_keys(trusted_keys)
+    )
+    root_key_id = (
+        next(iter(trusted_keys), "")
+        if trusted_keys_overridden
+        else _expected_root_key_id(settings, trusted_keys)
     )
     state = _load_state(home)
     now_ms = _now_ms()
@@ -1427,6 +1461,8 @@ def _sync_remote_control_unlocked(
         visited=set(),
         depth=0,
         sources=[],
+        expected_key_id=root_key_id,
+        record_source_pin=len(trusted_keys) > 1,
         trusted_keys=trusted_keys,
         now_ms=now_ms,
         default_poll_seconds=default_poll_seconds,
@@ -1719,6 +1755,7 @@ def write_control_settings(
     url: str,
     interval: float = DEFAULT_POLL_SECONDS,
     trusted_keys: dict[str, str] | None = None,
+    root_key_id: str = "",
 ) -> Path:
     path = control_settings_path(home)
     normalized_keys = _normalise_trusted_keys(trusted_keys or {})
@@ -1729,6 +1766,15 @@ def write_control_settings(
     }
     if normalized_keys:
         value["trusted_keys"] = normalized_keys
+    clean_root_key_id = str(root_key_id).strip()
+    if clean_root_key_id:
+        if not _CONTROL_KEY_ID_PATTERN.fullmatch(clean_root_key_id):
+            raise RemoteControlError("control root_key_id is invalid")
+        if clean_root_key_id not in normalized_keys:
+            raise RemoteControlError(
+                f"control root publisher is not locally trusted: {clean_root_key_id}"
+            )
+        value["root_key_id"] = clean_root_key_id
     atomic_json(
         path,
         value,

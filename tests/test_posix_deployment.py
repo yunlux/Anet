@@ -225,6 +225,35 @@ def test_control_publisher_pin_requires_a_valid_public_key() -> None:
         trusted_keys_from_args("community-main", "AA")
 
 
+def test_control_publisher_pins_accept_multiple_atomic_specs() -> None:
+    root_key = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
+    actor_key = "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8"
+    assert trusted_keys_from_args(
+        "root",
+        root_key,
+        [f"actor-a={actor_key}", f"root={root_key}"],
+    ) == {"root": root_key, "actor-a": actor_key}
+
+
+def test_control_publisher_pins_reject_ambiguous_attribution() -> None:
+    first_key = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"
+    second_key = "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8"
+    with pytest.raises(DeploymentError, match="must use KEY_ID"):
+        trusted_keys_from_args("", "", ["actor-a"])
+    with pytest.raises(DeploymentError, match="conflicting public keys"):
+        trusted_keys_from_args(
+            "root",
+            first_key,
+            [f"root={second_key}"],
+        )
+    with pytest.raises(DeploymentError, match="multiple publishers"):
+        trusted_keys_from_args(
+            "root",
+            first_key,
+            [f"actor-a={first_key}="],
+        )
+
+
 def test_source_requirement_preserves_feature_extras() -> None:
     assert source_requirement("https://github.com/yunlux/Anet", "core") == (
         "git+https://github.com/yunlux/Anet"
@@ -471,6 +500,7 @@ def test_posix_entrypoints_and_documentation_are_packaged() -> None:
     assert "install_linux_oneclick.py" in guide
     assert "install_macos_oneclick.py" in guide
     assert "control-key-id" in guide
+    assert "control-trusted-key" in guide
     assert "bootstrap_posix.py" in guide
     assert "register_wsl_keepalive.ps1" in guide
     termux_guide = (ROOT / "docs" / "TERMUX_AUTOSTART.md").read_text(
@@ -480,4 +510,5 @@ def test_posix_entrypoints_and_documentation_are_packaged() -> None:
     assert "Termux:Boot" in termux_guide
     assert "install_termux_oneclick.py" in termux_guide
     assert "control-key-id" in termux_guide
+    assert "control-trusted-key" in termux_guide
     assert "bootstrap_posix.py" in termux_guide

@@ -61,6 +61,13 @@ For several community maintainers, nested sources can use
 pinned publisher. Verified attribution is returned as private
 `source_publishers` evidence; see
 [`docs/CONTROL_SOURCE_PINS_V1.md`](docs/CONTROL_SOURCE_PINS_V1.md).
+Pin additional maintainers during the same install with
+`-ControlTrustedKey "actor-a=<KEY>","actor-b=<KEY>"` on Windows or repeated
+`--control-trusted-key actor-a=<KEY>` options on POSIX/Termux. Each option is
+one atomic `key_id=public_key` pair, so parallel key-ID/key arrays cannot be
+silently misaligned. The first/legacy publisher is stored as `root_key_id`;
+additional Actor keys cannot sign the root page and apply only when a nested
+source names them.
 
 Run this in an ordinary PowerShell window for a current-user installation:
 

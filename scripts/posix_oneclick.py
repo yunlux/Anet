@@ -53,24 +53,66 @@ class DeploymentError(RuntimeError):
     """Raised when the explicit one-click deployment cannot be completed."""
 
 
-def trusted_keys_from_args(key_id: str, public_key: str) -> dict[str, str]:
+def _validated_control_key(key_id: object, public_key: object) -> tuple[str, str]:
     clean_key_id = str(key_id or "").strip()
     encoded = str(public_key or "").strip()
-    if not clean_key_id and not encoded:
-        return {}
     if not clean_key_id or not encoded:
-        raise DeploymentError(
-            "--control-key-id and --control-public-key must be provided together"
-        )
+        raise DeploymentError("control publisher key ID and public key are required")
     if not CONTROL_KEY_ID_PATTERN.fullmatch(clean_key_id):
-        raise DeploymentError("--control-key-id is invalid")
+        raise DeploymentError("control publisher key ID is invalid")
     try:
-        decoded = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
-    except (ValueError, binascii.Error) as exc:
-        raise DeploymentError("--control-public-key is not valid base64url") from exc
+        padded = (encoded + "=" * (-len(encoded) % 4)).encode("ascii")
+        decoded = base64.b64decode(padded, altchars=b"-_", validate=True)
+    except (UnicodeEncodeError, ValueError, binascii.Error) as exc:
+        raise DeploymentError("control publisher public key is not valid base64url") from exc
     if len(decoded) != 32:
-        raise DeploymentError("--control-public-key must contain 32 bytes")
-    return {clean_key_id: encoded}
+        raise DeploymentError("control publisher public key must contain 32 bytes")
+    canonical = base64.urlsafe_b64encode(decoded).decode("ascii").rstrip("=")
+    return clean_key_id, canonical
+
+
+def trusted_keys_from_args(
+    key_id: str,
+    public_key: str,
+    trusted_key_specs: list[str] | None = None,
+) -> dict[str, str]:
+    pairs: list[tuple[object, object]] = []
+    clean_key_id = str(key_id or "").strip()
+    encoded = str(public_key or "").strip()
+    if clean_key_id or encoded:
+        if not clean_key_id or not encoded:
+            raise DeploymentError(
+                "--control-key-id and --control-public-key must be provided together"
+            )
+        pairs.append((clean_key_id, encoded))
+    for raw_spec in trusted_key_specs or []:
+        spec = str(raw_spec or "").strip()
+        spec_key_id, separator, spec_public_key = spec.partition("=")
+        if not separator:
+            raise DeploymentError(
+                "--control-trusted-key must use KEY_ID=BASE64URL_PUBLIC_KEY"
+            )
+        pairs.append((spec_key_id, spec_public_key))
+
+    result: dict[str, str] = {}
+    publisher_by_key: dict[str, str] = {}
+    for raw_key_id, raw_public_key in pairs:
+        clean_id, clean_public_key = _validated_control_key(
+            raw_key_id, raw_public_key
+        )
+        previous = result.get(clean_id)
+        if previous is not None and previous != clean_public_key:
+            raise DeploymentError(
+                f"control publisher key ID has conflicting public keys: {clean_id}"
+            )
+        previous_publisher = publisher_by_key.get(clean_public_key)
+        if previous_publisher is not None and previous_publisher != clean_id:
+            raise DeploymentError(
+                "one control publisher public key cannot identify multiple publishers"
+            )
+        result[clean_id] = clean_public_key
+        publisher_by_key[clean_public_key] = clean_id
+    return result
 
 
 def run(
@@ -738,6 +780,13 @@ def parser(platform_name: str, default_root: Path) -> argparse.ArgumentParser:
     result.add_argument("--control-url", required=True)
     result.add_argument("--control-key-id", default="")
     result.add_argument("--control-public-key", default="")
+    result.add_argument(
+        "--control-trusted-key",
+        action="append",
+        default=[],
+        metavar="KEY_ID=BASE64URL_PUBLIC_KEY",
+        help="pin an additional control publisher; may be repeated",
+    )
     result.add_argument("--feature", choices=("core", "mcp", "full"), default="mcp")
     result.add_argument("--version", default="")
     result.add_argument("--wheel", type=Path)
@@ -806,6 +855,7 @@ def _main_unlocked(
     trusted_keys = trusted_keys_from_args(
         args.control_key_id,
         args.control_public_key,
+        args.control_trusted_key,
     )
     software = platform_software(page, platform_name)
     if not isinstance(software, dict):
@@ -975,6 +1025,11 @@ def _main_unlocked(
                 "url": args.control_url,
                 "interval": interval,
                 **({"trusted_keys": trusted_keys} if trusted_keys else {}),
+                **(
+                    {"root_key_id": next(iter(trusted_keys))}
+                    if trusted_keys
+                    else {}
+                ),
             },
             indent=2,
             sort_keys=True,
@@ -1022,7 +1077,8 @@ def _main_unlocked(
             "locator_contexts": current_config.get("locator_contexts", []),
         },
         control_url=args.control_url,
-        control_key_id=args.control_key_id,
+        control_key_id=next(iter(trusted_keys), ""),
+        control_key_ids=list(trusted_keys),
         supervisor=service,
         preflight=preflight,
     )

@@ -42,6 +42,18 @@ rejected even when that different key is also locally trusted. Source objects
 accept only `url` and `key_id`, so unsupported policy-looking fields cannot be
 silently ignored. Relative URLs resolve against the declaring page as before.
 
+For a fresh deployment, enroll all approved publishers in the one-click
+command. Windows accepts
+`-ControlTrustedKey "actor-a=<KEY>","actor-b=<KEY>"`; WSL, Linux, macOS, and
+Termux accept repeated `--control-trusted-key actor-a=<KEY>` options. The
+legacy single `ControlKeyId`/`ControlPublicKey` pair remains compatible. The
+installer rejects one ID mapped to conflicting keys and one public key mapped
+to multiple publisher IDs, then writes the complete local map before running
+`control-verify`. The first/legacy publisher is also written as
+`root_key_id`. The root page must match that key exactly; additional community
+keys have no root authority and become effective only when a nested source
+names them.
+
 `control-verify`, `control-sync`, and the persisted private control state expose
 `source_publishers` records containing each composed URL, whether it was
 signed, and its verified key ID. These records contain deployment URLs and are

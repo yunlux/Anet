@@ -202,6 +202,13 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--control-url", required=True)
     result.add_argument("--control-key-id", default="")
     result.add_argument("--control-public-key", default="")
+    result.add_argument(
+        "--control-trusted-key",
+        action="append",
+        default=[],
+        metavar="KEY_ID=BASE64URL_PUBLIC_KEY",
+        help="pin an additional control publisher; may be repeated",
+    )
     result.add_argument("--feature", choices=("core", "mcp"), default="core")
     result.add_argument("--version", default="")
     result.add_argument("--wheel", type=Path)
@@ -258,14 +265,15 @@ def _main_unlocked(args: argparse.Namespace) -> int:
     except PreflightConflict as exc:
         raise DeploymentError(str(exc)) from exc
 
-    # Package changes happen only after the read-only duplicate check.
-    ensure_termux_packages(prefix, update=not args.no_package_update)
-
-    page = read_json_url(args.control_url)
     trusted_keys = trusted_keys_from_args(
         args.control_key_id,
         args.control_public_key,
+        args.control_trusted_key,
     )
+    # Package changes happen only after duplicate and local publisher-policy checks.
+    ensure_termux_packages(prefix, update=not args.no_package_update)
+
+    page = read_json_url(args.control_url)
     software = platform_software(page, "termux")
     if not isinstance(software, dict):
         raise DeploymentError("control page must contain a software object")
@@ -449,6 +457,11 @@ def _main_unlocked(args: argparse.Namespace) -> int:
                 "url": args.control_url,
                 "interval": interval,
                 **({"trusted_keys": trusted_keys} if trusted_keys else {}),
+                **(
+                    {"root_key_id": next(iter(trusted_keys))}
+                    if trusted_keys
+                    else {}
+                ),
             },
             indent=2,
             sort_keys=True,
@@ -488,7 +501,8 @@ def _main_unlocked(args: argparse.Namespace) -> int:
             "locator_contexts": current_config.get("locator_contexts", []),
         },
         control_url=args.control_url,
-        control_key_id=args.control_key_id,
+        control_key_id=next(iter(trusted_keys), ""),
+        control_key_ids=list(trusted_keys),
         supervisor=service,
         preflight=preflight,
         platform_details={

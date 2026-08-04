@@ -84,6 +84,20 @@ def validate_deployment_receipt(value: object) -> dict[str, Any]:
     _text(control.get("url"), "control.url")
     if not isinstance(control.get("key_id"), str):
         raise DeploymentReceiptError("control.key_id must be a string")
+    raw_key_ids = control.get("key_ids")
+    if raw_key_ids is None:
+        primary_key_id = str(control.get("key_id"))
+        key_ids = [primary_key_id] if primary_key_id else []
+    else:
+        key_ids = _string_list(raw_key_ids, "control.key_ids")
+    for index, key_id in enumerate(key_ids):
+        _text(key_id, f"control.key_ids[{index}]")
+    if len(key_ids) != len(set(key_ids)):
+        raise DeploymentReceiptError("control.key_ids must be unique")
+    if bool(control.get("key_id")) != bool(key_ids) or (
+        key_ids and control.get("key_id") != key_ids[0]
+    ):
+        raise DeploymentReceiptError("control.key_id must be the first key_ids entry")
     if control.get("verified") is not True:
         raise DeploymentReceiptError("control.verified must be true")
 
@@ -123,12 +137,14 @@ def build_deployment_receipt(
     node: dict[str, Any],
     control_url: str,
     control_key_id: str,
+    control_key_ids: list[str] | None = None,
     supervisor: dict[str, Any],
     preflight: dict[str, Any],
     platform_details: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the common receipt emitted by every persistent installer adapter."""
 
+    key_ids = list(control_key_ids or ([control_key_id] if control_key_id else []))
     value: dict[str, Any] = {
         "kind": RECEIPT_KIND,
         "schema_version": RECEIPT_SCHEMA_VERSION,
@@ -140,6 +156,7 @@ def build_deployment_receipt(
         "control": {
             "url": str(control_url),
             "key_id": str(control_key_id),
+            "key_ids": key_ids,
             "verified": True,
         },
         "supervisor": copy.deepcopy(supervisor),

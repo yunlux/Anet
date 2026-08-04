@@ -30,6 +30,7 @@ Human-readable preflight diagnostics remain on stderr. The common interface is:
   "control": {
     "url": "<CONTROL_URL>",
     "key_id": "community-main",
+    "key_ids": ["community-main", "actor-a"],
     "verified": true
   },
   "supervisor": {
@@ -71,6 +72,12 @@ It does not prove survival of a later logout, reboot, network transition, or
 operating-system policy change. Re-run `anet --home <ANET_HOME>
 supervisor-status` for current evidence; see
 [`SUPERVISOR_HEALTH_V1.md`](SUPERVISOR_HEALTH_V1.md).
+
+`control.key_ids` lists every locally enrolled control publisher in installer
+argument order. `control.key_id` remains the first item as a compatibility
+field for existing v1 readers and identifies the locally pinned root-page
+publisher. A legacy v1 receipt without `key_ids` remains valid and represents
+either its single `key_id` or unsigned compatibility mode.
 
 The receipt contains a complete Node ID, node-home path, control URL, local
 service information, PIDs, and health timestamps. Treat it as private deployment evidence. Do not publish it

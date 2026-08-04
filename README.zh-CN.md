@@ -43,6 +43,11 @@ Windows 使用 `-ControlKeyId`/`-ControlPublicKey`，POSIX/Termux 使用
 `{"url":"<SOURCE>","key_id":"<PUBLISHER>"}`，要求它只能由本机已固定的指定
 发布者签名。验证后的归属通过私有 `source_publishers` 证据返回；详见
 [`docs/CONTROL_SOURCE_PINS_V1.md`](docs/CONTROL_SOURCE_PINS_V1.md)。
+新设备可在同一条安装命令里加入多个本地 publisher pin：Windows 使用
+`-ControlTrustedKey "actor-a=<KEY>","actor-b=<KEY>"`，POSIX/Termux 重复使用
+`--control-trusted-key actor-a=<KEY>`。每个参数都是不可拆分的
+`key_id=public_key` 对，不会因两组数组错位而把 key 归给错误的 Actor。第一个/旧参数
+发布者会写成 `root_key_id`；新增 Actor key 不能签根页面，只能在嵌套来源点名时生效。
 
 Windows 普通用户在 PowerShell 中直接执行这一条命令：
 

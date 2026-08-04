@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Windows、WSL、Linux、macOS、Termux 一键安装现在可在同一命令中原子传入多个
+  本地 control publisher：Windows 使用 `-ControlTrustedKey id=key`，POSIX/Termux
+  重复使用 `--control-trusted-key id=key`。旧单 key 参数保持兼容；冲突归属在安装前
+  拒绝，第一个 key 固定为根页面 `root_key_id`，其余 key 只能签被点名的嵌套来源；
+  Deployment Receipt 新增完整 `control.key_ids`。
 - 嵌套 remote-control `pages`/`kv` 来源现在可使用 `{url,key_id}` 精确固定社区
   发布者。key 必须预先存在于本机 `trusted_keys`，子页必须由该 key 签名；即使另一个
   发布者同样受信也不能冒充。`control-verify`、同步结果和私有状态新增

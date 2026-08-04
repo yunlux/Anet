@@ -100,3 +100,7 @@ For multiple community maintainers, a nested `pages`/`kv` entry may use
 `{ "url", "key_id" }`. The key must already be pinned locally and the child
 signature must match it exactly; see
 [`CONTROL_SOURCE_PINS_V1.md`](CONTROL_SOURCE_PINS_V1.md).
+Repeat `--control-trusted-key actor-a=<BASE64URL_KEY>` in the one-click Termux
+command to enroll additional local publishers without editing
+`remote-control.json` after installation. The first publisher becomes
+`root_key_id`; additional publishers cannot sign the root page.

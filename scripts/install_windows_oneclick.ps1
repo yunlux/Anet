@@ -3,6 +3,7 @@ param(
     [string]$ControlUrl,
     [string]$ControlKeyId = "",
     [string]$ControlPublicKey = "",
+    [string[]]$ControlTrustedKey = @(),
     [ValidateSet("core", "mcp", "full")]
     [string]$Feature = "mcp",
     [string]$Version = "",
@@ -157,6 +158,14 @@ function Assert-DeploymentReceipt {
     $control = $Receipt["control"]
     if (-not $control["url"] -or $control["verified"] -ne $true) {
         throw "Windows deployment receipt control verification is incomplete"
+    }
+    $receiptKeyIds = @($control["key_ids"])
+    if (
+        @($receiptKeyIds | Select-Object -Unique).Count -ne $receiptKeyIds.Count -or
+        (($receiptKeyIds.Count -eq 0) -and $control["key_id"]) -or
+        (($receiptKeyIds.Count -gt 0) -and $control["key_id"] -ne $receiptKeyIds[0])
+    ) {
+        throw "Windows deployment receipt control publisher list is invalid"
     }
     $supervisor = $Receipt["supervisor"]
     if (
@@ -533,30 +542,63 @@ function Test-IsAdministrator {
 function Get-ControlTrustedKeys {
     param(
         [string]$KeyId,
-        [string]$PublicKey
+        [string]$PublicKey,
+        [string[]]$TrustedKeySpecs = @()
     )
-    $cleanId = $KeyId.Trim()
-    $encoded = $PublicKey.Trim()
-    if (-not $cleanId -and -not $encoded) {
-        return [ordered]@{}
-    }
-    if (-not $cleanId -or -not $encoded) {
+    $pairs = [System.Collections.Generic.List[object]]::new()
+    $legacyId = $KeyId.Trim()
+    $legacyKey = $PublicKey.Trim()
+    if (($legacyId -and -not $legacyKey) -or ($legacyKey -and -not $legacyId)) {
         throw "-ControlKeyId and -ControlPublicKey must be provided together"
     }
-    if ($cleanId -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$') {
-        throw "-ControlKeyId is invalid"
+    if ($legacyId -and $legacyKey) {
+        $pairs.Add([pscustomobject]@{ KeyId = $legacyId; PublicKey = $legacyKey })
     }
-    try {
-        $standard = $encoded.Replace('-', '+').Replace('_', '/')
-        while (($standard.Length % 4) -ne 0) { $standard += '=' }
-        $bytes = [Convert]::FromBase64String($standard)
-    } catch {
-        throw "-ControlPublicKey is not valid base64url"
+    foreach ($rawSpec in $TrustedKeySpecs) {
+        $spec = ([string]$rawSpec).Trim()
+        $separator = $spec.IndexOf('=')
+        if ($separator -lt 1 -or $separator -eq ($spec.Length - 1)) {
+            throw "-ControlTrustedKey must use KEY_ID=BASE64URL_PUBLIC_KEY"
+        }
+        $pairs.Add([pscustomobject]@{
+            KeyId = $spec.Substring(0, $separator)
+            PublicKey = $spec.Substring($separator + 1)
+        })
     }
-    if ($bytes.Length -ne 32) {
-        throw "-ControlPublicKey must contain 32 bytes"
+
+    $result = [System.Collections.Specialized.OrderedDictionary]::new(
+        [StringComparer]::Ordinal
+    )
+    $publisherByKey = [System.Collections.Generic.Dictionary[string,string]]::new(
+        [StringComparer]::Ordinal
+    )
+    foreach ($pair in $pairs) {
+        $cleanId = ([string]$pair.KeyId).Trim()
+        $encoded = ([string]$pair.PublicKey).Trim()
+        if ($cleanId -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$') {
+            throw "control publisher key ID is invalid"
+        }
+        try {
+            $standard = $encoded.Replace('-', '+').Replace('_', '/')
+            while (($standard.Length % 4) -ne 0) { $standard += '=' }
+            $bytes = [Convert]::FromBase64String($standard)
+        } catch {
+            throw "control publisher public key is not valid base64url"
+        }
+        if ($bytes.Length -ne 32) {
+            throw "control publisher public key must contain 32 bytes"
+        }
+        $encoded = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+        if ($result.Contains($cleanId) -and $result[$cleanId] -ne $encoded) {
+            throw "control publisher key ID has conflicting public keys: $cleanId"
+        }
+        if ($publisherByKey.ContainsKey($encoded) -and $publisherByKey[$encoded] -ne $cleanId) {
+            throw "one control publisher public key cannot identify multiple publishers"
+        }
+        $result[$cleanId] = $encoded
+        $publisherByKey[$encoded] = $cleanId
     }
-    return [ordered]@{ $cleanId = $encoded }
+    return $result
 }
 
 function Enter-InstallMutex {
@@ -655,7 +697,9 @@ if (-not $Root) {
 $rootPath = [System.IO.Path]::GetFullPath($Root)
 $installMutex = Enter-InstallMutex "deployment" $rootPath
 $page = Read-ControlPage $ControlUrl
-$trustedKeys = Get-ControlTrustedKeys $ControlKeyId $ControlPublicKey
+$trustedKeys = Get-ControlTrustedKeys $ControlKeyId $ControlPublicKey $ControlTrustedKey
+$controlKeyIds = @($trustedKeys.Keys | ForEach-Object { [string]$_ })
+$primaryControlKeyId = if ($controlKeyIds.Count -gt 0) { $controlKeyIds[0] } else { "" }
 $commonSoftware = if ($page.PSObject.Properties["software"]) {
     $page.software
 } else {
@@ -931,6 +975,7 @@ $settings = [ordered]@{
 }
 if ($trustedKeys.Count -gt 0) {
     $settings["trusted_keys"] = $trustedKeys
+    $settings["root_key_id"] = $primaryControlKeyId
 }
 New-Item -ItemType Directory -Path $nodePath -Force | Out-Null
 $settings | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (
@@ -941,12 +986,6 @@ $controlVerifyArguments = @(
     "-m", "anet", "--home", $nodePath,
     "control-verify", "--url", $ControlUrl
 )
-if ($trustedKeys.Count -gt 0) {
-    $controlVerifyArguments += @(
-        "--control-key-id", $ControlKeyId,
-        "--control-public-key", $ControlPublicKey
-    )
-}
 $controlVerifyOutput = & $python @controlVerifyArguments
 if ($LASTEXITCODE -ne 0) {
     throw "remote control page verification failed with exit code $LASTEXITCODE"
@@ -1039,7 +1078,8 @@ $nodeReceipt = [ordered]@{
 }
 $controlReceipt = [ordered]@{
     url = $ControlUrl
-    key_id = $ControlKeyId
+    key_id = $primaryControlKeyId
+    key_ids = $controlKeyIds
     verified = $true
 }
 $supervisorReceipt = [ordered]@{

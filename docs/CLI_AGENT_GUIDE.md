@@ -198,6 +198,13 @@ child signature to match exactly and inspect private `source_publishers`
 attribution. Never let a page add trusted keys or translate a publisher pin
 into a reputation, trust, or authorization score. See
 [`CONTROL_SOURCE_PINS_V1.md`](CONTROL_SOURCE_PINS_V1.md).
+On a fresh Windows deployment, pass additional local keys as
+`-ControlTrustedKey "actor-a=<KEY>","actor-b=<KEY>"`. On POSIX/Termux, repeat
+`--control-trusted-key actor-a=<KEY>`. Require the final private Deployment
+Receipt `control.key_ids` to contain every requested publisher in the same
+order; `control.key_id` remains the first entry for v1 readers and is the
+locally pinned root-page publisher. Additional keys must not be accepted as
+root signers.
 
 ### macOS
 
