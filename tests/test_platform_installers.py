@@ -45,7 +45,7 @@ def test_platform_defaults_are_platform_owned() -> None:
 def test_windows_oneclick_is_an_explicit_supervised_deployment_layer() -> None:
     installer = source("install_windows_oneclick.ps1")
     launcher = source("run-supervisor.ps1")
-    assert "-controlurl" in installer
+    assert "[string]$controlurl" in installer
     assert "-controlkeyid" in installer
     assert "-controlpublickey" in installer
     assert "trusted_keys" in installer
@@ -61,6 +61,7 @@ def test_windows_oneclick_is_an_explicit_supervised_deployment_layer() -> None:
     assert "restartcount 99" in installer
     assert "executiontimelimit" in installer
     assert 'get-optionalproperty $software "sha256"' in installer
+    assert "normalize-repositoryref" in installer
     assert "resolve-wheelsha256" in installer
     assert "does not match software.sha256" in installer
     assert 'software.wheel_url or software.repo_url' in installer
@@ -93,6 +94,7 @@ def test_windows_oneclick_is_an_explicit_supervised_deployment_layer() -> None:
     assert "supervisor.log" in launcher
     assert "status" in installer
     assert "node_id" in installer
+    assert '-runtimeroot `"$rootpath`" -controlurl' not in installer
 
 
 def test_posix_oneclick_is_an_explicit_native_service_layer() -> None:

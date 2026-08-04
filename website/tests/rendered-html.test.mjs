@@ -33,6 +33,9 @@ test("renders the Anet product homepage", async () => {
   assert.match(html, /target-scoped install lock/);
   assert.match(html, /software\.wheel_url/);
   assert.match(html, /software\.repo_url/);
+  assert.match(html, /software\.sha256/);
+  assert.match(html, /control-verify/);
+  assert.match(html, /explicit .*wheel-sha256.*match/i);
   assert.match(html, /repo_ref/);
   assert.match(html, /Git source/);
   assert.match(html, /Git 源/);

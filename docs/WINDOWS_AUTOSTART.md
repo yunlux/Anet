@@ -49,6 +49,8 @@ if it is omitted, the installer records the locally observed hash instead; a
 pinned/signed page must provide the hash before the wheel is downloaded.
 An explicit `-WheelSha256` must match the page's `software.sha256` when both
 are present.
+The scheduled task does not duplicate the control URL in its command line;
+the launcher reads the already-written `remote-control.json` settings.
 When the installer explicitly reuses this target, it stops the managed task
 and waits for the old supervisor to release the node lock before starting the
 new task, so updated control-page settings take effect immediately.

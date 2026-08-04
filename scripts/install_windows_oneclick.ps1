@@ -78,6 +78,25 @@ function Get-GitHubScriptUrl {
     return "https://raw.githubusercontent.com/$($parts[0])/$($parts[1])/$Branch/scripts/$ScriptName"
 }
 
+function Normalize-RepositoryRef {
+    param([string]$Value)
+    $reference = if ($null -eq $Value) { "" } else { $Value.Trim() }
+    if (-not $reference) {
+        return ""
+    }
+    if (
+        $reference -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]*$' -or
+        $reference.Contains("..") -or
+        $reference.Contains("//") -or
+        $reference.Contains("@{") -or
+        $reference.EndsWith(".") -or
+        $reference.EndsWith("/")
+    ) {
+        throw "repository ref contains an invalid Git reference"
+    }
+    return $reference
+}
+
 function Get-OptionalProperty {
     param(
         [object]$Object,
@@ -587,7 +606,12 @@ if (-not $sourceRef) {
 if (-not $sourceRef) {
     $sourceRef = Get-OptionalProperty $page "anet_repo_ref"
 }
-$helperBranch = if ($sourceRef) { $sourceRef } else { $GitHubBranch }
+$sourceRef = Normalize-RepositoryRef $sourceRef
+$helperBranch = if ($sourceRef) {
+    $sourceRef
+} else {
+    Normalize-RepositoryRef $GitHubBranch
+}
 if ($PSScriptRoot) {
     $localPreflight = Join-Path $PSScriptRoot "windows_install_preflight.ps1"
     if (Test-Path -LiteralPath $localPreflight -PathType Leaf) {
@@ -860,7 +884,7 @@ Copy-Item -LiteralPath $launcherSource -Destination $launcher -Force
 
 $taskPath = "\Anet\"
 $taskName = "Supervisor"
-$taskArguments = "-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$launcher`" -NodeHome `"$nodePath`" -RuntimeRoot `"$rootPath`" -ControlUrl `"$ControlUrl`""
+$taskArguments = "-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$launcher`" -NodeHome `"$nodePath`" -RuntimeRoot `"$rootPath`""
 $action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument $taskArguments
 $settings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
