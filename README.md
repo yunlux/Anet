@@ -42,7 +42,9 @@ docs/WINDOWS_AUTOSTART.md.
 When the page is signed and a publisher key is pinned, `software.sha256` is
 required for every wheel bootstrap/update; a signed `repo_url` remains the
 explicit source-install alternative. Unsigned compatibility mode may compute a
-local hash, but should only be used with an explicitly trusted page.
+local hash, but should only be used with an explicitly trusted page. If an
+explicit `--wheel-sha256`/`-WheelSha256` is supplied alongside a declaration,
+it must match the signed `software.sha256` value.
 
 For a public or community-maintained page, also pin the publisher in the
 deployment command with `-ControlKeyId`/`-ControlPublicKey` on Windows or

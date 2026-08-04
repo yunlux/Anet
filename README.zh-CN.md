@@ -27,7 +27,8 @@ wheel 加 `software.sha256` 是可重复的安装路径；如果只提供仓库�
 
 如果页面已签名并固定了发布者公钥，则每次 wheel 首次安装/更新都必须提供
 `software.sha256`；签名的 `repo_url` 仍可作为明确的源码安装路径。无签名兼容模式会
-计算本地 wheel 哈希，但只适用于明确可信的页面。
+计算本地 wheel 哈希，但只适用于明确可信的页面。如果命令显式传入
+`--wheel-sha256`/`-WheelSha256`，它必须与页面声明的 `software.sha256` 一致。
 
 如果控制页来自公开或社区维护的来源，建议在安装命令中同时固定发布者：
 Windows 使用 `-ControlKeyId`/`-ControlPublicKey`，POSIX/Termux 使用

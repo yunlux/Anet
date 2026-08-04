@@ -1250,7 +1250,9 @@ def _install_software(
         return False
     source_ref = _normalize_repository_ref(software.get("repo_ref", ""))
     software_key = _json_digest(software)
-    wheel_source = "wheel_url" in software or source.lower().endswith(".whl")
+    wheel_source = bool(str(software.get("wheel_url", "")).strip()) or source.lower().endswith(
+        ".whl"
+    )
     expected = str(software.get("sha256", "")).strip().lower()
     if wheel_source:
         if require_wheel_hash and not expected:

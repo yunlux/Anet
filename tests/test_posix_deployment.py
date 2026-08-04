@@ -82,6 +82,14 @@ def test_pinned_wheel_requires_a_declared_or_explicit_hash() -> None:
             require_hash=True,
         )
 
+    with pytest.raises(DeploymentError, match="does not match software.sha256"):
+        wheel_hash_for_install(
+            Path("wheel.whl"),
+            explicit_hash="a" * 64,
+            declared_hash="b" * 64,
+            require_hash=True,
+        )
+
 
 def test_platform_config_selects_the_platform_specific_node_settings() -> None:
     page = {

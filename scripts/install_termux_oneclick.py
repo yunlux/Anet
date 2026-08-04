@@ -35,9 +35,11 @@ from posix_oneclick import (
     read_json_url,
     resolve_reference,
     run,
-    sha256,
     string_list,
     trusted_keys_from_args,
+    validate_cross_platform_locators,
+    validate_cross_platform_ports,
+    wheel_hash_for_install,
 )
 from posix_runtime_installer import InstallError, install_runtime
 
@@ -280,6 +282,21 @@ def _main_unlocked(args: argparse.Namespace) -> int:
         contexts = string_list(
             page_config["locator_contexts"], "platform locator_contexts"
         )
+    validate_cross_platform_locators(
+        page,
+        "termux",
+        listen_host=listen_host,
+        advertise=advertise,
+        contexts=contexts,
+    )
+    validate_cross_platform_ports(
+        page,
+        "termux",
+        listen_port=requested_port,
+        contexts=contexts,
+        advertise=advertise,
+        listen_enabled=bool(page_config.get("listen_enabled", True)),
+    )
     version = str(args.version or software.get("version", "")).strip()
     if not version:
         raise DeploymentError("control page software.version is required")
@@ -291,6 +308,17 @@ def _main_unlocked(args: argparse.Namespace) -> int:
         if wheel is None:
             wheel_url = str(software.get("wheel_url", "")).strip()
             if wheel_url:
+                if (
+                    trusted_keys
+                    or args.wheel_sha256
+                    or str(software.get("sha256", "")).strip()
+                ):
+                    wheel_hash_for_install(
+                        Path(temporary) / f"anet-fabric-{version}.whl",
+                        explicit_hash=args.wheel_sha256,
+                        declared_hash=software.get("sha256", ""),
+                        require_hash=bool(trusted_keys),
+                    )
                 wheel = Path(temporary) / f"anet-fabric-{version}.whl"
                 download(resolve_reference(args.control_url, wheel_url), wheel)
             else:
@@ -305,9 +333,12 @@ def _main_unlocked(args: argparse.Namespace) -> int:
         if wheel is not None:
             if not wheel.is_file():
                 raise DeploymentError(f"wheel does not exist: {wheel}")
-            wheel_hash = str(args.wheel_sha256 or software.get("sha256", "")).strip()
-            if not wheel_hash:
-                wheel_hash = sha256(wheel)
+            wheel_hash = wheel_hash_for_install(
+                wheel,
+                explicit_hash=args.wheel_sha256,
+                declared_hash=software.get("sha256", ""),
+                require_hash=bool(trusted_keys),
+            )
         try:
             runtime = install_runtime(
                 platform_name="termux",

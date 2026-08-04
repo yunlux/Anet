@@ -31,7 +31,8 @@ already exists, an explicitly requested host or port must match it.
 When the install command pins a control publisher, `software.sha256` is
 required for a wheel; a signed `repo_url` is the explicit source-install
 alternative. Missing hashes are only tolerated by the unsigned compatibility
-bootstrap.
+bootstrap. If `--wheel-sha256` is also supplied, it must match the page's
+`software.sha256` when both are present.
 
 The installer additionally installs `python-cryptography`, `python-msgpack`,
 and `termux-services`, then:

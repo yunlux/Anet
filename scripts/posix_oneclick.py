@@ -500,7 +500,16 @@ def wheel_hash_for_install(
 ) -> str:
     """Return the wheel hash accepted by the initial runtime installer."""
 
-    value = str(explicit_hash or declared_hash or "").strip()
+    explicit = str(explicit_hash or "").strip()
+    declared = str(declared_hash or "").strip()
+    for value in (explicit, declared):
+        if value and not re.fullmatch(r"[0-9A-Fa-f]{64}", value):
+            raise DeploymentError("wheel SHA-256 must contain 64 hex characters")
+    if explicit and declared and explicit.casefold() != declared.casefold():
+        raise DeploymentError(
+            "--wheel-sha256 does not match software.sha256"
+        )
+    value = explicit or declared
     if not value:
         if require_hash:
             raise DeploymentError(
@@ -796,20 +805,16 @@ def _main_unlocked(
         if wheel_path is None:
             wheel_url = str(software.get("wheel_url", "")).strip()
             if wheel_url:
-                declared_hash = str(software.get("sha256", "")).strip()
-                candidate_hash = str(
-                    args.wheel_sha256 or declared_hash
-                ).strip()
-                if trusted_keys and not candidate_hash:
-                    raise DeploymentError(
-                        "pinned control page requires software.sha256 for wheel "
-                        "installation"
-                    )
-                if candidate_hash and not re.fullmatch(
-                    r"[0-9A-Fa-f]{64}", candidate_hash
+                if (
+                    trusted_keys
+                    or args.wheel_sha256
+                    or str(software.get("sha256", "")).strip()
                 ):
-                    raise DeploymentError(
-                        "wheel SHA-256 must contain 64 hex characters"
+                    wheel_hash_for_install(
+                        Path(temporary) / f"anet-fabric-{version}.whl",
+                        explicit_hash=args.wheel_sha256,
+                        declared_hash=software.get("sha256", ""),
+                        require_hash=bool(trusted_keys),
                     )
                 wheel_path = Path(temporary) / f"anet-fabric-{version}.whl"
                 download(resolve_reference(args.control_url, wheel_url), wheel_path)

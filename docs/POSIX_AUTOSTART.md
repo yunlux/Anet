@@ -31,6 +31,7 @@ accepted), either at the root or in the selected platform overlay. If a wheel
 is supplied, `software.sha256` pins it. In unsigned compatibility mode, the
 prototype computes the local wheel hash when the declaration is absent; a
 pinned/signed page requires `software.sha256` before a wheel is downloaded.
+If `--wheel-sha256` is also supplied, it must match the page declaration.
 Without a wheel, the
 installer passes the repository URL to pip as a Git source, so Git must be
 available on the device. The rest of the page uses the same format as the

@@ -61,6 +61,8 @@ def test_windows_oneclick_is_an_explicit_supervised_deployment_layer() -> None:
     assert "restartcount 99" in installer
     assert "executiontimelimit" in installer
     assert 'get-optionalproperty $software "sha256"' in installer
+    assert "resolve-wheelsha256" in installer
+    assert "does not match software.sha256" in installer
     assert 'software.wheel_url or software.repo_url' in installer
     assert '"-sourceurl", $sourceurl' in installer
     assert '"-sourceref", $sourceref' in installer
@@ -114,6 +116,7 @@ def test_posix_oneclick_is_an_explicit_native_service_layer() -> None:
     assert "repository_ref" in text
     assert "software.wheel_url or software.repo_url" in text
     assert "pinned control page requires software.sha256" in text
+    assert "does not match software.sha256" in text
     assert "read_node_id" in text
     assert "installationlock" in text
 
@@ -147,6 +150,8 @@ def test_termux_oneclick_uses_termux_native_service_layer() -> None:
     assert "allow-existing" in text
     assert "--listen-host" in text
     assert "apply_locator_config" in text
+    assert "validate_cross_platform_locators" in text
+    assert "validate_cross_platform_ports" in text
     assert "platform_software" in text
     assert "existing node listens on port" in text
     assert '"restart", termux_service' in text
@@ -154,6 +159,8 @@ def test_termux_oneclick_uses_termux_native_service_layer() -> None:
     assert "repository_source" in text
     assert "repository_ref" in text
     assert "software.wheel_url or software.repo_url" in text
+    assert "wheel_hash_for_install" in text
+    assert "require_hash=bool(trusted_keys)" in text
     assert "installationlock" in text
 
 

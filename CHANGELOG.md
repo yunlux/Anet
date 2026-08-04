@@ -12,6 +12,8 @@
   `remote-control-state.json`，避免跳过首次软件更新。
 - 签名控制页现在要求 wheel 首次安装和后续更新提供有效的 64 位十六进制
   `software.sha256`；签名 `repo_url` 仍可作为明确的源码安装路径，无签名兼容模式保持旧行为。
+- Termux 一键部署现在与其它平台一致执行 wheel hash 门禁；所有平台都拒绝用命令行
+  hash 覆盖控制页声明，并修正空 `wheel_url` 误判为 wheel 更新的情况。
 - Mutual Actor-to-Actor relationship claims now have a signed participant
   withdrawal path. A withdrawal deactivates only the portable claim and records
   a content-free local activity fact; it never automatically changes a local

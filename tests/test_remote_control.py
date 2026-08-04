@@ -866,6 +866,30 @@ def test_repository_software_update_uses_the_declared_ref(
     assert state["software_key"]
 
 
+def test_empty_wheel_url_falls_back_to_repository_source(
+    tmp_path: Path, monkeypatch
+) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        remote_control.subprocess,
+        "run",
+        lambda command, check: calls.append(list(command)),
+    )
+
+    assert remote_control._install_software(
+        tmp_path,
+        {
+            "wheel_url": "",
+            "repo_url": "https://github.com/yunlux/Anet",
+            "repo_ref": "v0.12.1",
+        },
+        {},
+    ) is True
+
+    assert calls
+    assert "git+https://github.com/yunlux/Anet@v0.12.1" in calls[0]
+
+
 def test_repository_software_update_rejects_an_invalid_ref(
     tmp_path: Path,
 ) -> None:
