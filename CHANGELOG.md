@@ -5,6 +5,9 @@
 - 新增 `scripts/bootstrap_posix.py` checkout-free bootstrap。WSL、Linux、macOS 和
   Termux 可通过一条 `curl | python3` 命令下载临时平台入口，复用现有重复检测、
   控制页校验和原生服务注册流程；已有 checkout 时仍可直接运行平台脚本。
+- 部署预检现在同时检查显式 `--node-home`/`-NodeHome` 和 `ANET_HOME` 指向的
+  已有持久节点目录，避免自定义节点 home 绕过 Anet 重复安装检测；runtime-only
+  安装仍不读取持久节点标记。
 - 修正 Windows、POSIX 初始安装器和运行中 remote-control 对顶层
   `default_config` 的 Windows/WSL 端口校验，并让 Windows PowerShell overlay 的空
   JSON 对象保持公共嵌套配置；错误的平台结构现在会在安装早期失败。

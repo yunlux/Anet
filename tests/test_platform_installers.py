@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import json
 import importlib.util
+import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -79,6 +84,7 @@ def test_windows_oneclick_is_an_explicit_supervised_deployment_layer() -> None:
     assert "locatorcontext" in installer
     assert "-advertise" in installer
     assert "preflight" in installer
+    assert '"-nodehome", $nodehome' in installer
     assert "allowexisting" in installer
     assert "enter-installmutex" in installer
     assert "another anet installer already owns" in installer
@@ -130,6 +136,7 @@ def test_posix_oneclick_is_an_explicit_native_service_layer() -> None:
     assert "does not match software.sha256" in text
     assert "read_node_id" in text
     assert "installationlock" in text
+    assert "node_homes=(node_home,)" in text
 
 
 def test_checkout_free_posix_bootstrap_fetches_only_known_entrypoints(
@@ -246,6 +253,86 @@ def test_windows_preflight_is_bounded_and_distinguishes_ahub() -> None:
     assert "windows-service" in text
     assert "deployment" in text
     assert "wsl[-_ ]?keepalive" in text
+    assert "[string]$nodehome" in text
+    assert "test-pathwithin" in text
+    assert "env:anet_home" in text
+    assert "anet-node-home" in text
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows preflight integration test")
+def test_windows_preflight_blocks_explicit_node_home_outside_target(
+    tmp_path: Path,
+) -> None:
+    shell = shutil.which("pwsh") or shutil.which("powershell")
+    if shell is None:
+        pytest.skip("PowerShell is unavailable")
+    target = tmp_path / "runtime"
+    outside = tmp_path / "outside-node"
+    outside.mkdir()
+    (outside / "config.json").touch()
+    script = ROOT / "scripts" / "windows_install_preflight.ps1"
+
+    outside_env = os.environ.copy()
+    outside_env["ANET_HOME"] = str(outside)
+    outside_result = subprocess.run(
+        [
+            shell,
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(script),
+            "-TargetRoot",
+            str(target),
+            "-Deployment",
+        ],
+        capture_output=True,
+        text=True,
+        env=outside_env,
+        check=False,
+    )
+    assert outside_result.returncode == 17, (
+        outside_result.stdout + outside_result.stderr
+    )
+    outside_report = json.loads(outside_result.stdout)
+    assert any(
+        item["kind"] == "anet-node-home"
+        and Path(item["path"]).resolve() == outside.resolve()
+        for item in outside_report["existing_anet"]
+    )
+
+    explicit_env = os.environ.copy()
+    explicit_env.pop("ANET_HOME", None)
+    explicit_result = subprocess.run(
+        [
+            shell,
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(script),
+            "-TargetRoot",
+            str(target),
+            "-NodeHome",
+            str(outside),
+            "-Deployment",
+        ],
+        capture_output=True,
+        text=True,
+        env=explicit_env,
+        check=False,
+    )
+    assert explicit_result.returncode == 17, (
+        explicit_result.stdout + explicit_result.stderr
+    )
+    explicit_report = json.loads(explicit_result.stdout)
+    assert any(
+        item["kind"] == "anet-node-home"
+        and Path(item["path"]).resolve() == outside.resolve()
+        for item in explicit_report["existing_anet"]
+    )
 
 
 def test_legacy_macos_bootstrap_has_duplicate_preflight() -> None:

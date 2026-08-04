@@ -676,6 +676,9 @@ $preflightArguments = @(
     "-TargetRoot", $rootPath,
     "-Deployment"
 )
+if ($NodeHome) {
+    $preflightArguments += @("-NodeHome", $NodeHome)
+}
 if ($AllowExisting) {
     $preflightArguments += "-AllowExisting"
 }

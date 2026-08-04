@@ -748,7 +748,11 @@ def _main_unlocked(
         if args.node_home
         else root / "nodes" / "default"
     )
-    preflight = collect_preflight(platform_name, root)
+    preflight = collect_preflight(
+        platform_name,
+        root,
+        node_homes=(node_home,),
+    )
     emit_preflight(preflight)
     try:
         assert_no_duplicate(

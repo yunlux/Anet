@@ -75,6 +75,11 @@ After installation:
   the updated runtime.
 - A home-level OS lock prevents a second supervisor from operating the same
   node home concurrently.
+- Deployment preflight also checks an explicit `--node-home` and the
+  `ANET_HOME` environment variable for an existing node home. Runtime-only
+  installation does not inspect those persistent-node markers. A node home
+  inside the requested runtime boundary is treated as part of that target;
+  one outside it stops the deployment unless `--allow-existing` is explicit.
 - The final JSON result includes the complete `node.node_id` read from the
   installed CLI's `status` command; identity is never inferred from a path,
   label, host, or port.

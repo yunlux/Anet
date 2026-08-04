@@ -77,6 +77,10 @@ reported but this installer does not start a new Ahub merely because the
 optional `full` feature is selected. The separate `Anet\WSL-KeepAlive` host
 bridge task is also excluded from duplicate-node detection; it only starts the
 WSL user service and does not own a Windows node home.
+When `-NodeHome` or `ANET_HOME` points to an existing node home, deployment
+preflight reports it as well, including when that path is outside the default
+runtime roots. Runtime-only installation does not inspect the persistent node
+home markers.
 
 For a Windows/WSL pair on mirrored networking, use distinct ports and the same
 opaque host zone, for example:

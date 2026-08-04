@@ -134,7 +134,9 @@ requires the separate Windows host keepalive bridge when the distribution must
 be launched at Windows user logon. See [`POSIX_AUTOSTART.md`](POSIX_AUTOSTART.md)
 for service names, locations, diagnostics, and the required systemd
 user-session precondition. POSIX one-click preflight stops on another known
-same-platform deployment; `--allow-existing` is the explicit override.
+same-platform deployment; `--allow-existing` is the explicit override. It also
+checks an explicit node-home argument and `ANET_HOME` when either is set, while
+runtime-only installation leaves persistent node markers alone.
 The macOS installer also verifies the loaded LaunchAgent reports a running
 state before it reports a successful deployment. When an Anet checkout is
 already available, the direct `scripts/install_*_oneclick.py` entry points

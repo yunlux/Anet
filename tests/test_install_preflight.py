@@ -109,3 +109,97 @@ def test_target_deployment_is_reusable(tmp_path: Path) -> None:
 
     assert report["target"]["persistent"] is True
     assert_no_duplicate(report, target, deployment=True)
+
+
+def test_deployment_preflight_reports_explicit_anet_home(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configured_home = tmp_path / "custom-node"
+    configured_home.mkdir()
+    (configured_home / "config.json").touch()
+    monkeypatch.setenv("ANET_HOME", str(configured_home))
+
+    report = collect_preflight(
+        "linux",
+        tmp_path / "new-runtime",
+        include_services=False,
+        include_processes=False,
+    )
+
+    assert any(
+        item["kind"] == "anet-node-home"
+        and Path(item["path"]) == configured_home.resolve()
+        for item in report["existing_anet"]
+    )
+    with pytest.raises(PreflightConflict, match="existing installation"):
+        assert_no_duplicate(report, tmp_path / "new-runtime", deployment=True)
+
+
+def test_runtime_only_preflight_does_not_read_anet_home(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configured_home = tmp_path / "custom-node"
+    configured_home.mkdir()
+    (configured_home / "config.json").touch()
+    monkeypatch.setenv("ANET_HOME", str(configured_home))
+
+    report = collect_preflight(
+        "linux",
+        tmp_path / "runtime",
+        include_services=False,
+        include_processes=False,
+        include_persistent_markers=False,
+    )
+
+    assert not any(
+        item["kind"] == "anet-node-home" for item in report["existing_anet"]
+    )
+
+
+def test_deployment_preflight_reports_explicit_node_home_argument(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ANET_HOME", raising=False)
+    configured_home = tmp_path / "outside-node"
+    configured_home.mkdir()
+    (configured_home / "identity.json").touch()
+
+    report = collect_preflight(
+        "linux",
+        tmp_path / "new-runtime",
+        node_homes=(configured_home,),
+        include_services=False,
+        include_processes=False,
+    )
+
+    assert any(
+        item["kind"] == "anet-node-home"
+        and Path(item["path"]) == configured_home.resolve()
+        for item in report["existing_anet"]
+    )
+    with pytest.raises(PreflightConflict, match="existing installation"):
+        assert_no_duplicate(report, tmp_path / "new-runtime", deployment=True)
+
+
+def test_node_home_inside_target_boundary_is_not_foreign(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ANET_HOME", raising=False)
+    target = tmp_path / "runtime"
+    configured_home = target / "custom-node"
+    configured_home.mkdir(parents=True)
+    (configured_home / "config.json").touch()
+
+    report = collect_preflight(
+        "linux",
+        target,
+        node_homes=(configured_home,),
+        include_services=False,
+        include_processes=False,
+    )
+
+    assert_no_duplicate(report, target, deployment=True)
