@@ -4,6 +4,7 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 from pathlib import Path
@@ -21,57 +22,93 @@ def free_loopback_port() -> int:
         return int(listener.getsockname()[1])
 
 
-def start_ahub(root: Path, port: int) -> subprocess.Popen[str]:
+class RunningAhub:
+    def __init__(self, process: subprocess.Popen[str]) -> None:
+        self.process = process
+        self.stdout_chunks: list[str] = []
+        self.stderr_chunks: list[str] = []
+        self._readers = (
+            threading.Thread(
+                target=self._drain,
+                args=(process.stdout, self.stdout_chunks),
+                daemon=True,
+            ),
+            threading.Thread(
+                target=self._drain,
+                args=(process.stderr, self.stderr_chunks),
+                daemon=True,
+            ),
+        )
+        for reader in self._readers:
+            reader.start()
+
+    @staticmethod
+    def _drain(stream, chunks: list[str]) -> None:
+        if stream is None:
+            return
+        for chunk in iter(stream.readline, ""):
+            chunks.append(chunk)
+
+    def poll(self) -> int | None:
+        return self.process.poll()
+
+
+def start_ahub(root: Path, port: int) -> RunningAhub:
     environment = {
         **os.environ,
         "NO_PROXY": "127.0.0.1,localhost",
         "no_proxy": "127.0.0.1,localhost",
         "PYTHONUTF8": "1",
     }
-    process = subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "anet",
-            "ahub-serve",
-            "--root",
-            str(root),
-            "--port",
-            str(port),
-        ],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        env=environment,
+    running = RunningAhub(
+        subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "anet",
+                "ahub-serve",
+                "--root",
+                str(root),
+                "--port",
+                str(port),
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            env=environment,
+        )
     )
     deadline = time.monotonic() + 10
     health_url = f"http://127.0.0.1:{port}/healthz"
     while time.monotonic() < deadline:
-        if process.poll() is not None:
-            stdout, stderr = process.communicate()
+        if running.poll() is not None:
+            stdout, stderr = stop_ahub(running)
             raise AssertionError(
                 f"Ahub exited before ready\nstdout={stdout}\nstderr={stderr}"
             )
         try:
             with urllib.request.urlopen(health_url, timeout=0.5) as response:
                 if response.status == 200:
-                    return process
+                    return running
         except OSError:
             time.sleep(0.05)
-    stop_ahub(process)
+    stop_ahub(running)
     raise AssertionError("Ahub did not become healthy")
 
 
-def stop_ahub(process: subprocess.Popen[str]) -> tuple[str, str]:
-    if process.poll() is None:
-        process.terminate()
+def stop_ahub(running: RunningAhub) -> tuple[str, str]:
+    if running.poll() is None:
+        running.process.terminate()
     try:
-        return process.communicate(timeout=10)
+        running.process.wait(timeout=10)
     except subprocess.TimeoutExpired:
-        process.kill()
-        return process.communicate(timeout=5)
+        running.process.kill()
+        running.process.wait(timeout=5)
+    for reader in running._readers:
+        reader.join(timeout=5)
+    return "".join(running.stdout_chunks), "".join(running.stderr_chunks)
 
 
 def test_real_http_process_restart_preserves_offline_ciphertext(
