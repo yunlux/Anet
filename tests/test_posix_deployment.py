@@ -25,6 +25,7 @@ from posix_oneclick import (  # noqa: E402
     trusted_keys_from_args,
     validate_cross_platform_locators,
     validate_cross_platform_ports,
+    wheel_hash_for_install,
 )
 from posix_runtime_installer import source_requirement  # noqa: E402
 
@@ -58,6 +59,28 @@ def test_read_node_id_rejects_incomplete_status(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr("posix_oneclick.run", lambda *_args, **_kwargs: "{}")
     with pytest.raises(DeploymentError, match="complete Node ID"):
         read_node_id(Path("python"), Path("node"))
+
+
+def test_pinned_wheel_requires_a_declared_or_explicit_hash() -> None:
+    with pytest.raises(DeploymentError, match="requires software.sha256"):
+        wheel_hash_for_install(Path("wheel.whl"), require_hash=True)
+
+    expected = "a" * 64
+    assert (
+        wheel_hash_for_install(
+            Path("wheel.whl"),
+            declared_hash=expected,
+            require_hash=True,
+        )
+        == expected
+    )
+
+    with pytest.raises(DeploymentError, match="64 hex characters"):
+        wheel_hash_for_install(
+            Path("wheel.whl"),
+            explicit_hash="not-a-hash",
+            require_hash=True,
+        )
 
 
 def test_platform_config_selects_the_platform_specific_node_settings() -> None:

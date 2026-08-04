@@ -491,6 +491,28 @@ def sha256(path: Path) -> str:
     return digest.hexdigest().upper()
 
 
+def wheel_hash_for_install(
+    path: Path,
+    *,
+    explicit_hash: str = "",
+    declared_hash: Any = "",
+    require_hash: bool = False,
+) -> str:
+    """Return the wheel hash accepted by the initial runtime installer."""
+
+    value = str(explicit_hash or declared_hash or "").strip()
+    if not value:
+        if require_hash:
+            raise DeploymentError(
+                "pinned control page requires software.sha256 or --wheel-sha256 "
+                "for wheel installation"
+            )
+        return sha256(path)
+    if not re.fullmatch(r"[0-9A-Fa-f]{64}", value):
+        raise DeploymentError("wheel SHA-256 must contain 64 hex characters")
+    return value
+
+
 def choose_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as candidate:
         candidate.bind(("127.0.0.1", 0))
@@ -774,6 +796,21 @@ def _main_unlocked(
         if wheel_path is None:
             wheel_url = str(software.get("wheel_url", "")).strip()
             if wheel_url:
+                declared_hash = str(software.get("sha256", "")).strip()
+                candidate_hash = str(
+                    args.wheel_sha256 or declared_hash
+                ).strip()
+                if trusted_keys and not candidate_hash:
+                    raise DeploymentError(
+                        "pinned control page requires software.sha256 for wheel "
+                        "installation"
+                    )
+                if candidate_hash and not re.fullmatch(
+                    r"[0-9A-Fa-f]{64}", candidate_hash
+                ):
+                    raise DeploymentError(
+                        "wheel SHA-256 must contain 64 hex characters"
+                    )
                 wheel_path = Path(temporary) / f"anet-fabric-{version}.whl"
                 download(resolve_reference(args.control_url, wheel_url), wheel_path)
             else:
@@ -788,11 +825,12 @@ def _main_unlocked(
         if wheel_path is not None:
             if not wheel_path.is_file():
                 raise DeploymentError(f"wheel does not exist: {wheel_path}")
-            wheel_hash = str(
-                args.wheel_sha256 or software.get("sha256", "")
-            ).strip()
-            if not wheel_hash:
-                wheel_hash = sha256(wheel_path)
+            wheel_hash = wheel_hash_for_install(
+                wheel_path,
+                explicit_hash=args.wheel_sha256,
+                declared_hash=software.get("sha256", ""),
+                require_hash=bool(trusted_keys),
+            )
 
         try:
             runtime = install_runtime(

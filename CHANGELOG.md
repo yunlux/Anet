@@ -10,6 +10,8 @@
 - 新增只读 `anet control-verify`。所有跨平台 one-click 安装器在注册持久服务前调用它，
   验证完整控制页、嵌套来源、Peer Card 和 Windows/WSL 端口策略，同时不提前写入
   `remote-control-state.json`，避免跳过首次软件更新。
+- 签名控制页现在要求 wheel 首次安装和后续更新提供有效的 64 位十六进制
+  `software.sha256`；签名 `repo_url` 仍可作为明确的源码安装路径，无签名兼容模式保持旧行为。
 - Mutual Actor-to-Actor relationship claims now have a signed participant
   withdrawal path. A withdrawal deactivates only the portable claim and records
   a content-free local activity fact; it never automatically changes a local

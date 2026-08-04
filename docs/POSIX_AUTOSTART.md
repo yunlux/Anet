@@ -28,8 +28,10 @@ python3 scripts/install_macos_oneclick.py \
 The control page must contain `software.version` and either an initial
 `software.wheel_url` or `software.repo_url` (a top-level `repo_url` is also
 accepted), either at the root or in the selected platform overlay. If a wheel
-is supplied, `software.sha256` pins it; when the hash is absent, the prototype
-computes the local wheel hash after downloading it. Without a wheel, the
+is supplied, `software.sha256` pins it. In unsigned compatibility mode, the
+prototype computes the local wheel hash when the declaration is absent; a
+pinned/signed page requires `software.sha256` before a wheel is downloaded.
+Without a wheel, the
 installer passes the repository URL to pip as a Git source, so Git must be
 available on the device. The rest of the page uses the same format as the
 Windows deployment prototype: default `config`, Peer Cards, `repo_url`,

@@ -398,8 +398,14 @@ def test_software_failure_rolls_back_config_and_peers(
         },
     )
 
-    def fail_software(home: Path, software: dict, state: dict) -> bool:
-        del home, software, state
+    def fail_software(
+        home: Path,
+        software: dict,
+        state: dict,
+        *,
+        require_wheel_hash: bool = False,
+    ) -> bool:
+        del home, software, state, require_wheel_hash
         raise RuntimeError("software update failed")
 
     monkeypatch.setattr(remote_control, "_install_software", fail_software)
@@ -410,6 +416,28 @@ def test_software_failure_rolls_back_config_and_peers(
     assert (local.home / "card.json").read_bytes() == card_before
     assert (local.home / "peers.json").read_bytes() == peers_before
     assert not (local.home / "remote-control-state.json").exists()
+
+
+def test_signed_wheel_update_requires_sha256_before_download(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        remote_control,
+        "_download",
+        lambda *_args, **_kwargs: pytest.fail("unsigned wheel must not download"),
+    )
+
+    with pytest.raises(RemoteControlError, match="requires software.sha256"):
+        remote_control._install_software(
+            tmp_path,
+            {
+                "version": "0.12.2",
+                "wheel_url": "https://example.invalid/update.whl",
+            },
+            {"software_key": "previous-page"},
+            require_wheel_hash=True,
+        )
 
 
 def test_platform_overlay_is_applied_only_to_matching_runtime(

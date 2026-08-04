@@ -83,6 +83,8 @@ def test_windows_oneclick_is_an_explicit_supervised_deployment_layer() -> None:
     assert "host scope must be declared on both enabled overlays" in installer
     assert "get-effectiveplatformsoftware" in installer
     assert "default_config" in installer
+    assert "pinned control page requires software.sha256" in installer
+    assert "wheel sha256 must contain 64 hex characters" in installer
     assert "supervisor" in installer
     assert "-m" in launcher
     assert "supervisor" in launcher
@@ -111,6 +113,7 @@ def test_posix_oneclick_is_an_explicit_native_service_layer() -> None:
     assert "repository_source" in text
     assert "repository_ref" in text
     assert "software.wheel_url or software.repo_url" in text
+    assert "pinned control page requires software.sha256" in text
     assert "read_node_id" in text
     assert "installationlock" in text
 

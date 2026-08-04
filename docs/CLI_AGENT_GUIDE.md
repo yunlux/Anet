@@ -85,7 +85,9 @@ nested control pages; omit them only for an explicitly trusted compatibility
 bootstrap. The one-click installer runs a read-only `anet control-verify` after
 the initial runtime/node exist and before registering the persistent service;
 it does not consume remote-control state, so the first supervisor sync can
-still install the page's software artifact. The page can install a wheel or Git source; see
+still install the page's software artifact. A pinned/signed page must provide
+`software.sha256` for wheel installation/update; a signed `repo_url` is the
+explicit source-install alternative. The page can install a wheel or Git source; see
 [`WINDOWS_AUTOSTART.md`](WINDOWS_AUTOSTART.md) before using it.
 
 For direct Windows/WSL connectivity, port numbers only isolate listeners. Bind

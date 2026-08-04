@@ -39,6 +39,11 @@ repo_ref) to pin a Git branch, tag, or commit; helper scripts and runtime
 updates use that same reference. See docs/windows-control-page.example.json and
 docs/WINDOWS_AUTOSTART.md.
 
+When the page is signed and a publisher key is pinned, `software.sha256` is
+required for every wheel bootstrap/update; a signed `repo_url` remains the
+explicit source-install alternative. Unsigned compatibility mode may compute a
+local hash, but should only be used with an explicitly trusted page.
+
 For a public or community-maintained page, also pin the publisher in the
 deployment command with `-ControlKeyId`/`-ControlPublicKey` on Windows or
 `--control-key-id`/`--control-public-key` on POSIX/Termux. The supervisor then
@@ -148,7 +153,8 @@ must provide software.version plus software.wheel_url or repo_url; when using
 repo_url, an optional repo_ref can pin a branch, tag, or commit. This request
 also supplies the control publisher pin when the page is signed:
 `<CONTROL_KEY_ID>` and `<BASE64URL_ED25519_PUBLIC_KEY>`; pass them through the
-platform installer flags and stop if the signature or expiry is invalid.
+platform installer flags, require software.sha256 for signed wheel bootstrap or
+updates, and stop if the signature or expiry is invalid.
 Before registering the persistent service, require the installer to complete
 the read-only `anet control-verify`; it must not consume the first sync state.
 This request authorizes one independent persistent node, its service/autostart integration,

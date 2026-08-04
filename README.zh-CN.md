@@ -25,6 +25,10 @@ wheel 加 `software.sha256` 是可重复的安装路径；如果只提供仓库�
 页面格式见 [控制页示例](docs/windows-control-page.example.json) 和
 [Windows 自动启动文档](docs/WINDOWS_AUTOSTART.md)。
 
+如果页面已签名并固定了发布者公钥，则每次 wheel 首次安装/更新都必须提供
+`software.sha256`；签名的 `repo_url` 仍可作为明确的源码安装路径。无签名兼容模式会
+计算本地 wheel 哈希，但只适用于明确可信的页面。
+
 如果控制页来自公开或社区维护的来源，建议在安装命令中同时固定发布者：
 Windows 使用 `-ControlKeyId`/`-ControlPublicKey`，POSIX/Termux 使用
 `--control-key-id`/`--control-public-key`。这样 supervisor 会要求根页面和
@@ -117,7 +121,7 @@ Linux    skills/install-anet/scripts/install.py
 `software.wheel_url` 或 `software.repo_url`；使用仓库地址时，可选的 `repo_ref` 可以固定
 Git 分支、tag 或 commit。如果页面已签名，还要传入发布者固定信息：
 `<CONTROL_KEY_ID>` 和 `<BASE64URL_ED25519_PUBLIC_KEY>`；把它们传给对应平台入口，
-签名或有效期校验失败时停止。本请求已授权创建一个独立持久节点、服务/自启动
+签名 wheel 首次安装/更新还必须提供 `software.sha256`，签名、有效期校验失败时停止。本请求已授权创建一个独立持久节点、服务/自启动
 以及 supervisor 对远程控制页的轮询。注册持久服务前必须完成只读的
 `anet control-verify`，且不能提前消费首次同步状态。自动检测平台并调用对应的 one-click 入口；
 原生 Windows 使用 PowerShell 一条命令，只有需要整机启动时才加入 -Admin；WSL、Linux、

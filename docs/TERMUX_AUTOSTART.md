@@ -28,6 +28,10 @@ The selected Termux platform overlay can set `software`, `listen_host`,
 object can override the common wheel URL and hash. The installer applies
 those values before enabling runit and re-signs the local Card. If a node
 already exists, an explicitly requested host or port must match it.
+When the install command pins a control publisher, `software.sha256` is
+required for a wheel; a signed `repo_url` is the explicit source-install
+alternative. Missing hashes are only tolerated by the unsigned compatibility
+bootstrap.
 
 The installer additionally installs `python-cryptography`, `python-msgpack`,
 and `termux-services`, then:

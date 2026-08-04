@@ -1238,12 +1238,27 @@ def _download(url: str, destination: Path, *, timeout: float) -> None:
     destination.write_bytes(data)
 
 
-def _install_software(home: Path, software: dict[str, Any], state: dict[str, Any]) -> bool:
+def _install_software(
+    home: Path,
+    software: dict[str, Any],
+    state: dict[str, Any],
+    *,
+    require_wheel_hash: bool = False,
+) -> bool:
     source = str(software.get("wheel_url", "") or software.get("repo_url", "")).strip()
     if not source:
         return False
     source_ref = _normalize_repository_ref(software.get("repo_ref", ""))
     software_key = _json_digest(software)
+    wheel_source = "wheel_url" in software or source.lower().endswith(".whl")
+    expected = str(software.get("sha256", "")).strip().lower()
+    if wheel_source:
+        if require_wheel_hash and not expected:
+            raise RemoteControlError(
+                "signed control page requires software.sha256 for wheel updates"
+            )
+        if expected and not re.fullmatch(r"[0-9a-f]{64}", expected):
+            raise RemoteControlError("software SHA-256 must contain 64 hex characters")
     if state.get("software_key") == software_key:
         return False
     target_version = str(software.get("version", "")).strip()
@@ -1262,10 +1277,9 @@ def _install_software(home: Path, software: dict[str, Any], state: dict[str, Any
 
     cache = Path(home) / "control-cache"
     cache.mkdir(parents=True, exist_ok=True)
-    if "wheel_url" in software or source.lower().endswith(".whl"):
+    if wheel_source:
         wheel = cache / "anet-update.whl"
         _download(source, wheel, timeout=120.0)
-        expected = str(software.get("sha256", "")).strip().lower()
         if expected:
             observed = hashlib.sha256(wheel.read_bytes()).hexdigest().lower()
             if observed != expected:
@@ -1399,7 +1413,12 @@ def _sync_remote_control_unlocked(
         nodes_changed = nodes_added + nodes_updated
         software_updated = False
         if apply_software:
-            software_updated = _install_software(home, document["software"], state)
+            software_updated = _install_software(
+                home,
+                document["software"],
+                state,
+                require_wheel_hash=bool(document["control_signed"]),
+            )
     except Exception:
         try:
             _restore_control_files(control_snapshot)

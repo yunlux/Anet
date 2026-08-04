@@ -610,9 +610,19 @@ if (-not $Version) {
     throw "control page software.version is required"
 }
 $sourceUrl = ""
+$declaredWheelSha256 = Get-OptionalProperty $software "sha256"
 if (-not $Wheel) {
     $wheelUrl = Get-OptionalProperty $software "wheel_url"
     if ($wheelUrl) {
+        if ($trustedKeys.Count -gt 0 -and -not $WheelSha256 -and -not $declaredWheelSha256) {
+            throw "pinned control page requires software.sha256 for wheel installation"
+        }
+        if (
+            $declaredWheelSha256 -and
+            $declaredWheelSha256 -notmatch '^[0-9A-Fa-f]{64}$'
+        ) {
+            throw "software.sha256 must contain 64 hex characters"
+        }
         $wheelUrl = Resolve-ControlReference $ControlUrl $wheelUrl
         $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
             "anet-install-" + [Guid]::NewGuid().ToString("N")
@@ -682,10 +692,16 @@ if ($sourceUrl) {
 } else {
     $wheelPath = (Resolve-Path -LiteralPath $Wheel).Path
     if (-not $WheelSha256) {
-        $WheelSha256 = Get-OptionalProperty $software "sha256"
-        if (-not $WheelSha256) {
-            $WheelSha256 = (Get-FileHash -LiteralPath $wheelPath -Algorithm SHA256).Hash
-        }
+        $WheelSha256 = $declaredWheelSha256
+    }
+    if ($trustedKeys.Count -gt 0 -and -not $WheelSha256) {
+        throw "pinned control page requires software.sha256 or -WheelSha256 for wheel installation"
+    }
+    if ($WheelSha256 -and $WheelSha256 -notmatch '^[0-9A-Fa-f]{64}$') {
+        throw "wheel SHA256 must contain 64 hex characters"
+    }
+    if (-not $WheelSha256) {
+        $WheelSha256 = (Get-FileHash -LiteralPath $wheelPath -Algorithm SHA256).Hash
     }
     $runtimeArguments += @(
         "-Wheel", $wheelPath,

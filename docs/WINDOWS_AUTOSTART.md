@@ -44,8 +44,9 @@ therefore starts at machine boot without requiring a user to log in. Pass
 make the node's address stable and reachable by a same-host WSL node.
 The task is also configured to restart a failed supervisor up to 99 times
 with a one-minute interval and has no execution time limit. The initial wheel
-uses `software.sha256` from the control page when present; if it is omitted,
-the installer records the locally observed hash instead.
+uses `software.sha256` from the control page. In unsigned compatibility mode,
+if it is omitted, the installer records the locally observed hash instead; a
+pinned/signed page must provide the hash before the wheel is downloaded.
 When the installer explicitly reuses this target, it stops the managed task
 and waits for the old supervisor to release the node lock before starting the
 new task, so updated control-page settings take effect immediately.
