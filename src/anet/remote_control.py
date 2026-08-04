@@ -867,6 +867,13 @@ def verify_remote_control(
         now_ms=now_ms,
         default_poll_seconds=default_poll_seconds,
     )
+    try:
+        for item in document["nodes"]:
+            PeerCard.from_dict(_card_value(item, base_url=page_url))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RemoteControlError(
+            "remote control page contains an invalid Peer Card"
+        ) from exc
     _validate_network_config(
         document["config"],
         cross_platform_windows_wsl=bool(

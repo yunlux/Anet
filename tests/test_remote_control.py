@@ -165,6 +165,38 @@ def test_control_verify_is_read_only_before_initial_supervisor_sync(
     assert not (local.home / "remote-control-state.json").exists()
 
 
+def test_control_verify_rejects_an_invalid_peer_card(
+    tmp_path: Path,
+) -> None:
+    local = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_host="127.0.0.1",
+        listen_port=43102,
+    )
+    publisher = Identity.generate("community-publisher")
+    page_path = tmp_path / "control.json"
+    page = sign_control_page(
+        {
+            "sequence": 1,
+            "nodes": [{"node_id": "not-a-peer-card"}],
+        },
+        publisher,
+        key_id="community-main",
+        issued_ms=remote_control._now_ms() - 1000,
+        expires_ms=remote_control._now_ms() + 3600_000,
+    )
+    page_path.write_text(json.dumps(page), encoding="utf-8")
+    write_control_settings(
+        local.home,
+        url=page_path.as_uri(),
+        trusted_keys=_trusted_publisher(publisher),
+    )
+
+    with pytest.raises(RemoteControlError, match="invalid Peer Card"):
+        verify_remote_control(local.home)
+
+
 def test_signed_control_page_rejects_tampering_and_unsigned_nested_page(
     tmp_path: Path,
 ) -> None:
