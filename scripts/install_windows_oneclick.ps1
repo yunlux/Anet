@@ -19,6 +19,7 @@ param(
     [string]$PreflightScriptUrl = "",
     [string]$SupervisorScriptUrl = "",
     [string]$GitHubBranch = "main",
+    [string]$HelperRepository = "https://github.com/yunlux/Anet",
     [switch]$Admin,
     [switch]$AllowExisting
 )
@@ -62,7 +63,10 @@ function Get-GitHubScriptUrl {
         [string]$ScriptName
     )
     $repository = [System.Uri]$RepositoryUrl
-    if ($repository.Host -notin @("github.com", "www.github.com")) {
+    if (
+        $repository.Scheme -ne "https" -or
+        $repository.Host -notin @("github.com", "www.github.com")
+    ) {
         throw "automatic helper download requires a GitHub repository URL; pass an explicit helper URL"
     }
     $repositoryPath = $repository.AbsolutePath.Trim("/") -replace "\.git$", ""
@@ -637,11 +641,11 @@ if (-not $sourceRef) {
     $sourceRef = Get-OptionalProperty $page "anet_repo_ref"
 }
 $sourceRef = Normalize-RepositoryRef $sourceRef
-$helperBranch = if ($sourceRef) {
-    $sourceRef
-} else {
-    Normalize-RepositoryRef $GitHubBranch
+$helperBranch = Normalize-RepositoryRef $GitHubBranch
+if (-not $helperBranch) {
+    $helperBranch = "main"
 }
+$helperRepository = $HelperRepository.Trim()
 if ($PSScriptRoot) {
     $localPreflight = Join-Path $PSScriptRoot "windows_install_preflight.ps1"
     if (Test-Path -LiteralPath $localPreflight -PathType Leaf) {
@@ -650,19 +654,8 @@ if ($PSScriptRoot) {
 }
 if (-not $preflightScript) {
     if (-not $PreflightScriptUrl) {
-        $PreflightScriptUrl = Get-OptionalProperty $software "preflight_script_url"
-    }
-    if (-not $PreflightScriptUrl) {
-        $repoUrl = Get-OptionalProperty $software "repo_url"
-        if (-not $repoUrl) {
-            $repoUrl = Get-OptionalProperty $page "repo_url"
-        }
-        if (-not $repoUrl) {
-            $repoUrl = "https://github.com/yunlux/Anet"
-        }
-        $repoUrl = Resolve-ControlReference $ControlUrl $repoUrl
         $PreflightScriptUrl = Get-GitHubScriptUrl `
-            $repoUrl $helperBranch "windows_install_preflight.ps1"
+            $helperRepository $helperBranch "windows_install_preflight.ps1"
     }
     $helperRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
         "anet-bootstrap-" + [Guid]::NewGuid().ToString("N")
@@ -737,19 +730,8 @@ if ($localInstaller -and (Test-Path -LiteralPath $localInstaller -PathType Leaf)
     $installer = $localInstaller
 } else {
     if (-not $RuntimeInstallerUrl) {
-        $RuntimeInstallerUrl = Get-OptionalProperty $software "runtime_installer_url"
-    }
-    if (-not $RuntimeInstallerUrl) {
-        $repoUrl = Get-OptionalProperty $software "repo_url"
-        if (-not $repoUrl) {
-            $repoUrl = Get-OptionalProperty $page "repo_url"
-        }
-        if (-not $repoUrl) {
-            $repoUrl = "https://github.com/yunlux/Anet"
-        }
-        $repoUrl = Resolve-ControlReference $ControlUrl $repoUrl
         $RuntimeInstallerUrl = Get-GitHubScriptUrl `
-            $repoUrl $helperBranch "install_windows.ps1"
+            $helperRepository $helperBranch "install_windows.ps1"
     }
     if (-not $helperRoot) {
         $helperRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
@@ -890,19 +872,8 @@ if ($localLauncher -and (Test-Path -LiteralPath $localLauncher -PathType Leaf)) 
     $launcherSource = $localLauncher
 } else {
     if (-not $SupervisorScriptUrl) {
-        $SupervisorScriptUrl = Get-OptionalProperty $software "supervisor_script_url"
-    }
-    if (-not $SupervisorScriptUrl) {
-        $repoUrl = Get-OptionalProperty $software "repo_url"
-        if (-not $repoUrl) {
-            $repoUrl = Get-OptionalProperty $page "repo_url"
-        }
-        if (-not $repoUrl) {
-            $repoUrl = "https://github.com/yunlux/Anet"
-        }
-        $repoUrl = Resolve-ControlReference $ControlUrl $repoUrl
         $SupervisorScriptUrl = Get-GitHubScriptUrl `
-            $repoUrl $helperBranch "run-supervisor.ps1"
+            $helperRepository $helperBranch "run-supervisor.ps1"
     }
     if (-not $helperRoot) {
         $helperRoot = Join-Path ([System.IO.Path]::GetTempPath()) (

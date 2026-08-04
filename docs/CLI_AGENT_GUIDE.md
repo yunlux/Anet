@@ -107,8 +107,13 @@ curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_
 Use `--platform linux`, `--platform macos`, or `--platform termux` for the
 other targets. If a checkout is already present, the direct
 `scripts/install_*_oneclick.py` entry points are equivalent. Use
-`--script-ref <branch-or-tag>` when the temporary bootstrap helpers must come
-from a non-`main` Git ref.
+`--repository <HTTPS_GITHUB_REPOSITORY>` and `--script-ref <branch-or-tag>`
+when the temporary bootstrap helpers must come from a fork or non-`main` Git
+ref. The bootstrap does not execute a repository selected only by an
+unverified control page; that page's `repo_url` is consumed by the installer
+for the initial runtime and by the supervisor for later runtime updates. The
+installer still requires read-only `control-verify` before registering a
+persistent service.
 
 The first two create and enable `anet-supervisor.service` as a systemd user
 unit; macOS creates and loads `net.anet.supervisor` as a LaunchAgent. These

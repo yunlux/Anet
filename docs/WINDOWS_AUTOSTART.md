@@ -114,9 +114,9 @@ with port `43112` and `--listen-host 0.0.0.0`. Replace the placeholder with an
 address or hostname reachable from both runtimes and allow the two ports in
 the appropriate host firewall.
 
-The same script can be downloaded and invoked from PowerShell when the control
-page contains `software.repo_url` (a GitHub repository is the default source
-for the helper scripts):
+The same script can be downloaded and invoked from PowerShell. The one-command
+entry point and its helper scripts default to the official Anet GitHub
+repository; a control page is not trusted to choose executable helper code:
 
 ```powershell
 & ([scriptblock]::Create((Invoke-RestMethod `
@@ -134,10 +134,15 @@ installation, either in the common `software` object or in the selected
 `platforms.windows.software` overlay. A top-level `repo_url` is also accepted.
 When a wheel is supplied, `software.sha256` pins it. When only `repo_url` is
 provided, the runtime installer passes the repository to pip as a Git source,
-so Git must be available on the device. The same `repo_url` is used for
-matching helper scripts and subsequent source-based updates.
-Optional `software.repo_ref` (or top-level `repo_ref`) pins the helper scripts,
-initial runtime, and later source updates to one Git branch, tag, or commit.
+so Git must be available on the device. The `repo_url` is used for the initial
+runtime and subsequent source-based updates. The installer still requires
+read-only `control-verify` before registering the persistent service.
+Optional `software.repo_ref` (or top-level `repo_ref`) pins the initial runtime
+and later source updates to one Git branch, tag, or commit. The executable
+helper ref is selected by `-GitHubBranch` (default `main`) and its repository
+by `-HelperRepository`; explicit `-PreflightScriptUrl`,
+`-RuntimeInstallerUrl`, or `-SupervisorScriptUrl` values are also operator
+supplied overrides.
 
 The initial installer accepts `config` or its equivalent `default_config`
 object, including the selected platform overlay. The running remote-control

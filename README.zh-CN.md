@@ -19,9 +19,12 @@ v0.12.1 现在以“一键部署”为新设备的默认路径：它在 Windows�
 `software.wheel_url` 或 `software.repo_url`（顶层 `repo_url` 也可以）。
 wheel 加 `software.sha256` 是可重复的安装路径；如果只提供仓库地址，
 安装器会让 pip 通过 Git 安装，因此设备需要有 Git。相同的 `repo_url` 还用于
-远程入口下载匹配的辅助脚本，以及 supervisor 后续的源码更新。
+supervisor 后续的源码更新。
 可选的 `software.repo_ref`（或顶层 `repo_ref`）可以固定 Git 分支、tag 或 commit；
-辅助脚本、首次安装和后续源码更新会使用同一个引用。
+首次安装和后续源码更新会使用这个引用。checkout-free bootstrap 默认只从官方
+Anet 仓库及其选定 ref 下载并执行辅助脚本，不会执行未验证控制页指定的仓库代码；
+如果确实要使用 fork 的辅助脚本，必须显式传入
+`--repository <HTTPS_GITHUB_REPOSITORY>` 和 `--script-ref <branch-or-tag>`。
 页面格式见 [控制页示例](docs/windows-control-page.example.json) 和
 [Windows 自动启动文档](docs/WINDOWS_AUTOSTART.md)。
 
@@ -89,8 +92,9 @@ curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_
   --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 ~~~
 
-如果已有 Anet checkout，仍可直接运行 `scripts/install_*_oneclick.py`；如果入口脚本需要
-来自非 `main` 的分支或 tag，可给 bootstrap 加 `--script-ref <branch-or-tag>`。
+如果已有 Anet checkout，仍可直接运行 `scripts/install_*_oneclick.py`；如果辅助脚本需要
+来自 fork 或非 `main` 的分支/tag，可给 bootstrap 显式加入
+`--repository <HTTPS_GITHUB_REPOSITORY>` 和 `--script-ref <branch-or-tag>`。
 
 WSL 和 Linux 使用当前用户的 `systemd --user`，macOS 加载 `LaunchAgent`，
 Termux 使用 `termux-services`/runit 和 Termux:Boot。若要求 WSL 在 Windows
@@ -128,7 +132,11 @@ Linux    skills/install-anet/scripts/install.py
 从 https://github.com/yunlux/Anet 安装并部署 Anet。使用这个控制页 URL：
 <CONTROL_URL>（执行前替换占位符）。控制页必须提供 `software.version` 以及
 `software.wheel_url` 或 `software.repo_url`；使用仓库地址时，可选的 `repo_ref` 可以固定
-Git 分支、tag 或 commit。如果页面已签名，还要传入发布者固定信息：
+Git 分支、tag 或 commit。未验证的控制页不能选择并执行 bootstrap 辅助代码；
+checkout-free bootstrap 默认使用官方 Anet 仓库/ref，只有显式传入
+`--repository` 和 `--script-ref` 才使用 fork/ref。控制页的 `repo_url` 作为首次安装和
+后续源码更新的 runtime 软件源；安装器仍会在注册持久服务前执行只读的
+`control-verify`。如果页面已签名，还要传入发布者固定信息：
 `<CONTROL_KEY_ID>` 和 `<BASE64URL_ED25519_PUBLIC_KEY>`；把它们传给对应平台入口，
 签名 wheel 首次安装/更新还必须提供 `software.sha256`，签名、有效期校验失败时停止。本请求已授权创建一个独立持久节点、服务/自启动
 以及 supervisor 对远程控制页的轮询。注册持久服务前必须完成只读的

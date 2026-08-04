@@ -17,6 +17,13 @@ install only a versioned Anet runtime. The explicit one-click deployment
 entry points add one persistent node, the remote control client, and the
 platform-native auto-start unit:
 
+The bootstrap helper files come from the official Anet GitHub repository and
+the explicit `--script-ref` (default `main`). A control page is not trusted to
+choose executable helper code before `control-verify`; its `repo_url` is used
+by the installer/supervisor as the runtime source. Use explicit
+`--repository <HTTPS_GITHUB_REPOSITORY>` together with `--script-ref` for a
+trusted fork.
+
 ```bash
 # WSL
 python3 scripts/install_wsl_oneclick.py \

@@ -32,12 +32,15 @@ The control page must provide software.version and either an initial
 software.wheel_url or a repository source in software.repo_url (the top-level
 repo_url is also accepted). A wheel plus software.sha256 is the reproducible
 package path. With only repo_url, the installer passes the repository to pip as
-a Git source, so Git must be available on the device. The same repo_url lets a
-downloaded entry point fetch matching helper scripts and lets the supervisor
-apply later source updates. Set optional software.repo_ref (or top-level
-repo_ref) to pin a Git branch, tag, or commit; helper scripts and runtime
-updates use that same reference. See docs/windows-control-page.example.json and
-docs/WINDOWS_AUTOSTART.md.
+a Git source, so Git must be available on the device. The supervisor uses that
+source for later runtime updates. Set optional software.repo_ref (or top-level
+repo_ref) to pin a Git branch, tag, or commit for the initial runtime and later
+source updates. The checkout-free bootstrap fetches executable helper scripts
+from the official Anet repository and its selected ref by default; it does not
+execute a repository chosen by an unverified control page. To use a fork for
+the helper scripts, pass `--repository <HTTPS_GITHUB_REPOSITORY>` and
+`--script-ref <branch-or-tag>` explicitly. See
+docs/windows-control-page.example.json and docs/WINDOWS_AUTOSTART.md.
 
 When the page is signed and a publisher key is pinned, `software.sha256` is
 required for every wheel bootstrap/update; a signed `repo_url` remains the
@@ -112,8 +115,9 @@ curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_
 
 If an Anet checkout is already present, the equivalent direct entry points
 remain available under `scripts/install_*_oneclick.py`. Use
-`--script-ref <branch-or-tag>` with the bootstrap when the helper scripts must
-come from a non-`main` Git ref.
+`--repository <HTTPS_GITHUB_REPOSITORY>` and `--script-ref <branch-or-tag>`
+with the bootstrap when the helper scripts must come from a fork or non-`main`
+Git ref.
 
 WSL and Linux create and start a systemd --user supervisor, macOS loads a
 LaunchAgent, and Termux uses termux-services/runit plus Termux:Boot. WSL also
@@ -162,7 +166,13 @@ from another device:
 Install and deploy Anet from https://github.com/yunlux/Anet. Use this control
 page URL: <CONTROL_URL> (replace the placeholder before running). The page
 must provide software.version plus software.wheel_url or repo_url; when using
-repo_url, an optional repo_ref can pin a branch, tag, or commit. This request
+repo_url, an optional repo_ref can pin a branch, tag, or commit. An unverified
+control page cannot select executable bootstrap helpers: checkout-free
+bootstrap uses the official Anet repository/ref unless `--repository` and
+`--script-ref` are explicitly supplied. The page's repo_url remains the
+runtime source for the initial install and later source updates; the installer
+still requires read-only `control-verify` before registering a persistent
+service. This request
 also supplies the control publisher pin when the page is signed:
 `<CONTROL_KEY_ID>` and `<BASE64URL_ED25519_PUBLIC_KEY>`; pass them through the
 platform installer flags, require software.sha256 for signed wheel bootstrap or

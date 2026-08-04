@@ -141,7 +141,10 @@ The macOS installer also verifies the loaded LaunchAgent reports a running
 state before it reports a successful deployment. When an Anet checkout is
 already available, the direct `scripts/install_*_oneclick.py` entry points
 remain equivalent; `bootstrap_posix.py --script-ref <branch-or-tag>` selects
-the Git ref used for its temporary helper files.
+the Git ref used for its temporary helper files. Use
+`--repository <HTTPS_GITHUB_REPOSITORY>` as well when those helpers must come
+from a fork. The control page's `repo_url` remains the runtime/software source;
+it does not select executable bootstrap code.
 
 ## Android Termux automatic deployment prototype
 

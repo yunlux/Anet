@@ -9,7 +9,6 @@ node-home, control-page, duplicate-preflight, and service-manager behavior.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import runpy
 import sys
@@ -22,7 +21,6 @@ from pathlib import Path
 DEFAULT_REPOSITORY = "https://github.com/yunlux/Anet"
 DEFAULT_SCRIPT_REF = "main"
 MAX_SOURCE_BYTES = 4 * 1024 * 1024
-MAX_CONTROL_HINT_BYTES = 8 * 1024 * 1024
 SCRIPT_FILES = {
     "wsl": "install_wsl_oneclick.py",
     "linux": "install_linux_oneclick.py",
@@ -137,79 +135,6 @@ def download_source(url: str, destination: Path) -> None:
     destination.write_bytes(data)
 
 
-def control_page_hints(url: str, platform_name: str) -> tuple[str, str]:
-    """Read only repository hints from a control page, if it is reachable."""
-
-    target = str(url).strip()
-    if not target:
-        return "", ""
-    parsed = urllib.parse.urlparse(target)
-    try:
-        is_windows_path = len(target) >= 2 and target[1] == ":"
-        if not parsed.scheme or is_windows_path:
-            raw = Path(target).expanduser().resolve().read_bytes()
-        elif parsed.scheme == "file":
-            raw = Path(urllib.request.url2pathname(parsed.path)).resolve().read_bytes()
-        elif parsed.scheme in {"http", "https"}:
-            request = urllib.request.Request(
-                target,
-                headers={
-                    "Accept": "application/json",
-                    "User-Agent": "Anet-POSIX-Bootstrap/0.12.1",
-                },
-            )
-            with urllib.request.urlopen(request, timeout=20) as response:
-                raw = response.read(MAX_CONTROL_HINT_BYTES + 1)
-        else:
-            return "", ""
-        if len(raw) > MAX_CONTROL_HINT_BYTES:
-            return "", ""
-        document = json.loads(raw.decode("utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
-        return "", ""
-    if not isinstance(document, dict):
-        return "", ""
-
-    common = document.get("software", {})
-    if not isinstance(common, dict):
-        common = {}
-    platforms = document.get("platforms")
-    if isinstance(platforms, dict):
-        overlay = platforms.get(platform_name)
-        if isinstance(overlay, dict) and isinstance(overlay.get("software"), dict):
-            common = {**common, **overlay["software"]}
-    repository = str(
-        common.get("repo_url", "")
-        or document.get("repo_url", "")
-        or document.get("anet_repo", "")
-    ).strip()
-    reference = str(
-        common.get("repo_ref", "")
-        or document.get("repo_ref", "")
-        or document.get("anet_repo_ref", "")
-    ).strip()
-    if repository.startswith("git+"):
-        repository = repository[4:]
-    if repository and not urllib.parse.urlparse(repository).scheme:
-        if parsed.scheme in {"http", "https"}:
-            repository = urllib.parse.urljoin(target, repository)
-        else:
-            repository = ""
-    return repository, reference
-
-
-def option_value(arguments: list[str], name: str) -> str:
-    """Return one explicit ``--name`` value without consuming installer args."""
-
-    for index, argument in enumerate(arguments):
-        if argument == name and index + 1 < len(arguments):
-            return str(arguments[index + 1]).strip()
-        prefix = f"{name}="
-        if argument.startswith(prefix):
-            return argument[len(prefix) :].strip()
-    return ""
-
-
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(
         description=(
@@ -225,12 +150,16 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument(
         "--repository",
         default=None,
-        help="HTTPS GitHub repository containing the Anet scripts (default: control page or Anet main)",
+        help=(
+            "explicit HTTPS GitHub repository containing bootstrap scripts "
+            "(default: official Anet repository; the control page is not used "
+            "to select bootstrap code)"
+        ),
     )
     result.add_argument(
         "--script-ref",
         default=None,
-        help="Git branch, tag, or commit used for the downloaded scripts (default: control page or main)",
+        help="Git branch, tag, or commit used for the downloaded scripts (default: main)",
     )
     return result
 
@@ -240,17 +169,12 @@ def main(argv: list[str] | None = None) -> int:
     platform_name = (
         detect_platform() if bootstrap_args.platform == "auto" else bootstrap_args.platform
     )
-    control_url = option_value(installer_args, "--control-url")
-    hinted_repository, hinted_ref = control_page_hints(control_url, platform_name)
-    repository = (
-        str(bootstrap_args.repository).strip()
-        if bootstrap_args.repository
-        else hinted_repository or DEFAULT_REPOSITORY
-    )
+    # The control page is untrusted input until the installed CLI performs
+    # control-verify. It may choose the runtime/software source, but it must
+    # not choose Python source that this bootstrap executes before verification.
+    repository = str(bootstrap_args.repository or DEFAULT_REPOSITORY).strip()
     script_ref = normalize_script_ref(
-        str(bootstrap_args.script_ref).strip()
-        if bootstrap_args.script_ref
-        else hinted_ref or DEFAULT_SCRIPT_REF
+        str(bootstrap_args.script_ref or DEFAULT_SCRIPT_REF).strip()
     )
     entry_name = SCRIPT_FILES[platform_name]
 

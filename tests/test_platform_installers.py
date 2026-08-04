@@ -74,6 +74,11 @@ def test_windows_oneclick_is_an_explicit_supervised_deployment_layer() -> None:
     assert '"-sourceurl", $sourceurl' in installer
     assert '"-sourceref", $sourceref' in installer
     assert "helperbranch" in installer
+    assert "helperrepository" in installer
+    assert "$helperrepository $helperbranch" in installer
+    assert 'get-optionalproperty $software "preflight_script_url"' not in installer
+    assert 'get-optionalproperty $software "runtime_installer_url"' not in installer
+    assert 'get-optionalproperty $software "supervisor_script_url"' not in installer
     assert "stop-managedsupervisortask" in installer
     assert "did not stop within 30 seconds" in installer
     assert "wait-managedsupervisortask" in installer
@@ -141,6 +146,7 @@ def test_posix_oneclick_is_an_explicit_native_service_layer() -> None:
 
 def test_checkout_free_posix_bootstrap_fetches_only_known_entrypoints(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bootstrap = source("bootstrap_posix.py")
     assert "raw.githubusercontent.com" in bootstrap
@@ -152,6 +158,8 @@ def test_checkout_free_posix_bootstrap_fetches_only_known_entrypoints(
     assert "posix_runtime_installer.py" in bootstrap
     assert "runpy.run_path" in bootstrap
     assert "temporarydirectory" in bootstrap
+    assert "control_page_hints" not in bootstrap
+    assert "control page is not used" in bootstrap
 
     spec = importlib.util.spec_from_file_location(
         "anet_bootstrap_posix", ROOT / "scripts" / "bootstrap_posix.py"
@@ -184,10 +192,30 @@ def test_checkout_free_posix_bootstrap_fetches_only_known_entrypoints(
         ),
         encoding="utf-8",
     )
-    assert module.control_page_hints(str(control), "wsl") == (
-        "https://github.com/example/wsl",
-        "release/v0.12.1",
+    downloaded: list[str] = []
+
+    def fake_download(url: str, destination: Path) -> None:
+        downloaded.append(url)
+
+    def stop_before_running(*_args: object, **_kwargs: object) -> None:
+        raise SystemExit(0)
+
+    monkeypatch.setattr(module, "download_source", fake_download)
+    monkeypatch.setattr(module.runpy, "run_path", stop_before_running)
+    assert (
+        module.main(
+            [
+                "--platform",
+                "wsl",
+                "--control-url",
+                str(control),
+            ]
+        )
+        == 0
     )
+    assert downloaded
+    assert all("yunlux/Anet/main/scripts/" in url for url in downloaded)
+    assert not any("example/evil" in url for url in downloaded)
 
 
 def test_wsl_host_keepalive_is_an_explicit_user_scoped_bridge() -> None:
