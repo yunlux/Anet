@@ -730,6 +730,16 @@ $settings | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (
     Join-Path $nodePath "remote-control.json"
 ) -Encoding utf8
 
+$statusOutput = & $python "-m" "anet" "--home" $nodePath "status"
+if ($LASTEXITCODE -ne 0) {
+    throw "Anet status failed with exit code $LASTEXITCODE"
+}
+$nodeStatus = ($statusOutput -join "`n") | ConvertFrom-Json
+$nodeId = Get-OptionalProperty $nodeStatus "node_id"
+if ($nodeId -notmatch '^an1[a-z2-7]{17,125}$') {
+    throw "Anet status did not return a complete Node ID"
+}
+
 $launcher = Join-Path $rootPath "run-supervisor.ps1"
 if ($localLauncher -and (Test-Path -LiteralPath $localLauncher -PathType Leaf)) {
     $launcherSource = $localLauncher
@@ -796,16 +806,6 @@ Register-ScheduledTask `
     -Force | Out-Null
 Start-ScheduledTask -TaskPath $taskPath -TaskName $taskName
 Wait-ManagedSupervisorTask $taskPath $taskName
-
-$statusOutput = & $python "-m" "anet" "--home" $nodePath "status"
-if ($LASTEXITCODE -ne 0) {
-    throw "Anet status failed with exit code $LASTEXITCODE"
-}
-$nodeStatus = ($statusOutput -join "`n") | ConvertFrom-Json
-$nodeId = Get-OptionalProperty $nodeStatus "node_id"
-if ($nodeId -notmatch '^an1[a-z2-7]{17,125}$') {
-    throw "Anet status did not return a complete Node ID"
-}
 
 $result = [ordered]@{
     ok = $true

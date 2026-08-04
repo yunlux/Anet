@@ -853,6 +853,7 @@ def _main_unlocked(
         + "\n",
     )
 
+    node_id = read_node_id(python, node_home)
     if platform_name in {"wsl", "linux"}:
         service = install_systemd_service(
             python,
@@ -861,7 +862,6 @@ def _main_unlocked(
         )
     else:
         service = install_launchd_service(python, node_home)
-    node_id = read_node_id(python, node_home)
     result = {
         "ok": True,
         "outcome": "created" if created else "reused",
