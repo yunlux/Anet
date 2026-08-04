@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 import re
 from pathlib import Path
 
@@ -87,6 +88,12 @@ def test_windows_oneclick_is_an_explicit_supervised_deployment_layer() -> None:
     assert "get-effectiveplatformsoftware" in installer
     assert "merge-jsonobjects" in installer
     assert "default_config" in installer
+    assert "return $value -is [pscustomobject]" in installer
+    assert "control page platforms must be an object" in installer
+    assert re.search(
+        r"assert-crossplatformports\s+`\s*\$platformsforvalidation\s+`\s*\$commonconfig",
+        installer,
+    )
     assert "pinned control page requires software.sha256" in installer
     assert "wheel sha256 must contain 64 hex characters" in installer
     assert "supervisor" in installer
@@ -123,6 +130,57 @@ def test_posix_oneclick_is_an_explicit_native_service_layer() -> None:
     assert "does not match software.sha256" in text
     assert "read_node_id" in text
     assert "installationlock" in text
+
+
+def test_checkout_free_posix_bootstrap_fetches_only_known_entrypoints(
+    tmp_path: Path,
+) -> None:
+    bootstrap = source("bootstrap_posix.py")
+    assert "raw.githubusercontent.com" in bootstrap
+    assert "parse_known_args" in bootstrap
+    assert "install_wsl_oneclick.py" in bootstrap
+    assert "install_linux_oneclick.py" in bootstrap
+    assert "install_macos_oneclick.py" in bootstrap
+    assert "install_termux_oneclick.py" in bootstrap
+    assert "posix_runtime_installer.py" in bootstrap
+    assert "runpy.run_path" in bootstrap
+    assert "temporarydirectory" in bootstrap
+
+    spec = importlib.util.spec_from_file_location(
+        "anet_bootstrap_posix", ROOT / "scripts" / "bootstrap_posix.py"
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.normalize_script_ref("release/v0.12.1") == "release/v0.12.1"
+    assert module.github_raw_url(
+        "https://github.com/example/anet.git", "release/v0.12.1", "posix_oneclick.py"
+    ) == (
+        "https://raw.githubusercontent.com/example/anet/release/v0.12.1/scripts/"
+        "posix_oneclick.py"
+    )
+    control = tmp_path / "control.json"
+    control.write_text(
+        json.dumps(
+            {
+                "repo_url": "https://github.com/example/common",
+                "repo_ref": "main",
+                "platforms": {
+                    "wsl": {
+                        "software": {
+                            "repo_url": "https://github.com/example/wsl",
+                            "repo_ref": "release/v0.12.1",
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert module.control_page_hints(str(control), "wsl") == (
+        "https://github.com/example/wsl",
+        "release/v0.12.1",
+    )
 
 
 def test_wsl_host_keepalive_is_an_explicit_user_scoped_bridge() -> None:
@@ -217,6 +275,8 @@ def test_agent_guides_cover_platforms_and_installer_features() -> None:
         assert name in cli_guide
     assert "-Feature mcp" in cli_guide
     assert "--feature mcp" in cli_guide
+    assert "bootstrap_posix.py" in cli_guide
+    assert "--platform termux" in cli_guide
     normalized = " ".join(cli_guide.split())
     assert "must not automatically create a persistent node" in normalized
     assert "CLI control plane + narrowly scoped MCP data plane" in normalized

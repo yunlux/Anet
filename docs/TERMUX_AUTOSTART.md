@@ -4,17 +4,25 @@ Termux can run the Anet core node, but it is not ordinary Linux: it has no
 systemd user manager. The Termux deployment uses Termux-native Python packages,
 `termux-services`/runit for supervision, and Termux:Boot for boot-time startup.
 
-Prepare Termux once, then run the installer from an Anet checkout:
+Prepare Termux once. A checkout-free installation only needs Python and curl;
+the bootstrap downloads the platform entry point and shared installer modules
+to a temporary directory:
 
 ```bash
 pkg update
-pkg install -y python python-pip git
+pkg install -y python curl
 
-python3 scripts/install_termux_oneclick.py \
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform termux \
   --control-url https://example.invalid/anet/control.json \
   --control-key-id community-main \
   --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 ```
+
+When an Anet checkout is already present, the direct entry point
+`python3 scripts/install_termux_oneclick.py` remains equivalent.
+The installer itself installs the remaining Termux packages, including Git
+when a repository source is selected.
 
 The installer performs its read-only duplicate check before it runs `pkg`.
 It reuses the target runtime/node, reports known Ahub data roots, and stops if

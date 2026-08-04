@@ -494,7 +494,7 @@ def _effective_platform_config(
     overlay = platforms.get(platform_name)
     if not isinstance(overlay, dict):
         return None
-    base = document.get("config", {})
+    base = document.get("config", document.get("default_config", {}))
     if not isinstance(base, dict):
         base = {}
     patch = overlay.get("config", overlay.get("default_config", {}))

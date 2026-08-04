@@ -63,26 +63,34 @@ Windows 普通用户在 PowerShell 中直接执行这一条命令：
 Anet/Ahub runtime、服务、任务或进程时停止，不会静默创建第二套部署。明确需要第二套时才使用
 `-AllowExisting`。检测前还会取得按目标目录隔离的安装锁，避免两个并发命令同时通过检测并创建同一套 runtime 或服务。
 
-其他平台使用同一控制页和部署模型。以下入口需要在 Anet checkout 中运行（上面的
-Windows PowerShell 命令不需要先 checkout）：
+其他平台使用同一控制页和部署模型。新设备可以直接使用 checkout-free 的 POSIX
+bootstrap：它只把选定平台的入口和共享安装模块下载到临时目录，部署命令结束后删除；
+不需要先准备 Anet checkout：
 
 ~~~bash
 # WSL
-python3 scripts/install_wsl_oneclick.py --control-url <CONTROL_URL> \
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform wsl --control-url <CONTROL_URL> \
   --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 
 # 非 WSL Linux
-python3 scripts/install_linux_oneclick.py --control-url <CONTROL_URL> \
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform linux --control-url <CONTROL_URL> \
   --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 
 # macOS
-python3 scripts/install_macos_oneclick.py --control-url <CONTROL_URL> \
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform macos --control-url <CONTROL_URL> \
   --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 
 # Android Termux
-python3 scripts/install_termux_oneclick.py --control-url <CONTROL_URL> \
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform termux --control-url <CONTROL_URL> \
   --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 ~~~
+
+如果已有 Anet checkout，仍可直接运行 `scripts/install_*_oneclick.py`；如果入口脚本需要
+来自非 `main` 的分支或 tag，可给 bootstrap 加 `--script-ref <branch-or-tag>`。
 
 WSL 和 Linux 使用当前用户的 `systemd --user`，macOS 加载 `LaunchAgent`，
 Termux 使用 `termux-services`/runit 和 Termux:Boot。若要求 WSL 在 Windows
@@ -126,7 +134,8 @@ Git 分支、tag 或 commit。如果页面已签名，还要传入发布者固�
 以及 supervisor 对远程控制页的轮询。注册持久服务前必须完成只读的
 `anet control-verify`，且不能提前消费首次同步状态。自动检测平台并调用对应的 one-click 入口；
 原生 Windows 使用 PowerShell 一条命令，只有需要整机启动时才加入 -Admin；WSL、Linux、
-macOS、Termux 使用 checkout 中对应的一键脚本。如果 WSL 还必须在 Windows 重启后恢复，
+macOS、Termux 没有 checkout 时使用 `bootstrap_posix.py` 管道并传入对应的 `--platform`，
+已有 checkout 时可直接运行对应的一键脚本。如果 WSL 还必须在 Windows 重启后恢复，
 且主机侧操作已获授权，再注册 WSL keepalive 任务。Windows 与 WSL 必须视为两个节点：
 使用不同 node home、identity、Node ID 和监听端口，不能把 127.0.0.1 作为 host-scoped
 peer 地址发布。最后报告 runtime、独立节点、服务/任务状态、节点 ID、node home 和控制页地址。

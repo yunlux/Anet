@@ -95,19 +95,20 @@ both nodes to a non-loopback shared host address (or `0.0.0.0` plus an explicit
 advertised address), use different ports, and never publish `127.0.0.1` under a
 shared `host:` locator context.
 
-The equivalent explicit POSIX deployment paths are:
+The equivalent checkout-free POSIX deployment path is:
 
 ```bash
-python3 scripts/install_wsl_oneclick.py --control-url <CONTROL_URL> \
-  --control-key-id community-main \
-  --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
-python3 scripts/install_linux_oneclick.py --control-url <CONTROL_URL> \
-  --control-key-id community-main \
-  --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
-python3 scripts/install_macos_oneclick.py --control-url <CONTROL_URL> \
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform wsl --control-url <CONTROL_URL> \
   --control-key-id community-main \
   --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 ```
+
+Use `--platform linux`, `--platform macos`, or `--platform termux` for the
+other targets. If a checkout is already present, the direct
+`scripts/install_*_oneclick.py` entry points are equivalent. Use
+`--script-ref <branch-or-tag>` when the temporary bootstrap helpers must come
+from a non-`main` Git ref.
 
 The first two create and enable `anet-supervisor.service` as a systemd user
 unit; macOS creates and loads `net.anet.supervisor` as a LaunchAgent. These
@@ -123,10 +124,11 @@ after a Windows reboot. After the WSL node is installed, the optional host
 bridge can be registered with
 `scripts/register_wsl_keepalive.ps1 -Distribution <DISTRO> -LinuxUser <USER>`.
 
-For Android inside Termux, use the separate Termux entry point:
+For Android inside Termux, use the same bootstrap with `--platform termux`:
 
 ```bash
-python3 scripts/install_termux_oneclick.py --control-url <CONTROL_URL> \
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform termux --control-url <CONTROL_URL> \
   --control-key-id community-main \
   --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 ```

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- 新增 `scripts/bootstrap_posix.py` checkout-free bootstrap。WSL、Linux、macOS 和
+  Termux 可通过一条 `curl | python3` 命令下载临时平台入口，复用现有重复检测、
+  控制页校验和原生服务注册流程；已有 checkout 时仍可直接运行平台脚本。
+- 修正 Windows、POSIX 初始安装器和运行中 remote-control 对顶层
+  `default_config` 的 Windows/WSL 端口校验，并让 Windows PowerShell overlay 的空
+  JSON 对象保持公共嵌套配置；错误的平台结构现在会在安装早期失败。
 - 一键部署入口现在与远程 supervisor 对 `config`/`software` 平台 overlay 使用相同的递归合并和
   `default_config` 语义；首次安装不会因嵌套字段而与后续控制页同步产生不同结果。WebDAV
   carrier 的探测回归测试区分唯一 mailbox 路径与安全的传输重试，避免在全量 CI 负载下误报。

@@ -118,12 +118,15 @@ addresses equivalent.
 
 ## WSL, Linux, and macOS automatic deployment prototype
 
-The corresponding explicit POSIX deployment entry points are:
+The corresponding checkout-free POSIX bootstrap entry points are:
 
 ```bash
-python3 scripts/install_wsl_oneclick.py --control-url <CONTROL_URL>
-python3 scripts/install_linux_oneclick.py --control-url <CONTROL_URL>
-python3 scripts/install_macos_oneclick.py --control-url <CONTROL_URL>
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform wsl --control-url <CONTROL_URL>
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform linux --control-url <CONTROL_URL>
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform macos --control-url <CONTROL_URL>
 ```
 
 WSL and non-WSL Linux use `systemd --user`; macOS uses a LaunchAgent. WSL
@@ -133,15 +136,18 @@ for service names, locations, diagnostics, and the required systemd
 user-session precondition. POSIX one-click preflight stops on another known
 same-platform deployment; `--allow-existing` is the explicit override.
 The macOS installer also verifies the loaded LaunchAgent reports a running
-state before it reports a successful deployment.
+state before it reports a successful deployment. When an Anet checkout is
+already available, the direct `scripts/install_*_oneclick.py` entry points
+remain equivalent; `bootstrap_posix.py --script-ref <branch-or-tag>` selects
+the Git ref used for its temporary helper files.
 
 ## Android Termux automatic deployment prototype
 
 Termux has its own entry point and does not use the Linux systemd entry point:
 
 ```bash
-python3 scripts/install_termux_oneclick.py \
-  --control-url <CONTROL_URL>
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform termux --control-url <CONTROL_URL>
 ```
 
 It uses Termux-native Python dependencies, `termux-services`/runit, and a

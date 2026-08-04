@@ -608,6 +608,7 @@ def test_cross_platform_control_pages_reject_equal_listener_ports(
         tmp_path / "control.json",
         {
             "sequence": 1,
+            "default_config": {"listen_host": "0.0.0.0"},
             "platforms": {
                 "windows": {
                     "config": {

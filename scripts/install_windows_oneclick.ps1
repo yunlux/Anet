@@ -114,13 +114,10 @@ function Get-OptionalProperty {
 
 function Test-IsJsonObject {
     param([object]$Value)
-    if ($null -eq $Value -or $Value -is [string]) {
+    if ($null -eq $Value) {
         return $false
     }
-    if ($Value -is [System.Collections.IEnumerable]) {
-        return $false
-    }
-    return $Value.PSObject.Properties.Count -gt 0
+    return $Value -is [pscustomobject]
 }
 
 function Merge-JsonObjects {
@@ -201,11 +198,20 @@ function Get-EffectivePlatformConfig {
     if ($null -eq $Platforms) {
         return $null
     }
+    if (-not (Test-IsJsonObject $Platforms)) {
+        throw "control page platforms must be an object"
+    }
     $overlayProperty = $Platforms.PSObject.Properties[$PlatformName]
     if ($null -eq $overlayProperty) {
         return $null
     }
     $overlay = $overlayProperty.Value
+    if ($null -eq $overlay) {
+        return $CommonConfig
+    }
+    if (-not (Test-IsJsonObject $overlay)) {
+        throw "control page platforms.$PlatformName must be an object"
+    }
     $config = $null
     if ($null -ne $overlay -and $overlay.PSObject.Properties["config"]) {
         $config = $overlay.config
@@ -225,11 +231,14 @@ function Get-EffectivePlatformSoftware {
         [object]$CommonSoftware,
         [string]$PlatformName
     )
-    if ($null -ne $CommonSoftware -and $CommonSoftware -isnot [psobject]) {
+    if ($null -ne $CommonSoftware -and -not (Test-IsJsonObject $CommonSoftware)) {
         throw "control page software must be an object"
     }
     if ($null -eq $Platforms) {
         return $(if ($null -eq $CommonSoftware) { [pscustomobject]@{} } else { $CommonSoftware })
+    }
+    if (-not (Test-IsJsonObject $Platforms)) {
+        throw "control page platforms must be an object"
     }
     $overlayProperty = $Platforms.PSObject.Properties[$PlatformName]
     if ($null -eq $overlayProperty) {
@@ -239,6 +248,9 @@ function Get-EffectivePlatformSoftware {
     if ($null -eq $overlay) {
         return $(if ($null -eq $CommonSoftware) { [pscustomobject]@{} } else { $CommonSoftware })
     }
+    if (-not (Test-IsJsonObject $overlay)) {
+        throw "control page platforms.$PlatformName must be an object"
+    }
     if (-not $overlay.PSObject.Properties["software"]) {
         return $(if ($null -eq $CommonSoftware) { [pscustomobject]@{} } else { $CommonSoftware })
     }
@@ -246,7 +258,7 @@ function Get-EffectivePlatformSoftware {
     if ($null -eq $software) {
         return $(if ($null -eq $CommonSoftware) { [pscustomobject]@{} } else { $CommonSoftware })
     }
-    if ($software -isnot [psobject]) {
+    if (-not (Test-IsJsonObject $software)) {
         throw "control page platforms.$PlatformName.software must be an object"
     }
     return Merge-JsonObjects $CommonSoftware $software
@@ -608,7 +620,7 @@ Assert-CrossPlatformLocators `
     $LocatorContext
 Assert-CrossPlatformPorts `
     $platformsForValidation `
-    $(if ($page.PSObject.Properties["config"]) { $page.config } else { $null }) `
+    $commonConfig `
     "windows" `
     $Port `
     $Advertise `

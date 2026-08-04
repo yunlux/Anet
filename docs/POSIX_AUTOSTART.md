@@ -1,9 +1,21 @@
 # WSL, Linux, and macOS automatic node prototype
 
-Run these commands from an Anet checkout (or a source distribution containing
-the `scripts/` directory). The clean POSIX installers still install only a versioned Anet runtime. The
-explicit one-click deployment entry points add one persistent node, the remote
-control client, and the platform-native auto-start unit:
+On a new device, the checkout-free bootstrap downloads the selected entry point
+and shared installer modules into a temporary directory:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform wsl --control-url <CONTROL_URL> \
+  --control-key-id community-main \
+  --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
+```
+
+Use `--platform linux`, `--platform macos`, or `--platform termux` for the
+other POSIX targets. If an Anet checkout is already available, the direct
+platform scripts below are equivalent. The clean POSIX installers still
+install only a versioned Anet runtime. The explicit one-click deployment
+entry points add one persistent node, the remote control client, and the
+platform-native auto-start unit:
 
 ```bash
 # WSL

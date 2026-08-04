@@ -285,6 +285,48 @@ def test_cross_platform_host_locators_require_distinct_ports() -> None:
         raise AssertionError("shared host-scoped nodes must not reuse a port")
 
 
+def test_cross_platform_port_validation_reads_top_level_default_config() -> None:
+    page = {
+        "default_config": {"listen_host": "0.0.0.0"},
+        "platforms": {
+            "windows": {
+                "default_config": {
+                    "listen_port": 43111,
+                    "locator_contexts": ["host:abcdefgh"],
+                    "advertise": [
+                        "tls://192.0.2.10:43111?scope=host&zone=abcdefgh"
+                    ],
+                }
+            },
+            "wsl": {
+                "default_config": {
+                    "listen_port": 43111,
+                    "locator_contexts": ["host:abcdefgh"],
+                    "advertise": [
+                        "tls://192.0.2.10:43111?scope=host&zone=abcdefgh"
+                    ],
+                }
+            },
+        },
+    }
+    try:
+        validate_cross_platform_ports(
+            page,
+            "windows",
+            listen_port=43111,
+            contexts=["host:abcdefgh"],
+            advertise=[
+                "tls://192.0.2.10:43111?scope=host&zone=abcdefgh"
+            ],
+        )
+    except DeploymentError as exc:
+        assert "distinct listener ports" in str(exc)
+    else:
+        raise AssertionError(
+            "top-level default_config must participate in port validation"
+        )
+
+
 def test_cross_platform_host_locators_accept_distinct_ports() -> None:
     page = {
         "platforms": {
@@ -385,6 +427,7 @@ def test_launchd_service_state_requires_an_observed_running_state(
 
 def test_posix_entrypoints_and_documentation_are_packaged() -> None:
     for name in (
+        "bootstrap_posix.py",
         "posix_oneclick.py",
         "install_wsl_oneclick.py",
         "install_linux_oneclick.py",
@@ -403,6 +446,7 @@ def test_posix_entrypoints_and_documentation_are_packaged() -> None:
     assert "install_linux_oneclick.py" in guide
     assert "install_macos_oneclick.py" in guide
     assert "control-key-id" in guide
+    assert "bootstrap_posix.py" in guide
     assert "register_wsl_keepalive.ps1" in guide
     termux_guide = (ROOT / "docs" / "TERMUX_AUTOSTART.md").read_text(
         encoding="utf-8"
@@ -411,3 +455,4 @@ def test_posix_entrypoints_and_documentation_are_packaged() -> None:
     assert "Termux:Boot" in termux_guide
     assert "install_termux_oneclick.py" in termux_guide
     assert "control-key-id" in termux_guide
+    assert "bootstrap_posix.py" in termux_guide

@@ -83,27 +83,37 @@ deployment is intended. A target-scoped install lock is acquired before the
 preflight, so concurrent commands cannot both pass the check and create the
 same runtime or service.
 
-The same deployment model is available on the other platforms. Run these
-entry points from an Anet checkout (the Windows command above is the only
-checkout-free entry point):
+The same deployment model is available on the other platforms. On a new
+device, use the checkout-free POSIX bootstrap; it downloads only the selected
+platform entry point and its shared installer modules into a temporary
+directory, then removes them after the deployment command exits:
 
 ~~~bash
 # WSL
-python3 scripts/install_wsl_oneclick.py --control-url <CONTROL_URL> \
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform wsl --control-url <CONTROL_URL> \
   --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 
 # non-WSL Linux
-python3 scripts/install_linux_oneclick.py --control-url <CONTROL_URL> \
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform linux --control-url <CONTROL_URL> \
   --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 
 # macOS
-python3 scripts/install_macos_oneclick.py --control-url <CONTROL_URL> \
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform macos --control-url <CONTROL_URL> \
   --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 
 # Android Termux
-python3 scripts/install_termux_oneclick.py --control-url <CONTROL_URL> \
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform termux --control-url <CONTROL_URL> \
   --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 ~~~
+
+If an Anet checkout is already present, the equivalent direct entry points
+remain available under `scripts/install_*_oneclick.py`. Use
+`--script-ref <branch-or-tag>` with the bootstrap when the helper scripts must
+come from a non-`main` Git ref.
 
 WSL and Linux create and start a systemd --user supervisor, macOS loads a
 LaunchAgent, and Termux uses termux-services/runit plus Termux:Boot. WSL also
@@ -163,9 +173,11 @@ This request authorizes one independent persistent node, its service/autostart i
 and the supervisor's remote control-page polling. Detect the platform and use
 its one-click deployment entry point; on native Windows use the PowerShell
 one-command entry, adding -Admin only for machine-wide startup. On WSL, Linux,
-macOS, or Termux run the matching one-click script from the checkout. If WSL
-must restart after a Windows reboot, also register the host keepalive task when
-that host-side action is authorized. Treat Windows and WSL as separate nodes:
+macOS, or Termux use the checkout-free `bootstrap_posix.py` pipe with the
+matching `--platform` value when no checkout is available; use the direct
+script when a checkout is already present. If WSL must restart after a Windows
+reboot, also register the host keepalive task when that host-side action is
+authorized. Treat Windows and WSL as separate nodes:
 use separate homes, identities, Node IDs, and listener ports, and never publish
 127.0.0.1 as a host-scoped peer address. Report the installed runtime,
 independent node, auto-start service/task, node ID, node home, and control-page

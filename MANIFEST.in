@@ -3,6 +3,7 @@ include CHANGELOG.md
 include CONTRIBUTING.md
 include PROTOCOL.md
 include SECURITY.md
+include scripts/bootstrap_posix.py
 include scripts/bootstrap-macos.sh
 include scripts/wsl_release_gate.py
 include scripts/install_wsl.py
