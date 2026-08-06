@@ -3,6 +3,8 @@ include CHANGELOG.md
 include CONTRIBUTING.md
 include PROTOCOL.md
 include SECURITY.md
+include README.md
+include README.zh-CN.md
 include scripts/bootstrap_posix.py
 include scripts/deployment_receipt.py
 include scripts/bootstrap-macos.sh
@@ -28,4 +30,8 @@ include mcp-stdio.example.json
 recursive-include docs *.md *.json
 recursive-include openwiki *.md
 recursive-include skills/install-anet *
+recursive-include experiments *.py
+recursive-include .github/workflows *.yml
+recursive-include .github *.yml
+recursive-include deploy *.service *.sh
 global-exclude __pycache__ *.py[cod]
