@@ -1,10 +1,10 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Version,
-    [Parameter(Mandatory = $true)]
     [string]$Wheel,
-    [Parameter(Mandatory = $true)]
     [string]$WheelSha256,
+    [string]$SourceUrl,
+    [string]$SourceRef,
     [ValidateSet("core", "mcp", "full")]
     [string]$Feature = "core",
     [string]$Root = (Join-Path $env:LOCALAPPDATA "Anet")
@@ -12,6 +12,60 @@ param(
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+
+function Get-OptionalProperty {
+    param([object]$Object, [string]$Name)
+    if ($null -eq $Object) {
+        return ""
+    }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) {
+        return ""
+    }
+    return [string]$property.Value
+}
+
+function Normalize-RepositoryRef {
+    param([string]$Value)
+    $reference = if ($null -eq $Value) { "" } else { $Value.Trim() }
+    if (-not $reference) {
+        return ""
+    }
+    if (
+        $reference -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]*$' -or
+        $reference.Contains("..") -or
+        $reference.Contains("//") -or
+        $reference.Contains("@{") -or
+        $reference.EndsWith(".") -or
+        $reference.EndsWith("/")
+    ) {
+        throw "repository ref contains an invalid Git reference"
+    }
+    return $reference
+}
+
+function Add-GitSourceRef {
+    param([string]$Source, [string]$Reference)
+    if (-not $Reference) {
+        return $Source
+    }
+    $parts = $Source.Split("#", 2)
+    $result = "$($parts[0])@$Reference"
+    if ($parts.Count -eq 2) {
+        $result += "#$($parts[1])"
+    }
+    return $result
+}
+
+$hasWheel = -not [string]::IsNullOrWhiteSpace($Wheel)
+$hasSource = -not [string]::IsNullOrWhiteSpace($SourceUrl)
+$SourceRef = Normalize-RepositoryRef $SourceRef
+if ($hasWheel -eq $hasSource) {
+    throw "provide exactly one of -Wheel or -SourceUrl"
+}
+if ($SourceRef -and -not $hasSource) {
+    throw "-SourceRef requires -SourceUrl"
+}
 
 function Invoke-Checked {
     param([string]$FilePath, [string[]]$Arguments)
@@ -22,10 +76,14 @@ function Invoke-Checked {
     return ($output -join "`n").Trim()
 }
 
-$wheelPath = (Resolve-Path -LiteralPath $Wheel).Path
-$observedHash = (Get-FileHash -LiteralPath $wheelPath -Algorithm SHA256).Hash
-if ($observedHash -ne $WheelSha256.Trim().ToUpperInvariant()) {
-    throw "wheel SHA256 mismatch"
+$wheelPath = ""
+$observedHash = ""
+if ($hasWheel) {
+    $wheelPath = (Resolve-Path -LiteralPath $Wheel).Path
+    $observedHash = (Get-FileHash -LiteralPath $wheelPath -Algorithm SHA256).Hash
+    if ($observedHash -ne $WheelSha256.Trim().ToUpperInvariant()) {
+        throw "wheel SHA256 mismatch"
+    }
 }
 
 $rootPath = [System.IO.Path]::GetFullPath($Root)
@@ -33,6 +91,34 @@ $userPath = [System.IO.Path]::GetFullPath($env:USERPROFILE)
 if ($rootPath -eq [System.IO.Path]::GetPathRoot($rootPath) -or $rootPath -eq $userPath) {
     throw "install root is too broad"
 }
+
+function Enter-InstallMutex {
+    param(
+        [string]$Scope,
+        [string]$RootPath
+    )
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [Text.Encoding]::UTF8.GetBytes($RootPath.ToLowerInvariant())
+        $hex = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace("-", "")
+    } finally {
+        $sha.Dispose()
+    }
+    $mutex = [Threading.Mutex]::new($false, "Local\Anet-$Scope-$($hex.Substring(0, 32))")
+    $owned = $false
+    try {
+        $owned = $mutex.WaitOne(0)
+    } catch [Threading.AbandonedMutexException] {
+        $owned = $true
+    }
+    if (-not $owned) {
+        $mutex.Dispose()
+        throw "another Anet installer already owns the $Scope install lock for $RootPath"
+    }
+    return $mutex
+}
+
+$installMutex = Enter-InstallMutex "runtime" $rootPath
 
 $preflight = $null
 $preflightScript = ""
@@ -63,8 +149,15 @@ if (Test-Path -LiteralPath $destination) {
         throw "existing version directory has no release manifest"
     }
     $release = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
-    if ($release.wheel_sha256 -ne $observedHash) {
-        throw "existing version has a different wheel hash"
+    if ($hasWheel) {
+        if ($release.wheel_sha256 -ne $observedHash) {
+            throw "existing version has a different wheel hash"
+        }
+    } elseif (
+        (Get-OptionalProperty $release "source_url") -ne $SourceUrl -or
+        (Get-OptionalProperty $release "source_ref") -ne $SourceRef
+    ) {
+        throw "existing version has a different repository source"
     }
     $installedFeature = if ($release.PSObject.Properties["feature"]) {
         [string]$release.feature
@@ -84,11 +177,25 @@ if (Test-Path -LiteralPath $destination) {
             "mcp" { "mcp" }
             "full" { "mcp,ahub,qr" }
         }
-        $wheelUri = ([System.Uri]$wheelPath).AbsoluteUri
-        $requirement = if ($extras) {
-            "anet-fabric[$extras] @ $wheelUri"
+        if ($hasSource) {
+            $gitSource = if ($SourceUrl.StartsWith("git+")) {
+                $SourceUrl
+            } else {
+                "git+$SourceUrl"
+            }
+            $gitSource = Add-GitSourceRef $gitSource $SourceRef
+            $requirement = if ($extras) {
+                "anet-fabric[$extras] @ $gitSource"
+            } else {
+                $gitSource
+            }
         } else {
-            $wheelPath
+            $wheelUri = ([System.Uri]$wheelPath).AbsoluteUri
+            $requirement = if ($extras) {
+                "anet-fabric[$extras] @ $wheelUri"
+            } else {
+                $wheelPath
+            }
         }
         if ($uv) {
             Invoke-Checked $uv.Source @(
@@ -110,13 +217,19 @@ if (Test-Path -LiteralPath $destination) {
         if ($observedVersion -ne $Version) {
             throw "runtime version mismatch"
         }
-        @{
+        $release = @{
             schema_version = 1
             platform = "windows"
             version = $Version
             feature = $Feature
-            wheel_sha256 = $observedHash
-        } | ConvertTo-Json | Set-Content -LiteralPath $manifest -Encoding utf8
+        }
+        if ($hasSource) {
+            $release.source_url = $SourceUrl
+            $release.source_ref = $SourceRef
+        } else {
+            $release.wheel_sha256 = $observedHash
+        }
+        $release | ConvertTo-Json | Set-Content -LiteralPath $manifest -Encoding utf8
     } catch {
         if (Test-Path -LiteralPath $destination) {
             Remove-Item -LiteralPath $destination -Recurse -Force
@@ -146,9 +259,14 @@ $current = @{
     platform = "windows"
     version = $Version
     feature = $Feature
-    wheel_sha256 = $observedHash
     runtime = $venv
     cli = $cli
+}
+if ($hasSource) {
+    $current.source_url = $SourceUrl
+    $current.source_ref = $SourceRef
+} else {
+    $current.wheel_sha256 = $observedHash
 }
 $currentJson = Join-Path $rootPath "current.json"
 $pendingJson = "$currentJson.new"
@@ -156,4 +274,7 @@ $current | ConvertTo-Json | Set-Content -LiteralPath $pendingJson -Encoding utf8
 Move-Item -LiteralPath $pendingJson -Destination $currentJson -Force
 $current["outcome"] = $outcome
 $current["preflight"] = $preflight
-$current | ConvertTo-Json -Compress
+$result = $current | ConvertTo-Json -Compress
+$installMutex.ReleaseMutex()
+$installMutex.Dispose()
+$result

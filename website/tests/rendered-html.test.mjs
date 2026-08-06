@@ -24,20 +24,31 @@ test("renders the Anet product homepage", async () => {
   assert.match(html, /Anet v0\.12\.1/);
   assert.match(html, /COPY → SEND TO YOUR AGENT/);
   assert.match(html, /复制 → 发送给你的 AGENT/);
-  assert.match(html, /WINDOWS.*WSL.*MACOS.*LINUX/s);
-  assert.match(html, /INSTALL-ANET/);
+  assert.match(html, /WINDOWS.*WSL.*MACOS.*LINUX.*TERMUX/s);
+  assert.match(html, /ONE-CLICK DEPLOYMENT/);
   assert.match(html, /https:\/\/github\.com\/yunlux\/Anet/);
-  assert.match(html, /\$install-anet Skill/);
-  assert.match(html, /Make safe routine decisions autonomously/);
-  assert.match(html, /do not ask me to choose paths, labels, ports/);
-  assert.match(html, /常规安全决策由你自主完成/);
-  assert.match(html, /first registered healthy host-local Ahub/);
-  assert.match(html, /never copy identity, start a second Ahub/);
+  assert.match(html, /scripts\/install_windows_oneclick\.ps1/);
+  assert.match(html, /matching install_\*_oneclick\.py/);
+  assert.match(html, /bounded duplicate preflight/);
+  assert.match(html, /target-scoped install lock/);
+  assert.match(html, /software\.wheel_url/);
+  assert.match(html, /software\.repo_url/);
+  assert.match(html, /software\.sha256/);
+  assert.match(html, /control-verify/);
+  assert.match(html, /explicit .*wheel-sha256.*match/i);
+  assert.match(html, /repo_ref/);
+  assert.match(html, /Git source/);
+  assert.match(html, /Git 源/);
+  assert.doesNotMatch(html, /href="\/amesh"/);
+  assert.match(html, /用户已授权创建一个独立持久节点/);
+  assert.match(html, /Windows and WSL remain separate nodes/);
+  assert.match(html, /Windows 与 WSL 即使使用镜像网络也必须是不同/);
+  assert.match(html, /Never copy another device/);
+  assert.match(html, /禁止复制其他设备的 identity/);
   assert.match(html, /TLS 1\.3 \/ signed challenge/);
   assert.match(html, /SQLite WAL \/ durable queue/);
-  assert.match(html, /install_windows\.ps1/);
-  assert.match(html, /install_wsl\.py/);
-  assert.match(html, /skills\/install-anet/);
+  assert.match(html, /-Admin/);
+  assert.match(html, /&lt;CONTROL_URL&gt;/);
   assert.doesNotMatch(html, /asks for its URL|询问地址/);
   assert.ok(
     html.indexOf('id="install"') < html.indexOf("network-stage"),
@@ -51,6 +62,8 @@ test("renders the complete public information architecture", async () => {
     ["/docs", "Build private links"],
     ["/blog", "ABA-D0"],
     ["/social", "一个 Agent 眼中的"],
+    ["/agent-social", "Agents have"],
+    ["/amesh", "Social life"],
   ]) {
     const response = await render(path);
     assert.equal(response.status, 200, path);
@@ -101,6 +114,46 @@ test("renders the relationship demo with explicit fact and inference boundaries"
   assert.match(html, /AUTHORIZATION EFFECT: NONE/);
   assert.match(html, /本地持久化顺序回放/);
   assert.match(html, /social-og-activity\.png/);
+});
+
+test("renders the agent-first network with a parent observer boundary", async () => {
+  const response = await render("/agent-social");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /AGENT SOCIAL \/ PARENT OBSERVER MODE/);
+  assert.match(html, /HUMAN PARENT \/ FAMILY VIEW/);
+  assert.match(html, /READ ONLY/);
+  assert.match(html, /social life/);
+  assert.match(html, /CONVERSATION RECORD/);
+  assert.match(html, /skill offered/);
+  assert.match(html, /自己的社交生活/);
+  assert.match(html, /Parent observation is a relationship/);
+  assert.match(html, /cannot mutate A/);
+});
+
+test("renders Amesh as a composed product layer", async () => {
+  const response = await render("/amesh");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /AMESH \/ AGENT MESH/);
+  assert.match(html, /Social life/);
+  assert.match(html, /ANET CORE/);
+  assert.match(html, /ANET SOCIAL/);
+  assert.match(html, /AGAME OVERLAY/);
+  assert.match(html, /HUMAN LENS/);
+  assert.match(html, /Agent Social/);
+  assert.match(html, /Agent 社交/);
+  assert.match(html, /READ-ONLY/);
+  assert.match(html, /cannot mutate A/);
+});
+
+test("keeps Amesh discoverable from Updates instead of the homepage", async () => {
+  const response = await render("/blog");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /A composed agent social layer/);
+  assert.match(html, /组合式 Agent 社交层/);
+  assert.match(html, /href="\/amesh"/);
 });
 
 test("removes the standalone install route", async () => {

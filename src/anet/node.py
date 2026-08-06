@@ -4,7 +4,9 @@ import asyncio
 import hashlib
 import logging
 import os
+import secrets
 import ssl
+import threading
 import time
 import re
 from contextlib import suppress
@@ -22,7 +24,11 @@ from .config import (
     NodeConfig,
     WebDAVCarrierConfig,
 )
-from .control_plane import ControlPlaneStore
+from .control_plane import (
+    ControlPlaneStore,
+    NodeDescriptor,
+    ReachabilityRecord,
+)
 from .companion_protocol import (
     APPROVAL_REQUEST_KIND,
     COMPANION_KINDS,
@@ -131,6 +137,13 @@ class AnetNode:
         self._fallback_probe_tasks: dict[str, asyncio.Task[bool]] = {}
         self._fallback_schedules: dict[str, AdaptiveSchedule] = {}
         self._prekey_response_last_ms: dict[str, int] = {}
+        self._control_session_id = secrets.token_hex(16)
+        self._reachability_lock = threading.Lock()
+        self._reachability_record: ReachabilityRecord | None = None
+        self._peer_reachability_lock = threading.Lock()
+        self._peer_reachability: dict[
+            str, tuple[NodeDescriptor, ReachabilityRecord]
+        ] = {}
         self._discord_bridge: DiscordSocialBridge | None = None
         self._relationship_projector: RelationshipProjector | None = None
         self._relationship_disclosure_book: (
@@ -152,6 +165,51 @@ class AnetNode:
     @property
     def node_id(self) -> str:
         return self.identity.node_id
+
+    @property
+    def control_session_id(self) -> str:
+        return self._control_session_id
+
+    def set_peer_reachability(
+        self,
+        peer: PeerCard,
+        descriptor: NodeDescriptor,
+        record: ReachabilityRecord | None,
+    ) -> ReachabilityRecord | None:
+        """Replace one ephemeral peer reachability overlay after verification."""
+
+        from .carriers.ahub import validate_peer_reachability
+
+        validated = validate_peer_reachability(peer, descriptor, record)
+        with self._peer_reachability_lock:
+            if validated is None:
+                self._peer_reachability.pop(peer.node_id, None)
+            else:
+                self._peer_reachability[peer.node_id] = (descriptor, validated)
+        return validated
+
+    def _peer_addresses(self, expected: PeerCard) -> tuple[str, ...]:
+        """Return dynamic candidates first, then the pinned Card fallback."""
+
+        with self._peer_reachability_lock:
+            cached = self._peer_reachability.get(expected.node_id)
+        dynamic: tuple[str, ...] = ()
+        if cached is not None:
+            descriptor, record = cached
+            try:
+                from .carriers.ahub import validate_peer_reachability
+
+                validated = validate_peer_reachability(
+                    expected,
+                    descriptor,
+                    record,
+                )
+                dynamic = () if validated is None else validated.candidates
+            except (ValueError, TypeError):
+                with self._peer_reachability_lock:
+                    if self._peer_reachability.get(expected.node_id) == cached:
+                        self._peer_reachability.pop(expected.node_id, None)
+        return tuple(dict.fromkeys((*dynamic, *expected.addresses)))
 
     @property
     def local_card(self) -> PeerCard:
@@ -820,7 +878,8 @@ class AnetNode:
         cards = [
             card
             for card in self.peers.all()
-            if card.addresses and (peer_ids is None or card.node_id in peer_ids)
+            if self._peer_addresses(card)
+            and (peer_ids is None or card.node_id in peer_ids)
         ]
         if not cards:
             return {"attempted": 0, "connected": 0, "errors": {}, "peer_results": {}}
@@ -1113,9 +1172,9 @@ class AnetNode:
             route = self.store.route(card.node_id)
             selected = str(route["selected_path"]) if route else ""
             if selected not in {"", "direct", "none"}:
-                if self.config.direct_enabled and card.addresses:
+                if self.config.direct_enabled and self._peer_addresses(card):
                     fallback_cards.append(card)
-            elif self.config.direct_enabled and card.addresses:
+            elif self.config.direct_enabled and self._peer_addresses(card):
                 pending_ids = self._pending_ids(card.node_id)
                 previously_seen = self._direct_seen_pending.get(card.node_id, set())
                 newly_pending = bool(pending_ids - previously_seen)
@@ -1158,7 +1217,9 @@ class AnetNode:
         decisions = {
             card.node_id: self.router.decide(
                 card.node_id,
-                has_direct=bool(self.config.direct_enabled and card.addresses),
+                has_direct=bool(
+                    self.config.direct_enabled and self._peer_addresses(card)
+                ),
                 carriers=self._carriers_for_peer(card.node_id),
             )
             for card in cards
@@ -1727,8 +1788,9 @@ class AnetNode:
         async with lock:
             total_started = time.perf_counter()
             last_error = "no usable address"
+            candidate_addresses = self._peer_addresses(expected)
             locators = usable_locators(
-                expected.addresses, self.config.locator_contexts
+                candidate_addresses, self.config.locator_contexts
             )
             dialers = self.config.effective_direct_dialers()
             attempts: list[tuple[tuple[Any, ...], DirectDialerConfig, Any]] = []
@@ -1876,7 +1938,7 @@ class AnetNode:
                 "error": last_error,
                 "latency_ms": round(total_latency, 3),
             }
-            if not locators and expected.addresses:
+            if not locators and candidate_addresses:
                 last_error = "no locator matches this node's host/LAN contexts"
                 self.peer_state[expected.node_id]["error"] = last_error
             elif not dialers:
@@ -2054,7 +2116,7 @@ class AnetNode:
     ) -> dict[str, Any]:
         expected = self.peers.require(peer_id)
         locators = usable_locators(
-            expected.addresses, self.config.locator_contexts
+            self._peer_addresses(expected), self.config.locator_contexts
         )
         dialers = self.config.effective_direct_dialers()
         if dialer_names:

@@ -2,6 +2,66 @@
 
 ## Unreleased
 
+- 签名根控制页现在可通过 `control_publishers` 委派只用于被点名嵌套来源的社区
+  发布者。委派 key 不写入本机 `trusted_keys`、不能签根页面或继续委派，也不改变
+  PeerBook、节点授权、关系或信誉；验证与同步证据新增
+  `delegated_publisher_ids`，委派变更受根签名、有效期和 sequence/digest 约束。
+- Windows、WSL、Linux、macOS、Termux 一键安装现在可在同一命令中原子传入多个
+  本地 control publisher：Windows 使用 `-ControlTrustedKey id=key`，POSIX/Termux
+  重复使用 `--control-trusted-key id=key`。旧单 key 参数保持兼容；冲突归属在安装前
+  拒绝，第一个 key 固定为根页面 `root_key_id`，其余 key 只能签被点名的嵌套来源；
+  Deployment Receipt 新增完整 `control.key_ids`。
+- 嵌套 remote-control `pages`/`kv` 来源现在可使用 `{url,key_id}` 精确固定社区
+  发布者。key 必须预先存在于本机 `trusted_keys`，子页必须由该 key 签名；即使另一个
+  发布者同样受信也不能冒充。`control-verify`、同步结果和私有状态新增
+  `source_publishers` 归属记录，旧字符串 URL 格式保持兼容。
+- 新增跨平台两阶段 Deployment Continuity Gate v1。`continuity-prepare` 在重启前
+  固定健康 supervisor 实例、启动会话、Node ID 与 identity/TLS 哈希；
+  `continuity-verify` 在重启后要求新实例、新同步、身份材料不变，并可用
+  `--require-boot-change` 强制验证真实 OS/WSL/Android 启动会话变化。成功 challenge
+  只能消费一次，完整 challenge/receipt 均为本机私有证据。
+- TLS 完整性检查现在同时验证证书公钥与 `tls-key.pem` 私钥匹配，避免只检查证书
+  Common Name 却接受不配对密钥。
+- 新增持久 `Supervisor Health v1`：supervisor 原子记录心跳、首次/最近控制页同步、
+  子进程 PID、退化错误和连续失败次数；`anet supervisor-status` 只有在心跳新鲜且
+  supervisor/`anet serve` 两个进程都存活时返回成功。所有 one-click 安装器现在等待
+  这份证据并把它嵌入 Deployment Receipt，避免仅凭原生服务管理器的 `Running`
+  状态误报安装完成。
+- Windows、WSL、Linux、macOS 和 Termux 持久 one-click 安装器现在统一输出
+  Deployment Receipt v1：版本化 JSON 接口分别报告 runtime、独立节点、已验证
+  控制页、原生 supervisor 状态、autostart 与 preflight。Agent 必须校验必需字段，
+  且完整收据因包含 Node ID、路径、地址和控制 URL 而只能作为本地私有部署证据。
+- 新增 `scripts/bootstrap_posix.py` checkout-free bootstrap。WSL、Linux、macOS 和
+  Termux 可通过一条 `curl | python3` 命令下载临时平台入口，复用现有重复检测、
+  控制页校验和原生服务注册流程；已有 checkout 时仍可直接运行平台脚本。
+- 部署预检现在同时检查显式 `--node-home`/`-NodeHome` 和 `ANET_HOME` 指向的
+  已有持久节点目录，避免自定义节点 home 绕过 Anet 重复安装检测；runtime-only
+  安装仍不读取持久节点标记。
+- checkout-free bootstrap 不再使用未验证控制页的 `repo_url`/`repo_ref` 选择并执行
+  辅助脚本；POSIX 默认从官方 Anet `main` 获取，Windows 默认使用官方 helper
+  repository/`-GitHubBranch`，fork 入口必须由操作者显式指定。
+- Core CI 现在也会在任意分支 push 时运行，优化分支不再依赖手动 workflow
+  dispatch 才能获得跨平台测试和打包结果。
+- GitHub Actions 的 Python runner 已升级到 `actions/setup-python` v7，消除
+  Node 20 runtime 弃用警告并保持 workflow action 使用固定 SHA。
+- 修正 Windows、POSIX 初始安装器和运行中 remote-control 对顶层
+  `default_config` 的 Windows/WSL 端口校验，并让 Windows PowerShell overlay 的空
+  JSON 对象保持公共嵌套配置；错误的平台结构现在会在安装早期失败。
+- 一键部署入口现在与远程 supervisor 对 `config`/`software` 平台 overlay 使用相同的递归合并和
+  `default_config` 语义；首次安装不会因嵌套字段而与后续控制页同步产生不同结果。WebDAV
+  carrier 的探测回归测试区分唯一 mailbox 路径与安全的传输重试，避免在全量 CI 负载下误报。
+- 远程控制页新增可选的本地 Ed25519 发布者固定：配置 `trusted_keys` 后，根页和
+  嵌套 `pages`/`kv` 页必须签名并通过有效期校验；签名序列号不能复用到不同内容。
+  Windows、WSL、Linux、macOS 和 Termux 一键部署入口均可写入公钥策略，并新增
+  `scripts/sign_control_page.py` 供离线发布者生成页面；旧的无签名页面仍保留为
+  明确的兼容 bootstrap 模式。
+- 新增只读 `anet control-verify`。所有跨平台 one-click 安装器在注册持久服务前调用它，
+  验证完整控制页、嵌套来源、Peer Card 和 Windows/WSL 端口策略，同时不提前写入
+  `remote-control-state.json`，避免跳过首次软件更新。
+- 签名控制页现在要求 wheel 首次安装和后续更新提供有效的 64 位十六进制
+  `software.sha256`；签名 `repo_url` 仍可作为明确的源码安装路径，无签名兼容模式保持旧行为。
+- Termux 一键部署现在与其它平台一致执行 wheel hash 门禁；所有平台都拒绝用命令行
+  hash 覆盖控制页声明，并修正空 `wheel_url` 误判为 wheel 更新的情况。
 - Mutual Actor-to-Actor relationship claims now have a signed participant
   withdrawal path. A withdrawal deactivates only the portable claim and records
   a content-free local activity fact; it never automatically changes a local

@@ -56,7 +56,7 @@ requires-dist = [
     { name = "qrcode", extras = ["pil"], marker = "extra == 'qr'", specifier = ">=8.2,<9" },
     { name = "qrcode", extras = ["pil"], marker = "extra == 'test'", specifier = ">=8.2,<9" },
     { name = "ruff", marker = "extra == 'test'", specifier = ">=0.12,<1" },
-    { name = "twine", marker = "extra == 'test'", specifier = ">=6,<7" },
+    { name = "twine", marker = "extra == 'test'", specifier = ">=6,<8" },
     { name = "uvicorn", marker = "extra == 'ahub'", specifier = ">=0.35,<1" },
     { name = "uvicorn", marker = "extra == 'test'", specifier = ">=0.35,<1" },
     { name = "websockets", marker = "extra == 'ahub'", specifier = ">=16.1,<17" },

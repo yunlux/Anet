@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$TargetRoot,
+    [string]$NodeHome = "",
     [switch]$RuntimeOnly,
     [switch]$Deployment,
     [switch]$AllowExisting
@@ -80,6 +81,27 @@ function Get-AhubFinding {
     }
 }
 
+function Get-NodeHomeFinding {
+    param([string]$Path)
+    $nodeHomePath = Resolve-FullPath $Path
+    if (-not (Test-AnyPath $nodeHomePath)) {
+        return $null
+    }
+    $markers = @(
+        "config.json", "identity.json", "card.json", "remote-control.json" |
+            Where-Object { Test-AnyPath (Join-Path $nodeHomePath $_) }
+    )
+    if ($markers.Count -eq 0) {
+        return $null
+    }
+    return [ordered]@{
+        kind = "anet-node-home"
+        path = $nodeHomePath
+        markers = @($markers)
+        persistent = $true
+    }
+}
+
 function Get-UniquePathList {
     param([string[]]$Paths)
     $seen = @{}
@@ -95,6 +117,26 @@ function Get-UniquePathList {
     return $result
 }
 
+function Test-PathWithin {
+    param(
+        [string]$Candidate,
+        [string]$Root
+    )
+    $candidateFull = Resolve-FullPath $Candidate
+    $rootFull = Resolve-FullPath $Root
+    if ($candidateFull.Equals(
+        $rootFull,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )) {
+        return $true
+    }
+    $rootPrefix = ($rootFull -replace '[\\/]+$', '') + '\'
+    return $candidateFull.StartsWith(
+        $rootPrefix,
+        [System.StringComparison]::OrdinalIgnoreCase
+    )
+}
+
 $target = Resolve-FullPath $TargetRoot
 $anetCandidates = Get-UniquePathList @(
     $target,
@@ -106,6 +148,24 @@ $existingAnet = @(
         ForEach-Object { Get-RootFinding $_ ([bool]$RuntimeOnly) } |
         Where-Object { $null -ne $_ }
 )
+if ($Deployment) {
+    $configuredNodeHomes = @(
+        $NodeHome,
+        $env:ANET_HOME
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
+    foreach ($configuredNodeHomePath in (Get-UniquePathList $configuredNodeHomes)) {
+        $configuredNodeHome = Get-NodeHomeFinding $configuredNodeHomePath
+        if ($null -ne $configuredNodeHome -and -not @(
+            $existingAnet |
+                Where-Object {
+                    $_.path.ToLowerInvariant() -eq
+                    $configuredNodeHome.path.ToLowerInvariant()
+                }
+        ).Count) {
+            $existingAnet += $configuredNodeHome
+        }
+    }
+}
 
 $ahubCandidates = Get-UniquePathList @(
     (Join-Path $target "ahub"),
@@ -211,7 +271,7 @@ $report = [ordered]@{
 if ($Deployment -and -not $AllowExisting) {
     $foreign = @(
         $existingAnet |
-            Where-Object { $_.path.ToLowerInvariant() -ne $target.ToLowerInvariant() }
+            Where-Object { -not (Test-PathWithin $_.path $target) }
     )
     $activeAnet = @(
         @($services) + @($tasks) + @($processes) |

@@ -6,12 +6,23 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 from anet.ahub import AhubService
+from anet.ahub_http import AhubHTTPClient
 from anet.config import AhubCarrierConfig, initialize_node
+from anet.carriers.ahub import (
+    current_node_descriptor,
+    current_node_reachability,
+    sync_ahub_once,
+)
+from anet.control_plane import issue_reachability_record
 from anet.node import AnetNode
 from anet.peers import PeerBook
 
@@ -31,55 +42,91 @@ def free_port() -> int:
         return int(listener.getsockname()[1])
 
 
-def start_server(root: Path, port: int) -> subprocess.Popen[str]:
-    process = subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "anet",
-            "ahub-serve",
-            "--root",
-            str(root),
-            "--port",
-            str(port),
-        ],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        env={
-            **os.environ,
-            "NO_PROXY": "127.0.0.1,localhost",
-            "no_proxy": "127.0.0.1,localhost",
-            "PYTHONUTF8": "1",
-        },
+class RunningServer:
+    def __init__(self, process: subprocess.Popen[str]) -> None:
+        self.process = process
+        self.stdout_chunks: list[str] = []
+        self.stderr_chunks: list[str] = []
+        self._readers = (
+            threading.Thread(
+                target=self._drain,
+                args=(process.stdout, self.stdout_chunks),
+                daemon=True,
+            ),
+            threading.Thread(
+                target=self._drain,
+                args=(process.stderr, self.stderr_chunks),
+                daemon=True,
+            ),
+        )
+        for reader in self._readers:
+            reader.start()
+
+    @staticmethod
+    def _drain(stream, chunks: list[str]) -> None:
+        if stream is None:
+            return
+        for chunk in iter(stream.readline, ""):
+            chunks.append(chunk)
+
+    def poll(self) -> int | None:
+        return self.process.poll()
+
+
+def start_server(root: Path, port: int) -> RunningServer:
+    running = RunningServer(
+        subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "anet",
+                "ahub-serve",
+                "--root",
+                str(root),
+                "--port",
+                str(port),
+            ],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            env={
+                **os.environ,
+                "NO_PROXY": "127.0.0.1,localhost",
+                "no_proxy": "127.0.0.1,localhost",
+                "PYTHONUTF8": "1",
+            },
+        )
     )
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
-        if process.poll() is not None:
-            stdout, stderr = process.communicate()
+        if running.poll() is not None:
+            stdout, stderr = stop_server(running)
             raise AssertionError(f"Ahub exited\n{stdout}\n{stderr}")
         try:
             with urllib.request.urlopen(
                 f"http://127.0.0.1:{port}/healthz", timeout=0.5
             ) as response:
                 if response.status == 200:
-                    return process
+                    return running
         except OSError:
             time.sleep(0.05)
-    stop_server(process)
+    stop_server(running)
     raise AssertionError("Ahub did not become ready")
 
 
-def stop_server(process: subprocess.Popen[str]) -> tuple[str, str]:
-    if process.poll() is None:
-        process.terminate()
+def stop_server(running: RunningServer) -> tuple[str, str]:
+    if running.poll() is None:
+        running.process.terminate()
     try:
-        return process.communicate(timeout=10)
+        running.process.wait(timeout=10)
     except subprocess.TimeoutExpired:
-        process.kill()
-        return process.communicate(timeout=5)
+        running.process.kill()
+        running.process.wait(timeout=5)
+    for reader in running._readers:
+        reader.join(timeout=5)
+    return "".join(running.stdout_chunks), "".join(running.stderr_chunks)
 
 
 def test_ahub_store_carrier_preserves_all_ack_layers_across_restart(
@@ -128,6 +175,16 @@ def test_ahub_store_carrier_preserves_all_ack_layers_across_restart(
         )
         first = first_round["carriers"][0]
         assert first["pushed_packets"] == 1
+        control_client = AhubHTTPClient(
+            config.base_url,
+            a.identity,
+            allow_insecure_http=True,
+        )
+        _descriptor, reachability = control_client.lookup(a.node_id)
+        assert reachability is not None
+        assert reachability.protocol_versions == ("anet/1",)
+        assert reachability.sequence == 1
+        assert (a.config.home / "reachability-state.json").exists()
         assert not a.store.packet_delivered(packet_id)
         assert (
             a.store.delivery_path_state(packet_id, b.node_id, path_id)
@@ -205,3 +262,180 @@ def test_ahub_store_carrier_preserves_all_ack_layers_across_restart(
     assert secret not in combined_logs
     assert a.node_id not in combined_logs
     assert b.node_id not in combined_logs
+
+
+def test_reachability_checkpoint_retries_without_skipping_on_publish_failure(
+    tmp_path: Path,
+) -> None:
+    config = initialize_node(
+        tmp_path / "node",
+        label="node",
+        listen_host="192.0.2.20",
+        listen_port=43121,
+    )
+    node = AnetNode(config)
+    try:
+        descriptor = current_node_descriptor(node)
+        carrier = AhubCarrierConfig(
+            name="test",
+            base_url="https://example.invalid",
+        )
+        with (
+            patch.object(AhubHTTPClient, "publish_descriptor", return_value=True),
+            patch.object(
+                AhubHTTPClient,
+                "publish_reachability",
+                side_effect=OSError("simulated publish failure"),
+            ),
+        ):
+            with pytest.raises(OSError, match="simulated publish failure"):
+                sync_ahub_once(node, carrier)
+
+        first = current_node_reachability(node, descriptor)
+        assert first.sequence == 1
+        assert first.candidates == ("tls://192.0.2.20:43121",)
+        retry = current_node_reachability(node, descriptor)
+        assert retry == first
+        assert not (config.home / "reachability-state.json").exists()
+
+        with (
+            patch.object(AhubHTTPClient, "publish_descriptor", return_value=True),
+            patch.object(
+                AhubHTTPClient,
+                "publish_reachability",
+                return_value=True,
+            ),
+        ):
+            stats = sync_ahub_once(node, carrier)
+        assert stats["reachability_sequence"] == 1
+        assert (config.home / "reachability-state.json").exists()
+
+        restarted = AnetNode(config)
+        try:
+            next_descriptor = current_node_descriptor(restarted)
+            next_record = current_node_reachability(restarted, next_descriptor)
+            assert next_record.sequence == 2
+            assert next_record.previous_digest == first.digest
+            assert next_record.session_id != first.session_id
+        finally:
+            restarted.close()
+    finally:
+        node.close()
+
+
+def test_peer_reachability_overlay_precedes_card_fallback(
+    tmp_path: Path,
+) -> None:
+    local_config = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_port=0,
+    )
+    peer_config = initialize_node(
+        tmp_path / "peer",
+        label="peer",
+        listen_host="192.0.2.22",
+        listen_port=43122,
+    )
+    local = AnetNode(local_config)
+    peer = AnetNode(peer_config)
+    try:
+        card = peer.local_card
+        PeerBook(
+            local.config.peers_path,
+            own_node_id=local.node_id,
+        ).add(card)
+        local.peers.reload()
+        descriptor = current_node_descriptor(peer)
+        dynamic = issue_reachability_record(
+            peer.identity,
+            descriptor,
+            protocol_versions=("anet/1",),
+            candidates=(
+                "tls://198.51.100.23:43123?scope=wan&priority=0",
+            ),
+            capability_digest=bytes(32),
+        )
+        with pytest.raises(
+            ValueError,
+            match="reachability descriptor belongs to another peer",
+        ):
+            local.set_peer_reachability(
+                card,
+                current_node_descriptor(local),
+                dynamic,
+            )
+        local.set_peer_reachability(card, descriptor, dynamic)
+        called: list[str] = []
+
+        async def fake_sync_address(expected, address, dialer) -> None:
+            del expected, dialer
+            called.append(address)
+
+        local._sync_address = fake_sync_address
+        assert asyncio.run(local._sync_peer(card)) is True
+        assert called[0] == dynamic.candidates[0]
+        assert card.addresses[0] in local._peer_addresses(card)
+    finally:
+        local.close()
+        peer.close()
+
+
+def test_ahub_sync_refreshes_verified_peer_reachability_overlay(
+    tmp_path: Path,
+) -> None:
+    local_config = initialize_node(
+        tmp_path / "local",
+        label="local",
+        listen_port=0,
+    )
+    peer_config = initialize_node(
+        tmp_path / "peer",
+        label="peer",
+        listen_host="192.0.2.24",
+        listen_port=43124,
+    )
+    local = AnetNode(local_config)
+    peer = AnetNode(peer_config)
+    try:
+        card = peer.local_card
+        PeerBook(
+            local.config.peers_path,
+            own_node_id=local.node_id,
+        ).add(card)
+        local.peers.reload()
+        descriptor = current_node_descriptor(peer)
+        record = current_node_reachability(peer, descriptor)
+        carrier = AhubCarrierConfig(
+            name="test",
+            base_url="https://example.invalid",
+        )
+        with (
+            patch.object(AhubHTTPClient, "publish_descriptor", return_value=True),
+            patch.object(
+                AhubHTTPClient,
+                "publish_reachability",
+                return_value=True,
+            ),
+            patch.object(
+                AhubHTTPClient,
+                "lookup",
+                return_value=(descriptor, record),
+            ),
+            patch.object(AhubHTTPClient, "settlements", return_value=[]),
+            patch.object(AhubHTTPClient, "claim", return_value=[]),
+        ):
+            stats = sync_ahub_once(local, carrier)
+        assert stats["peer_reachability"] == [
+            {
+                "peer_id": peer.node_id,
+                "available": True,
+                "sequence": 1,
+                "candidates": list(record.candidates),
+            }
+        ]
+        assert not stats["peer_reachability_errors"]
+        assert local._peer_addresses(card) == card.addresses
+    finally:
+        local.close()
+        peer.close()

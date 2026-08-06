@@ -40,8 +40,8 @@ export default function Home() {
             <span><T en="Auto-detects the platform" zh="自动判断平台" /></span>
           </div>
           <div className="hero-install-meta">
-            <div><span>WINDOWS</span><span>WSL</span><span>MACOS</span><span>LINUX</span></div>
-            <p><T en="Platform installer → verified runtime" zh="平台安装器 → 已验证 Runtime" /></p>
+            <div><span>WINDOWS</span><span>WSL</span><span>MACOS</span><span>LINUX</span><span>TERMUX</span></div>
+            <p><T en="One-click deployment → supervisor + service" zh="一键部署 → Supervisor + 服务" /></p>
           </div>
           <SkillPrompt />
           <p className="repo-note"><T en="If the repository is unavailable, the agent stops and reports the access blocker." zh="如果无法访问仓库，Agent 会停止并直接报告访问阻塞。" /></p>

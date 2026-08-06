@@ -16,17 +16,90 @@ the filesystem, or another platform such as Windows from inside WSL.
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, Iterable, TextIO
 
 
 class PreflightConflict(RuntimeError):
     """Raised when a deployment would create a second local installation."""
+
+
+class InstallationLock:
+    """Serialize installers targeting the same local runtime root.
+
+    The duplicate report is intentionally read-only, but a report alone cannot
+    prevent two installers started at the same time from both passing it.  The
+    lock lives in the OS temporary directory, keyed by the resolved target,
+    so acquiring it does not create an installation marker inside the target.
+    """
+
+    def __init__(self, target_root: Path) -> None:
+        self.target_root = _resolve(Path(target_root))
+        digest = hashlib.sha256(
+            str(self.target_root).encode("utf-8", errors="surrogateescape")
+        ).hexdigest()
+        self.path = Path(tempfile.gettempdir()) / f"anet-install-{digest}.lock"
+        self._handle: Any | None = None
+
+    def acquire(self) -> None:
+        if self._handle is not None:
+            return
+        handle = self.path.open("a+b")
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                handle.seek(0, os.SEEK_END)
+                if handle.tell() == 0:
+                    handle.write(b"\0")
+                    handle.flush()
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (OSError, IOError) as exc:
+            handle.close()
+            raise PreflightConflict(
+                "another Anet installer already owns the install lock for "
+                f"{self.target_root}"
+            ) from exc
+        self._handle = handle
+
+    def release(self) -> None:
+        handle = self._handle
+        self._handle = None
+        if handle is None:
+            return
+        try:
+            if os.name == "nt":
+                import msvcrt
+
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        except (OSError, IOError):
+            pass
+        finally:
+            handle.close()
+
+    def __enter__(self) -> "InstallationLock":
+        self.acquire()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.release()
 
 
 _ANET_ROOT_MARKERS = (
@@ -44,6 +117,12 @@ _ANET_RUNTIME_MARKERS = (
 )
 _ANET_PERSISTENT_MARKERS = (
     "nodes",
+    "config.json",
+    "identity.json",
+    "card.json",
+    "remote-control.json",
+)
+_ANET_NODE_HOME_MARKERS = (
     "config.json",
     "identity.json",
     "card.json",
@@ -107,6 +186,22 @@ def _describe_anet_root(
         "path": str(root),
         "markers": markers,
         "persistent": persistent,
+    }
+
+
+def _describe_anet_node_home(home: Path) -> dict[str, Any] | None:
+    """Describe an explicit ``ANET_HOME`` without scanning arbitrary paths."""
+
+    if not home.is_dir() and not home.is_symlink():
+        return None
+    markers = _markers(home, _ANET_NODE_HOME_MARKERS)
+    if not markers:
+        return None
+    return {
+        "kind": "anet-node-home",
+        "path": str(home),
+        "markers": markers,
+        "persistent": True,
     }
 
 
@@ -295,6 +390,7 @@ def collect_preflight(
     platform_name: str,
     target_root: Path,
     *,
+    node_homes: Iterable[Path] = (),
     include_services: bool = True,
     include_processes: bool = True,
     include_persistent_markers: bool = True,
@@ -313,6 +409,22 @@ def collect_preflight(
         )
         is not None
     ]
+    if include_persistent_markers:
+        configured_homes: list[Path] = []
+        configured_home = os.environ.get("ANET_HOME", "").strip()
+        if configured_home:
+            configured_homes.append(Path(configured_home))
+        configured_homes.extend(Path(home) for home in node_homes)
+        seen_homes = {_resolve(Path(item["path"])) for item in roots}
+        for configured_home_path in configured_homes:
+            node_finding = _describe_anet_node_home(
+                _resolve(configured_home_path)
+            )
+            if node_finding is not None and _resolve(
+                Path(node_finding["path"])
+            ) not in seen_homes:
+                roots.append(node_finding)
+                seen_homes.add(_resolve(Path(node_finding["path"])))
     ahub_roots = [
         finding
         for root in _ahub_candidates(platform_name, target)
@@ -341,7 +453,7 @@ def _foreign_anet(report: dict[str, Any], target_root: Path) -> list[dict[str, A
     return [
         finding
         for finding in report.get("existing_anet", [])
-        if _resolve(Path(str(finding.get("path", "")))) != target
+        if not _resolve(Path(str(finding.get("path", "")))).is_relative_to(target)
     ]
 
 

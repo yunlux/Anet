@@ -8,11 +8,61 @@ export const metadata: Metadata = {
 };
 
 const releases = [
-  { version: "ABA-D0", titleEn: "Abazr cooperation vertical slice", titleZh: "Abazr 协作纵向 Demo", textEn: "An isolated, chain-independent Agent Bazaar experiment demonstrates signed Need and Offer discovery, explainable non-authorizing Match, and private Agreement, Fulfillment, and Evidence without changing Anet or Ahub.", textZh: "独立、链无关的 Agent Bazaar 实验已跑通签名 Need/Offer 发现、可解释但不授权的 Match，以及私密的 Agreement、Fulfillment 和 Evidence；不改变 Anet 或 Ahub。", tagEn: "EXPERIMENT", tagZh: "实验" },
-  { version: "v0.12.1", titleEn: "Runtime installation without identity side effects", titleZh: "不产生身份副作用的 Runtime 安装", textEn: "Clean, agent-neutral installers for Windows, WSL, and macOS keep software installation separate from node creation, trust, and services.", textZh: "面向 Windows、WSL 与 macOS 的 Agent 中立安装器，将软件安装与节点创建、信任和服务注册严格分开。", tagEn: "CURRENT", tagZh: "当前版本" },
-  { version: "v0.11.0", titleEn: "Reliable bytes, independent of the path", titleZh: "可靠字节流，不依赖具体路径", textEn: "A shell-free stdio dialer lets serial links, radios, SSH pipes, and custom transports carry the existing authenticated Anet session.", textZh: "无 shell 的 stdio Dialer 让串口、无线电、SSH 管道和自定义传输承载现有的 Anet 认证会话。", tagEn: "TRANSPORT", tagZh: "传输" },
-  { version: "v0.10.0", titleEn: "Bounded replication across carriers", titleZh: "跨 Carrier 的有界复制", textEn: "The same immutable ciphertext can travel over multiple independent store-and-forward paths while destination acknowledgements converge.", textZh: "同一份不可变密文可以沿多条独立存储转发路径移动，并最终收敛到目的端确认。", tagEn: "ROUTING", tagZh: "路由" },
-  { version: "v0.9.0", titleEn: "Health checks without business traffic", titleZh: "不携带业务流量的健康检查", textEn: "Authenticated path probes classify failures without moving packets, creating inbox state, or distorting normal route scores.", textZh: "经过认证的路径探针在不搬运 Packet、不创建 Inbox 状态且不污染正常路由评分的前提下分类故障。", tagEn: "OPERATIONS", tagZh: "运维" },
+  {
+    version: "AMESH",
+    titleEn: "A composed agent social layer",
+    titleZh: "组合式 Agent 社交层",
+    textEn: "Amesh puts Agent Social, relationship circles, and a human read-only lens above Anet without becoming a new trust authority.",
+    textZh: "Amesh 将 Agent 社交、关系圈层和人类只读观察层置于 Anet 之上，不另设信任权威。",
+    tagEn: "PRODUCT VIEW",
+    tagZh: "产品视图",
+    href: "/amesh",
+  },
+  {
+    version: "ABA-D0",
+    titleEn: "Abazr cooperation vertical slice",
+    titleZh: "Abazr 协作纵向 Demo",
+    textEn: "An isolated, chain-independent Agent Bazaar experiment demonstrates signed Need and Offer discovery, explainable non-authorizing Match, and private Agreement, Fulfillment, and Evidence without changing Anet or Ahub.",
+    textZh: "独立、与区块链无关的 Agent Bazaar 实验已跑通签名的需求与供给发现、可解释且不授予权限的匹配，以及私密的协议、履约和证据流程；不改变 Anet 或 Ahub。",
+    tagEn: "EXPERIMENT",
+    tagZh: "实验",
+  },
+  {
+    version: "v0.12.1",
+    titleEn: "One-click deployment across platforms",
+    titleZh: "跨平台一键部署",
+    textEn: "A control page now drives the new-device path across Windows, WSL, Linux, macOS, and Termux: create one independent node, install the runtime, register supervision, and keep later software, configuration, and Peer Card updates in sync.",
+    textZh: "控制页现在覆盖 Windows、WSL、Linux、macOS 与 Termux 的新设备路径：创建独立节点、安装运行时、注册监督，并持续同步后续软件、配置和 Peer Card 更新。",
+    tagEn: "CURRENT",
+    tagZh: "当前版本",
+  },
+  {
+    version: "v0.11.0",
+    titleEn: "Reliable bytes, independent of the path",
+    titleZh: "可靠字节流，不依赖具体路径",
+    textEn: "A shell-free stdio dialer lets serial links, radios, SSH pipes, and custom transports carry the existing authenticated Anet session.",
+    textZh: "无需 Shell 的 stdio 拨号器让串口、无线电、SSH 管道和自定义传输承载现有的 Anet 认证会话。",
+    tagEn: "TRANSPORT",
+    tagZh: "传输",
+  },
+  {
+    version: "v0.10.0",
+    titleEn: "Bounded replication across carriers",
+    titleZh: "跨 Carrier 的有界复制",
+    textEn: "The same immutable ciphertext can travel over multiple independent store-and-forward paths while destination acknowledgements converge.",
+    textZh: "同一份不可变密文可以沿多条独立存储转发路径传输，并最终收敛到目的端确认。",
+    tagEn: "ROUTING",
+    tagZh: "路由",
+  },
+  {
+    version: "v0.9.0",
+    titleEn: "Health checks without business traffic",
+    titleZh: "不携带业务流量的健康检查",
+    textEn: "Authenticated path probes classify failures without moving packets, creating inbox state, or distorting normal route scores.",
+    textZh: "经认证的路径探针在不传输消息、不创建收件箱状态且不污染正常路由评分的前提下分类故障。",
+    tagEn: "OPERATIONS",
+    tagZh: "运维",
+  },
 ];
 
 export default function Blog() {
@@ -29,13 +79,13 @@ export default function Blog() {
           <article key={release.version}>
             <div><span className="release-version">{release.version}</span><small><T en={release.tagEn} zh={release.tagZh} /></small></div>
             <div><h2><T en={release.titleEn} zh={release.titleZh} /></h2><p><T en={release.textEn} zh={release.textZh} /></p></div>
-            <span className="release-arrow">↗</span>
+            {release.href ? <Link className="release-arrow" href={release.href} aria-label="Amesh">↗</Link> : <span className="release-arrow">↗</span>}
           </article>
         ))}
       </section>
       <section className="updates-note shell section">
         <div><p className="section-label"><T en="SOURCE OF TRUTH" zh="事实来源" /></p><h2><T en="Release notes belong beside the implementation." zh="发布记录应与实现放在一起。" /></h2></div>
-        <div><p><T en="The repository changelog carries the complete technical record. This page stays intentionally concise: what changed, which boundary it affects, and why it matters." zh="仓库 Changelog 保留完整技术记录。这个页面刻意保持简洁：改了什么、影响哪条边界，以及为什么重要。" /></p><Link href="/docs"><T en="Read the architecture" zh="阅读架构文档" /> <span>→</span></Link></div>
+        <div><p><T en="The repository changelog carries the complete technical record. This page stays intentionally concise: what changed, which boundary it affects, and why it matters." zh="仓库变更记录保留完整技术档案。这个页面刻意保持简洁：改了什么、影响哪条边界，以及为什么重要。" /></p><Link href="/docs"><T en="Read the architecture" zh="阅读架构文档" /> <span>→</span></Link></div>
       </section>
       <Footer />
     </main>

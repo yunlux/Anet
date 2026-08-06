@@ -7,16 +7,37 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-from install_preflight import collect_preflight, emit_preflight
+from install_preflight import InstallationLock, collect_preflight, emit_preflight
 
 
 class InstallError(RuntimeError):
     pass
+
+
+_REPOSITORY_REF_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+
+
+def normalize_repository_ref(value: str) -> str:
+    """Validate the optional Git branch, tag, or commit reference."""
+
+    reference = str(value).strip()
+    if not reference:
+        return ""
+    if (
+        not _REPOSITORY_REF_PATTERN.fullmatch(reference)
+        or ".." in reference
+        or "//" in reference
+        or "@{" in reference
+        or reference.endswith((".", "/"))
+    ):
+        raise InstallError("repository ref contains an invalid Git reference")
+    return reference
 
 
 def sha256(path: Path) -> str:
@@ -47,6 +68,36 @@ def python_in(venv: Path) -> Path:
 
 def cli_in(venv: Path) -> Path:
     return venv / "bin" / "anet"
+
+
+def source_requirement(
+    source_url: str,
+    feature: str,
+    source_ref: str = "",
+) -> str:
+    """Build the pip requirement used for a repository-based installation."""
+
+    source = str(source_url).strip()
+    if not source:
+        raise InstallError("repository source URL is empty")
+    if source.startswith("git+"):
+        package = source
+    elif source.startswith(("http://", "https://", "ssh://", "git://", "file://")):
+        package = f"git+{source}"
+    else:
+        package = f"git+{Path(source).expanduser().resolve().as_uri()}"
+    reference = normalize_repository_ref(source_ref)
+    if reference:
+        base, separator, fragment = package.partition("#")
+        package = f"{base}@{reference}"
+        if separator:
+            package += f"#{fragment}"
+    extras = {
+        "core": "",
+        "mcp": "mcp",
+        "full": "mcp,ahub,qr",
+    }[feature]
+    return f"anet-fabric[{extras}] @ {package}" if extras else package
 
 
 def verify_runtime(venv: Path, version: str, feature: str) -> None:
@@ -80,21 +131,31 @@ def install_runtime(
     *,
     platform_name: str,
     version: str,
-    wheel: Path,
+    wheel: Path | None,
     wheel_sha256: str,
     root: Path,
     feature: str,
+    source_url: str = "",
+    source_ref: str = "",
     system_site_packages: bool = False,
     install_dependencies: bool = True,
     use_uv: bool = True,
     verify_feature: str | None = None,
 ) -> dict[str, str]:
-    wheel = wheel.expanduser().resolve()
-    if not wheel.is_file():
-        raise InstallError(f"wheel does not exist: {wheel}")
-    expected_hash = wheel_sha256.strip().upper()
-    if sha256(wheel) != expected_hash:
-        raise InstallError("wheel SHA256 mismatch")
+    source_url = str(source_url).strip()
+    source_ref = normalize_repository_ref(source_ref)
+    if wheel is None and not source_url:
+        raise InstallError("provide a wheel or repository source URL")
+    if wheel is not None and source_url:
+        raise InstallError("provide either a wheel or repository source URL")
+    expected_hash = ""
+    if wheel is not None:
+        wheel = wheel.expanduser().resolve()
+        if not wheel.is_file():
+            raise InstallError(f"wheel does not exist: {wheel}")
+        expected_hash = wheel_sha256.strip().upper()
+        if sha256(wheel) != expected_hash:
+            raise InstallError("wheel SHA256 mismatch")
 
     root = root.expanduser().resolve()
     if root in {Path("/"), Path.home().resolve()}:
@@ -110,7 +171,13 @@ def install_runtime(
         if not manifest.is_file():
             raise InstallError("existing version directory has no release manifest")
         current = json.loads(manifest.read_text(encoding="utf-8"))
-        if current.get("wheel_sha256") != expected_hash:
+        if source_url:
+            if (
+                current.get("source_url") != source_url
+                or str(current.get("source_ref", "")) != source_ref
+            ):
+                raise InstallError("existing version has a different repository source")
+        elif current.get("wheel_sha256") != expected_hash:
             raise InstallError("existing version has a different wheel hash")
         if current.get("feature", "core") != feature:
             raise InstallError("existing version has a different feature set")
@@ -123,16 +190,19 @@ def install_runtime(
             destination.mkdir()
             venv = destination / "venv"
             uv = shutil.which("uv") if use_uv else None
-            extras = {
-                "core": "",
-                "mcp": "mcp",
-                "full": "mcp,ahub,qr",
-            }[feature]
-            requirement = (
-                str(wheel)
-                if not extras
-                else f"anet-fabric[{extras}] @ {wheel.as_uri()}"
-            )
+            if source_url:
+                requirement = source_requirement(source_url, feature, source_ref)
+            else:
+                extras = {
+                    "core": "",
+                    "mcp": "mcp",
+                    "full": "mcp,ahub,qr",
+                }[feature]
+                requirement = (
+                    str(wheel)
+                    if not extras
+                    else f"anet-fabric[{extras}] @ {wheel.as_uri()}"
+                )
             venv_arguments = ["venv"]
             if system_site_packages:
                 venv_arguments.append("--system-site-packages")
@@ -161,19 +231,20 @@ def install_runtime(
                     install_arguments.append("--no-deps")
                 run([*install_arguments, requirement])
             verify_runtime(venv, version, verify_feature or feature)
+            release = {
+                "schema_version": 1,
+                "platform": platform_name,
+                "version": version,
+                "feature": feature,
+                "system_site_packages": system_site_packages,
+            }
+            if source_url:
+                release["source_url"] = source_url
+                release["source_ref"] = source_ref
+            else:
+                release["wheel_sha256"] = expected_hash
             manifest.write_text(
-                json.dumps(
-                    {
-                        "schema_version": 1,
-                        "platform": platform_name,
-                        "version": version,
-                        "feature": feature,
-                        "wheel_sha256": expected_hash,
-                        "system_site_packages": system_site_packages,
-                    },
-                    indent=2,
-                    sort_keys=True,
-                )
+                json.dumps(release, indent=2, sort_keys=True)
                 + "\n",
                 encoding="utf-8",
             )
@@ -217,8 +288,11 @@ def parser(default_root: Path) -> argparse.ArgumentParser:
     return result
 
 
-def main(platform_name: str, default_root: Path) -> int:
-    args = parser(default_root).parse_args()
+def _main_unlocked(
+    platform_name: str,
+    default_root: Path,
+    args: argparse.Namespace,
+) -> int:
     root = args.root.expanduser().resolve()
     preflight = collect_preflight(
         platform_name,
@@ -239,3 +313,9 @@ def main(platform_name: str, default_root: Path) -> int:
     result["preflight"] = preflight
     print(json.dumps(result, separators=(",", ":")))
     return 0
+
+
+def main(platform_name: str, default_root: Path) -> int:
+    args = parser(default_root).parse_args()
+    with InstallationLock(args.root.expanduser().resolve()):
+        return _main_unlocked(platform_name, default_root, args)

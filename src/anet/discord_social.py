@@ -34,6 +34,17 @@ _SNOWFLAKE_RE = re.compile(r"^[0-9]{1,20}$")
 _ENV_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 _NODE_ID_RE = re.compile(r"^an1[a-z2-7]{17,125}$")
+_DISCORD_RUNTIME_CATEGORIES = frozenset(
+    {
+        "rate_limited",
+        "permission",
+        "transport",
+        "api",
+        "validation",
+        "unknown",
+    }
+)
+_DISCORD_MAX_RETRY_SECONDS = 3600.0
 
 
 def discord_social_config_path(home: Path) -> Path:
@@ -172,6 +183,14 @@ class DiscordRateLimited(RuntimeError):
 
 
 class DiscordAPIError(RuntimeError):
+    pass
+
+
+class DiscordPermissionError(DiscordAPIError):
+    pass
+
+
+class DiscordTransportError(DiscordAPIError):
     pass
 
 
@@ -332,11 +351,15 @@ class DiscordRESTClient:
                 except (TypeError, ValueError):
                     delay = 1.0
                 raise DiscordRateLimited(delay) from None
+            if exc.code in {401, 403}:
+                raise DiscordPermissionError(
+                    f"Discord API permission check failed with HTTP {exc.code}"
+                ) from None
             raise DiscordAPIError(
                 f"Discord API request failed with HTTP {exc.code}"
             ) from None
         except (OSError, TimeoutError) as exc:
-            raise DiscordAPIError(
+            raise DiscordTransportError(
                 f"Discord API transport failed: {type(exc).__name__}"
             ) from None
 
@@ -450,11 +473,111 @@ class DiscordSocialStore:
                 discord_message_id TEXT NOT NULL DEFAULT '',
                 updated_ms INTEGER NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS discord_social_runtime (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                last_attempt_ms INTEGER NOT NULL DEFAULT 0,
+                last_success_ms INTEGER NOT NULL DEFAULT 0,
+                last_error_ms INTEGER NOT NULL DEFAULT 0,
+                last_error_category TEXT NOT NULL DEFAULT '',
+                consecutive_failures INTEGER NOT NULL DEFAULT 0,
+                next_retry_ms INTEGER NOT NULL DEFAULT 0
+            );
+            INSERT OR IGNORE INTO discord_social_runtime(id)
+            VALUES (1);
             """
         )
 
     def close(self) -> None:
         self._conn.close()
+
+    def record_poll_attempt(self) -> None:
+        self._conn.execute(
+            """
+            UPDATE discord_social_runtime
+            SET last_attempt_ms = ?, next_retry_ms = 0
+            WHERE id = 1
+            """,
+            (now_ms(),),
+        )
+
+    def record_poll_success(self) -> None:
+        current = now_ms()
+        self._conn.execute(
+            """
+            UPDATE discord_social_runtime
+            SET last_attempt_ms = ?, last_success_ms = ?,
+                consecutive_failures = 0, next_retry_ms = 0
+            WHERE id = 1
+            """,
+            (current, current),
+        )
+
+    def record_poll_failure(
+        self,
+        category: str,
+        *,
+        retry_after_seconds: float = 0.0,
+        base_interval_seconds: float = 15.0,
+    ) -> dict[str, Any]:
+        category = _runtime_category(category)
+        current = now_ms()
+        self._conn.execute(
+            """
+            UPDATE discord_social_runtime
+            SET last_attempt_ms = ?, last_error_ms = ?,
+                last_error_category = ?,
+                consecutive_failures = consecutive_failures + 1
+            WHERE id = 1
+            """,
+            (current, current, category),
+        )
+        status = self.runtime_status()
+        delay = _discord_retry_delay(
+            base_interval_seconds,
+            int(status["consecutive_failures"]),
+            retry_after_seconds,
+        )
+        self._conn.execute(
+            """
+            UPDATE discord_social_runtime SET next_retry_ms = ?
+            WHERE id = 1
+            """,
+            (current + int(delay * 1000),),
+        )
+        return self.runtime_status()
+
+    def runtime_status(self) -> dict[str, Any]:
+        row = self._conn.execute(
+            "SELECT * FROM discord_social_runtime WHERE id = 1"
+        ).fetchone()
+        if row is None:  # pragma: no cover - created by _init_schema
+            return {
+                "runtime_state": "never_run",
+                "last_attempt_ms": 0,
+                "last_success_ms": 0,
+                "last_error_ms": 0,
+                "last_error_category": "",
+                "consecutive_failures": 0,
+                "next_retry_ms": 0,
+            }
+        failures = int(row["consecutive_failures"])
+        attempt = int(row["last_attempt_ms"])
+        state = (
+            "never_run"
+            if attempt == 0
+            else "degraded"
+            if failures
+            else "healthy"
+        )
+        return {
+            "runtime_state": state,
+            "last_attempt_ms": attempt,
+            "last_success_ms": int(row["last_success_ms"]),
+            "last_error_ms": int(row["last_error_ms"]),
+            "last_error_category": str(row["last_error_category"]),
+            "consecutive_failures": failures,
+            "next_retry_ms": int(row["next_retry_ms"]),
+        }
 
     def pseudonym(self, namespace: str, value: str) -> str:
         return hmac.new(
@@ -998,7 +1121,21 @@ class DiscordSocialBridge:
     ) -> dict[str, Any]:
         self._polling.set()
         try:
-            return self._poll_once(queue_signal, project_event)
+            self.store.record_poll_attempt()
+            result = self._poll_once(queue_signal, project_event)
+            self.store.record_poll_success()
+            return result
+        except Exception as exc:
+            self.store.record_poll_failure(
+                _runtime_category_for_exception(exc),
+                retry_after_seconds=(
+                    exc.retry_after
+                    if isinstance(exc, DiscordRateLimited)
+                    else 0.0
+                ),
+                base_interval_seconds=self.config.poll_interval_seconds,
+            )
+            raise
         finally:
             self._polling.clear()
 
@@ -1197,16 +1334,27 @@ class DiscordSocialBridge:
                         result["routed"],
                     )
             except DiscordRateLimited as exc:
-                delay = max(delay, exc.retry_after)
+                runtime = self.store.runtime_status()
+                delay = _discord_retry_delay(
+                    self.config.poll_interval_seconds,
+                    int(runtime["consecutive_failures"]),
+                    exc.retry_after,
+                )
                 LOGGER.warning(
                     "Discord social bridge rate limited; retrying later"
                 )
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
+                runtime = self.store.runtime_status()
+                delay = _discord_retry_delay(
+                    self.config.poll_interval_seconds,
+                    int(runtime["consecutive_failures"]),
+                )
                 LOGGER.warning(
-                    "Discord social poll failed category=%s",
-                    type(exc).__name__,
+                    "Discord social poll failed category=%s retry_seconds=%.1f",
+                    _runtime_category_for_exception(exc),
+                    delay,
                 )
             try:
                 await asyncio.wait_for(stop.wait(), timeout=delay)
@@ -1248,6 +1396,48 @@ def _exact_int(value: Any, label: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ValueError(f"{label} must be an integer")
     return value
+
+
+def _runtime_category(value: str) -> str:
+    category = str(value).strip().lower()
+    if category not in _DISCORD_RUNTIME_CATEGORIES:
+        raise ValueError("invalid Discord runtime error category")
+    return category
+
+
+def _runtime_category_for_exception(exc: BaseException) -> str:
+    if isinstance(exc, DiscordRateLimited):
+        return "rate_limited"
+    if isinstance(exc, (DiscordPermissionError, PermissionError)):
+        return "permission"
+    if isinstance(exc, DiscordTransportError):
+        return "transport"
+    if isinstance(exc, DiscordAPIError):
+        return "api"
+    if isinstance(exc, ValueError):
+        return "validation"
+    return "unknown"
+
+
+def _discord_retry_delay(
+    base_interval_seconds: float,
+    consecutive_failures: int,
+    retry_after_seconds: float = 0.0,
+) -> float:
+    base = max(
+        0.05,
+        min(float(base_interval_seconds), _DISCORD_MAX_RETRY_SECONDS),
+    )
+    failures = max(1, int(consecutive_failures))
+    exponent = min(failures - 1, 8)
+    retry_after = max(
+        0.0,
+        min(float(retry_after_seconds), _DISCORD_MAX_RETRY_SECONDS),
+    )
+    return min(
+        _DISCORD_MAX_RETRY_SECONDS,
+        max(base, base * float(2**exponent), retry_after),
+    )
 
 
 def _compact_json(value: Any) -> str:

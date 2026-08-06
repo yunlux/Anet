@@ -183,8 +183,12 @@ def test_readme_defaults_to_english_and_links_the_chinese_version() -> None:
 
     assert "**English** | [简体中文](README.zh-CN.md)" in english
     assert "[English](README.md) | **简体中文**" in chinese
-    assert "## Install with your agent" in english
-    assert "## 让 Agent 安装" in chinese
+    assert "## One-command deployment" in english
+    assert "## Agent-assisted installation" in english
+    assert "## 新设备一条命令安装" in chinese
+    assert "## 让 Agent 辅助安装" in chinese
+    assert "install_windows_oneclick.ps1" in english
+    assert "install_windows_oneclick.ps1" in chinese
     for installer in (
         "scripts/install_windows.ps1",
         "scripts/install_wsl.py",

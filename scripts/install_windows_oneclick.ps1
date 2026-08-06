@@ -1,6 +1,9 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$ControlUrl,
+    [string]$ControlKeyId = "",
+    [string]$ControlPublicKey = "",
+    [string[]]$ControlTrustedKey = @(),
     [ValidateSet("core", "mcp", "full")]
     [string]$Feature = "mcp",
     [string]$Version = "",
@@ -17,6 +20,7 @@ param(
     [string]$PreflightScriptUrl = "",
     [string]$SupervisorScriptUrl = "",
     [string]$GitHubBranch = "main",
+    [string]$HelperRepository = "https://github.com/yunlux/Anet",
     [switch]$Admin,
     [switch]$AllowExisting
 )
@@ -60,7 +64,10 @@ function Get-GitHubScriptUrl {
         [string]$ScriptName
     )
     $repository = [System.Uri]$RepositoryUrl
-    if ($repository.Host -notin @("github.com", "www.github.com")) {
+    if (
+        $repository.Scheme -ne "https" -or
+        $repository.Host -notin @("github.com", "www.github.com")
+    ) {
         throw "automatic helper download requires a GitHub repository URL; pass an explicit helper URL"
     }
     $repositoryPath = $repository.AbsolutePath.Trim("/") -replace "\.git$", ""
@@ -76,6 +83,25 @@ function Get-GitHubScriptUrl {
     return "https://raw.githubusercontent.com/$($parts[0])/$($parts[1])/$Branch/scripts/$ScriptName"
 }
 
+function Normalize-RepositoryRef {
+    param([string]$Value)
+    $reference = if ($null -eq $Value) { "" } else { $Value.Trim() }
+    if (-not $reference) {
+        return ""
+    }
+    if (
+        $reference -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]*$' -or
+        $reference.Contains("..") -or
+        $reference.Contains("//") -or
+        $reference.Contains("@{") -or
+        $reference.EndsWith(".") -or
+        $reference.EndsWith("/")
+    ) {
+        throw "repository ref contains an invalid Git reference"
+    }
+    return $reference
+}
+
 function Get-OptionalProperty {
     param(
         [object]$Object,
@@ -89,6 +115,172 @@ function Get-OptionalProperty {
         return ""
     }
     return [string]$property.Value
+}
+
+function Test-IsJsonObject {
+    param([object]$Value)
+    if ($null -eq $Value) {
+        return $false
+    }
+    return $Value -is [pscustomobject]
+}
+
+function Assert-DeploymentReceipt {
+    param([System.Collections.IDictionary]$Receipt)
+    if (
+        $Receipt["kind"] -ne "anet.deployment.receipt" -or
+        $Receipt["schema_version"] -ne 1 -or
+        $Receipt["ok"] -ne $true -or
+        $Receipt["platform"] -ne "windows" -or
+        $Receipt["outcome"] -notin @("created", "reused")
+    ) {
+        throw "Windows deployment receipt header is invalid"
+    }
+    $runtime = $Receipt["runtime"]
+    if (
+        -not $runtime["version"] -or
+        $runtime["feature"] -notin @("core", "mcp", "full") -or
+        -not $runtime["runtime"] -or
+        -not $runtime["cli"]
+    ) {
+        throw "Windows deployment receipt runtime is incomplete"
+    }
+    $node = $Receipt["node"]
+    if (
+        -not $node["home"] -or
+        $node["node_id"] -notmatch '^an1[a-z2-7]{17,125}$' -or
+        -not $node["listen_host"] -or
+        [int]$node["port"] -lt 1 -or
+        [int]$node["port"] -gt 65535
+    ) {
+        throw "Windows deployment receipt node is incomplete"
+    }
+    $control = $Receipt["control"]
+    if (-not $control["url"] -or $control["verified"] -ne $true) {
+        throw "Windows deployment receipt control verification is incomplete"
+    }
+    $receiptKeyIds = @($control["key_ids"])
+    if (
+        @($receiptKeyIds | Select-Object -Unique).Count -ne $receiptKeyIds.Count -or
+        (($receiptKeyIds.Count -eq 0) -and $control["key_id"]) -or
+        (($receiptKeyIds.Count -gt 0) -and $control["key_id"] -ne $receiptKeyIds[0])
+    ) {
+        throw "Windows deployment receipt control publisher list is invalid"
+    }
+    $supervisor = $Receipt["supervisor"]
+    if (
+        -not $supervisor["kind"] -or
+        -not $supervisor["name"] -or
+        $supervisor["state"] -notin @("active", "running") -or
+        $supervisor["autostart"] -ne $true
+    ) {
+        throw "Windows deployment receipt supervisor is incomplete"
+    }
+    $health = $supervisor["health"]
+    if (
+        $null -eq $health -or
+        $health.kind -ne "anet.supervisor.health" -or
+        $health.schema_version -ne 1 -or
+        $health.ok -ne $true -or
+        $health.fresh -ne $true -or
+        -not $health.instance_id -or
+        -not $health.boot_session_id -or
+        $health.sync_complete -ne $true -or
+        $health.supervisor_process_alive -ne $true -or
+        $health.child_process_alive -ne $true
+    ) {
+        throw "Windows deployment receipt supervisor health is incomplete"
+    }
+    if ($null -eq $Receipt["preflight"]) {
+        throw "Windows deployment receipt preflight is missing"
+    }
+}
+
+function Wait-AnetSupervisorHealth {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Python,
+        [Parameter(Mandatory = $true)]
+        [string]$NodeHome,
+        [int]$TimeoutSeconds = 45
+    )
+    $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
+    $lastReason = "health evidence was not produced"
+    while ([DateTimeOffset]::UtcNow -lt $deadline) {
+        $output = & $Python "-m" "anet" "--home" $NodeHome "supervisor-status" 2>$null
+        $exitCode = $LASTEXITCODE
+        if ($output) {
+            try {
+                $health = ($output -join "`n") | ConvertFrom-Json
+                if ($health.reason) {
+                    $lastReason = [string]$health.reason
+                }
+                if ($exitCode -eq 0 -and $health.ok -eq $true) {
+                    return $health
+                }
+            } catch {
+                $lastReason = "supervisor-status returned invalid JSON"
+            }
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    throw "Anet supervisor did not become healthy: $lastReason"
+}
+
+function Merge-JsonObjects {
+    param(
+        [object]$Base,
+        [object]$Patch
+    )
+    $values = [ordered]@{}
+    if ($null -ne $Base) {
+        foreach ($property in $Base.PSObject.Properties) {
+            $values[$property.Name] = $property.Value
+        }
+    }
+    if ($null -ne $Patch) {
+        foreach ($property in $Patch.PSObject.Properties) {
+            if (
+                $values.Contains($property.Name) -and
+                (Test-IsJsonObject $values[$property.Name]) -and
+                (Test-IsJsonObject $property.Value)
+            ) {
+                $values[$property.Name] = Merge-JsonObjects `
+                    $values[$property.Name] $property.Value
+            } else {
+                $values[$property.Name] = $property.Value
+            }
+        }
+    }
+    return [pscustomobject]$values
+}
+
+function Resolve-WheelSha256 {
+    param(
+        [string]$Explicit = "",
+        [string]$Declared = "",
+        [bool]$Require = $false
+    )
+    $explicitValue = $Explicit.Trim()
+    $declaredValue = $Declared.Trim()
+    if ($explicitValue -and $explicitValue -notmatch '^[0-9A-Fa-f]{64}$') {
+        throw "wheel SHA256 must contain 64 hex characters"
+    }
+    if ($declaredValue -and $declaredValue -notmatch '^[0-9A-Fa-f]{64}$') {
+        throw "software.sha256 must contain 64 hex characters"
+    }
+    if (
+        $explicitValue -and
+        $declaredValue -and
+        $explicitValue.ToLowerInvariant() -ne $declaredValue.ToLowerInvariant()
+    ) {
+        throw "-WheelSha256 does not match software.sha256"
+    }
+    $value = if ($explicitValue) { $explicitValue } else { $declaredValue }
+    if (-not $value -and $Require) {
+        throw "pinned control page requires software.sha256 or -WheelSha256 for wheel installation"
+    }
+    return $value
 }
 
 function Test-IsLoopbackHost {
@@ -113,26 +305,31 @@ function Get-EffectivePlatformConfig {
     if ($null -eq $Platforms) {
         return $null
     }
+    if (-not (Test-IsJsonObject $Platforms)) {
+        throw "control page platforms must be an object"
+    }
     $overlayProperty = $Platforms.PSObject.Properties[$PlatformName]
     if ($null -eq $overlayProperty) {
         return $null
     }
-    $values = [ordered]@{}
-    if ($null -ne $CommonConfig) {
-        foreach ($property in $CommonConfig.PSObject.Properties) {
-            $values[$property.Name] = $property.Value
-        }
-    }
     $overlay = $overlayProperty.Value
+    if ($null -eq $overlay) {
+        return $CommonConfig
+    }
+    if (-not (Test-IsJsonObject $overlay)) {
+        throw "control page platforms.$PlatformName must be an object"
+    }
+    $config = $null
     if ($null -ne $overlay -and $overlay.PSObject.Properties["config"]) {
         $config = $overlay.config
-        if ($null -ne $config) {
-            foreach ($property in $config.PSObject.Properties) {
-                $values[$property.Name] = $property.Value
-            }
-        }
+    } elseif ($null -ne $overlay -and
+        $overlay.PSObject.Properties["default_config"]) {
+        $config = $overlay.default_config
     }
-    return [pscustomobject]$values
+    if ($null -eq $config) {
+        return $CommonConfig
+    }
+    return Merge-JsonObjects $CommonConfig $config
 }
 
 function Get-EffectivePlatformSoftware {
@@ -141,40 +338,37 @@ function Get-EffectivePlatformSoftware {
         [object]$CommonSoftware,
         [string]$PlatformName
     )
-    $values = [ordered]@{}
-    if ($null -ne $CommonSoftware) {
-        if ($CommonSoftware -isnot [psobject]) {
-            throw "control page software must be an object"
-        }
-        foreach ($property in $CommonSoftware.PSObject.Properties) {
-            $values[$property.Name] = $property.Value
-        }
+    if ($null -ne $CommonSoftware -and -not (Test-IsJsonObject $CommonSoftware)) {
+        throw "control page software must be an object"
     }
     if ($null -eq $Platforms) {
-        return [pscustomobject]$values
+        return $(if ($null -eq $CommonSoftware) { [pscustomobject]@{} } else { $CommonSoftware })
+    }
+    if (-not (Test-IsJsonObject $Platforms)) {
+        throw "control page platforms must be an object"
     }
     $overlayProperty = $Platforms.PSObject.Properties[$PlatformName]
     if ($null -eq $overlayProperty) {
-        return [pscustomobject]$values
+        return $(if ($null -eq $CommonSoftware) { [pscustomobject]@{} } else { $CommonSoftware })
     }
     $overlay = $overlayProperty.Value
     if ($null -eq $overlay) {
-        return [pscustomobject]$values
+        return $(if ($null -eq $CommonSoftware) { [pscustomobject]@{} } else { $CommonSoftware })
+    }
+    if (-not (Test-IsJsonObject $overlay)) {
+        throw "control page platforms.$PlatformName must be an object"
     }
     if (-not $overlay.PSObject.Properties["software"]) {
-        return [pscustomobject]$values
+        return $(if ($null -eq $CommonSoftware) { [pscustomobject]@{} } else { $CommonSoftware })
     }
     $software = $overlay.software
     if ($null -eq $software) {
-        return [pscustomobject]$values
+        return $(if ($null -eq $CommonSoftware) { [pscustomobject]@{} } else { $CommonSoftware })
     }
-    if ($software -isnot [psobject]) {
+    if (-not (Test-IsJsonObject $software)) {
         throw "control page platforms.$PlatformName.software must be an object"
     }
-    foreach ($property in $software.PSObject.Properties) {
-        $values[$property.Name] = $property.Value
-    }
-    return [pscustomobject]$values
+    return Merge-JsonObjects $CommonSoftware $software
 }
 
 function Test-HasHostScope {
@@ -345,6 +539,94 @@ function Test-IsAdministrator {
     )
 }
 
+function Get-ControlTrustedKeys {
+    param(
+        [string]$KeyId,
+        [string]$PublicKey,
+        [string[]]$TrustedKeySpecs = @()
+    )
+    $pairs = [System.Collections.Generic.List[object]]::new()
+    $legacyId = $KeyId.Trim()
+    $legacyKey = $PublicKey.Trim()
+    if (($legacyId -and -not $legacyKey) -or ($legacyKey -and -not $legacyId)) {
+        throw "-ControlKeyId and -ControlPublicKey must be provided together"
+    }
+    if ($legacyId -and $legacyKey) {
+        $pairs.Add([pscustomobject]@{ KeyId = $legacyId; PublicKey = $legacyKey })
+    }
+    foreach ($rawSpec in $TrustedKeySpecs) {
+        $spec = ([string]$rawSpec).Trim()
+        $separator = $spec.IndexOf('=')
+        if ($separator -lt 1 -or $separator -eq ($spec.Length - 1)) {
+            throw "-ControlTrustedKey must use KEY_ID=BASE64URL_PUBLIC_KEY"
+        }
+        $pairs.Add([pscustomobject]@{
+            KeyId = $spec.Substring(0, $separator)
+            PublicKey = $spec.Substring($separator + 1)
+        })
+    }
+
+    $result = [System.Collections.Specialized.OrderedDictionary]::new(
+        [StringComparer]::Ordinal
+    )
+    $publisherByKey = [System.Collections.Generic.Dictionary[string,string]]::new(
+        [StringComparer]::Ordinal
+    )
+    foreach ($pair in $pairs) {
+        $cleanId = ([string]$pair.KeyId).Trim()
+        $encoded = ([string]$pair.PublicKey).Trim()
+        if ($cleanId -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$') {
+            throw "control publisher key ID is invalid"
+        }
+        try {
+            $standard = $encoded.Replace('-', '+').Replace('_', '/')
+            while (($standard.Length % 4) -ne 0) { $standard += '=' }
+            $bytes = [Convert]::FromBase64String($standard)
+        } catch {
+            throw "control publisher public key is not valid base64url"
+        }
+        if ($bytes.Length -ne 32) {
+            throw "control publisher public key must contain 32 bytes"
+        }
+        $encoded = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+        if ($result.Contains($cleanId) -and $result[$cleanId] -ne $encoded) {
+            throw "control publisher key ID has conflicting public keys: $cleanId"
+        }
+        if ($publisherByKey.ContainsKey($encoded) -and $publisherByKey[$encoded] -ne $cleanId) {
+            throw "one control publisher public key cannot identify multiple publishers"
+        }
+        $result[$cleanId] = $encoded
+        $publisherByKey[$encoded] = $cleanId
+    }
+    return $result
+}
+
+function Enter-InstallMutex {
+    param(
+        [string]$Scope,
+        [string]$RootPath
+    )
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [Text.Encoding]::UTF8.GetBytes($RootPath.ToLowerInvariant())
+        $hex = ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace("-", "")
+    } finally {
+        $sha.Dispose()
+    }
+    $mutex = [Threading.Mutex]::new($false, "Local\Anet-$Scope-$($hex.Substring(0, 32))")
+    $owned = $false
+    try {
+        $owned = $mutex.WaitOne(0)
+    } catch [Threading.AbandonedMutexException] {
+        $owned = $true
+    }
+    if (-not $owned) {
+        $mutex.Dispose()
+        throw "another Anet installer already owns the $Scope install lock for $RootPath"
+    }
+    return $mutex
+}
+
 function Stop-ManagedSupervisorTask {
     param(
         [string]$TaskPath,
@@ -372,6 +654,34 @@ function Stop-ManagedSupervisorTask {
     throw "managed Anet supervisor task did not stop within 30 seconds"
 }
 
+function Wait-ManagedSupervisorTask {
+    param(
+        [string]$TaskPath,
+        [string]$TaskName
+    )
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $task = Get-ScheduledTask `
+            -TaskPath $TaskPath `
+            -TaskName $TaskName `
+            -ErrorAction SilentlyContinue
+        if ($null -ne $task -and [string]$task.State -eq "Running") {
+            return
+        }
+        Start-Sleep -Milliseconds 200
+    }
+    $lastResult = "unknown"
+    try {
+        $lastResult = [string](Get-ScheduledTaskInfo `
+            -TaskPath $TaskPath `
+            -TaskName $TaskName
+        ).LastTaskResult
+    } catch {
+        $lastResult = "unavailable"
+    }
+    throw "managed Anet supervisor task did not start within 30 seconds (last task result: $lastResult)"
+}
+
 $requestedListenHost = $ListenHost
 if ($Admin -and -not (Test-IsAdministrator)) {
     throw "-Admin requires an elevated PowerShell window (Run as administrator)"
@@ -385,7 +695,11 @@ if (-not $Root) {
 }
 
 $rootPath = [System.IO.Path]::GetFullPath($Root)
+$installMutex = Enter-InstallMutex "deployment" $rootPath
 $page = Read-ControlPage $ControlUrl
+$trustedKeys = Get-ControlTrustedKeys $ControlKeyId $ControlPublicKey $ControlTrustedKey
+$controlKeyIds = @($trustedKeys.Keys | ForEach-Object { [string]$_ })
+$primaryControlKeyId = if ($controlKeyIds.Count -gt 0) { $controlKeyIds[0] } else { "" }
 $commonSoftware = if ($page.PSObject.Properties["software"]) {
     $page.software
 } else {
@@ -397,6 +711,9 @@ $platformConfig = $null
 $commonConfig = $null
 if ($page.PSObject.Properties["config"]) {
     $commonConfig = $page.config
+    $platformConfig = $commonConfig
+} elseif ($page.PSObject.Properties["default_config"]) {
+    $commonConfig = $page.default_config
     $platformConfig = $commonConfig
 }
 if ($page.PSObject.Properties["platforms"]) {
@@ -445,7 +762,7 @@ Assert-CrossPlatformLocators `
     $LocatorContext
 Assert-CrossPlatformPorts `
     $platformsForValidation `
-    $(if ($page.PSObject.Properties["config"]) { $page.config } else { $null }) `
+    $commonConfig `
     "windows" `
     $Port `
     $Advertise `
@@ -454,6 +771,19 @@ Assert-CrossPlatformPorts `
 $helperRoot = ""
 $preflight = $null
 $preflightScript = ""
+$sourceRef = Get-OptionalProperty $software "repo_ref"
+if (-not $sourceRef) {
+    $sourceRef = Get-OptionalProperty $page "repo_ref"
+}
+if (-not $sourceRef) {
+    $sourceRef = Get-OptionalProperty $page "anet_repo_ref"
+}
+$sourceRef = Normalize-RepositoryRef $sourceRef
+$helperBranch = Normalize-RepositoryRef $GitHubBranch
+if (-not $helperBranch) {
+    $helperBranch = "main"
+}
+$helperRepository = $HelperRepository.Trim()
 if ($PSScriptRoot) {
     $localPreflight = Join-Path $PSScriptRoot "windows_install_preflight.ps1"
     if (Test-Path -LiteralPath $localPreflight -PathType Leaf) {
@@ -462,19 +792,8 @@ if ($PSScriptRoot) {
 }
 if (-not $preflightScript) {
     if (-not $PreflightScriptUrl) {
-        $PreflightScriptUrl = Get-OptionalProperty $software "preflight_script_url"
-    }
-    if (-not $PreflightScriptUrl) {
-        $repoUrl = Get-OptionalProperty $software "repo_url"
-        if (-not $repoUrl) {
-            $repoUrl = Get-OptionalProperty $page "repo_url"
-        }
-        if (-not $repoUrl) {
-            $repoUrl = "https://github.com/yunlux/Anet"
-        }
-        $repoUrl = Resolve-ControlReference $ControlUrl $repoUrl
         $PreflightScriptUrl = Get-GitHubScriptUrl `
-            $repoUrl $GitHubBranch "windows_install_preflight.ps1"
+            $helperRepository $helperBranch "windows_install_preflight.ps1"
     }
     $helperRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
         "anet-bootstrap-" + [Guid]::NewGuid().ToString("N")
@@ -488,6 +807,9 @@ $preflightArguments = @(
     "-TargetRoot", $rootPath,
     "-Deployment"
 )
+if ($NodeHome) {
+    $preflightArguments += @("-NodeHome", $NodeHome)
+}
 if ($AllowExisting) {
     $preflightArguments += "-AllowExisting"
 }
@@ -498,29 +820,40 @@ if ($LASTEXITCODE -ne 0) {
 $preflight = $preflightOutput | ConvertFrom-Json
 
 if (-not $Version) {
-    $Version = [string]$software.version
+    $Version = Get-OptionalProperty $software "version"
 }
 if (-not $Version) {
     throw "control page software.version is required"
 }
+$sourceUrl = ""
+$declaredWheelSha256 = Get-OptionalProperty $software "sha256"
+$resolvedWheelSha256 = ""
 if (-not $Wheel) {
-    $wheelUrl = [string]$software.wheel_url
-    if (-not $wheelUrl) {
-        throw "control page software.wheel_url is required for one-click installation"
-    }
-    $wheelUrl = Resolve-ControlReference $ControlUrl $wheelUrl
-    $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
-        "anet-install-" + [Guid]::NewGuid().ToString("N")
-    )
-    New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
-    $Wheel = Join-Path $tempRoot ("anet-fabric-" + $Version + ".whl")
-    Invoke-WebRequest -Uri $wheelUrl -OutFile $Wheel -UseBasicParsing
-}
-$wheelPath = (Resolve-Path -LiteralPath $Wheel).Path
-if (-not $WheelSha256) {
-    $WheelSha256 = Get-OptionalProperty $software "sha256"
-    if (-not $WheelSha256) {
-        $WheelSha256 = (Get-FileHash -LiteralPath $wheelPath -Algorithm SHA256).Hash
+    $wheelUrl = Get-OptionalProperty $software "wheel_url"
+    if ($wheelUrl) {
+        $resolvedWheelSha256 = Resolve-WheelSha256 `
+            -Explicit $WheelSha256 `
+            -Declared $declaredWheelSha256 `
+            -Require ($trustedKeys.Count -gt 0)
+        $wheelUrl = Resolve-ControlReference $ControlUrl $wheelUrl
+        $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
+            "anet-install-" + [Guid]::NewGuid().ToString("N")
+        )
+        New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
+        $Wheel = Join-Path $tempRoot ("anet-fabric-" + $Version + ".whl")
+        Invoke-WebRequest -Uri $wheelUrl -OutFile $Wheel -UseBasicParsing
+    } else {
+        $sourceUrl = Get-OptionalProperty $software "repo_url"
+        if (-not $sourceUrl) {
+            $sourceUrl = Get-OptionalProperty $page "repo_url"
+        }
+        if (-not $sourceUrl) {
+            $sourceUrl = Get-OptionalProperty $page "anet_repo"
+        }
+        if (-not $sourceUrl) {
+            throw "control page software.wheel_url or software.repo_url is required for one-click installation"
+        }
+        $sourceUrl = Resolve-ControlReference $ControlUrl $sourceUrl
     }
 }
 
@@ -535,19 +868,8 @@ if ($localInstaller -and (Test-Path -LiteralPath $localInstaller -PathType Leaf)
     $installer = $localInstaller
 } else {
     if (-not $RuntimeInstallerUrl) {
-        $RuntimeInstallerUrl = Get-OptionalProperty $software "runtime_installer_url"
-    }
-    if (-not $RuntimeInstallerUrl) {
-        $repoUrl = Get-OptionalProperty $software "repo_url"
-        if (-not $repoUrl) {
-            $repoUrl = Get-OptionalProperty $page "repo_url"
-        }
-        if (-not $repoUrl) {
-            $repoUrl = "https://github.com/yunlux/Anet"
-        }
-        $repoUrl = Resolve-ControlReference $ControlUrl $repoUrl
         $RuntimeInstallerUrl = Get-GitHubScriptUrl `
-            $repoUrl $GitHubBranch "install_windows.ps1"
+            $helperRepository $helperBranch "install_windows.ps1"
     }
     if (-not $helperRoot) {
         $helperRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
@@ -558,12 +880,34 @@ if ($localInstaller -and (Test-Path -LiteralPath $localInstaller -PathType Leaf)
     $installer = Join-Path $helperRoot "install_windows.ps1"
     Invoke-WebRequest -Uri $RuntimeInstallerUrl -OutFile $installer -UseBasicParsing
 }
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer `
-    -Version $Version `
-    -Wheel $wheelPath `
-    -WheelSha256 $WheelSha256 `
-    -Feature $Feature `
-    -Root $rootPath
+$runtimeArguments = @(
+    "-Version", $Version,
+    "-Feature", $Feature,
+    "-Root", $rootPath
+)
+if ($sourceUrl) {
+    $runtimeArguments += @(
+        "-SourceUrl", $sourceUrl,
+        "-SourceRef", $sourceRef
+    )
+} else {
+    $wheelPath = (Resolve-Path -LiteralPath $Wheel).Path
+    $resolvedWheelSha256 = Resolve-WheelSha256 `
+        -Explicit $WheelSha256 `
+        -Declared $declaredWheelSha256 `
+        -Require ($trustedKeys.Count -gt 0)
+    if ($resolvedWheelSha256) {
+        $WheelSha256 = $resolvedWheelSha256
+    }
+    if (-not $WheelSha256) {
+        $WheelSha256 = (Get-FileHash -LiteralPath $wheelPath -Algorithm SHA256).Hash
+    }
+    $runtimeArguments += @(
+        "-Wheel", $wheelPath,
+        "-WheelSha256", $WheelSha256
+    )
+}
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer @runtimeArguments
 if ($LASTEXITCODE -ne 0) {
     throw "runtime installation failed with exit code $LASTEXITCODE"
 }
@@ -580,7 +924,8 @@ if (-not $NodeHome) {
 }
 $nodePath = [System.IO.Path]::GetFullPath($NodeHome)
 $configPath = Join-Path $nodePath "config.json"
-if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
+$nodeCreated = -not (Test-Path -LiteralPath $configPath -PathType Leaf)
+if ($nodeCreated) {
     if ($Port -eq 0 -and $ListenHost -ne "127.0.0.1") {
         throw "-Port is required when -ListenHost is not 127.0.0.1"
     }
@@ -628,29 +973,41 @@ $settings = [ordered]@{
         300
     }
 }
+if ($trustedKeys.Count -gt 0) {
+    $settings["trusted_keys"] = $trustedKeys
+    $settings["root_key_id"] = $primaryControlKeyId
+}
 New-Item -ItemType Directory -Path $nodePath -Force | Out-Null
 $settings | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (
     Join-Path $nodePath "remote-control.json"
 ) -Encoding utf8
+
+$controlVerifyArguments = @(
+    "-m", "anet", "--home", $nodePath,
+    "control-verify", "--url", $ControlUrl
+)
+$controlVerifyOutput = & $python @controlVerifyArguments
+if ($LASTEXITCODE -ne 0) {
+    throw "remote control page verification failed with exit code $LASTEXITCODE"
+}
+
+$statusOutput = & $python "-m" "anet" "--home" $nodePath "status"
+if ($LASTEXITCODE -ne 0) {
+    throw "Anet status failed with exit code $LASTEXITCODE"
+}
+$nodeStatus = ($statusOutput -join "`n") | ConvertFrom-Json
+$nodeId = Get-OptionalProperty $nodeStatus "node_id"
+if ($nodeId -notmatch '^an1[a-z2-7]{17,125}$') {
+    throw "Anet status did not return a complete Node ID"
+}
 
 $launcher = Join-Path $rootPath "run-supervisor.ps1"
 if ($localLauncher -and (Test-Path -LiteralPath $localLauncher -PathType Leaf)) {
     $launcherSource = $localLauncher
 } else {
     if (-not $SupervisorScriptUrl) {
-        $SupervisorScriptUrl = Get-OptionalProperty $software "supervisor_script_url"
-    }
-    if (-not $SupervisorScriptUrl) {
-        $repoUrl = Get-OptionalProperty $software "repo_url"
-        if (-not $repoUrl) {
-            $repoUrl = Get-OptionalProperty $page "repo_url"
-        }
-        if (-not $repoUrl) {
-            $repoUrl = "https://github.com/yunlux/Anet"
-        }
-        $repoUrl = Resolve-ControlReference $ControlUrl $repoUrl
         $SupervisorScriptUrl = Get-GitHubScriptUrl `
-            $repoUrl $GitHubBranch "run-supervisor.ps1"
+            $helperRepository $helperBranch "run-supervisor.ps1"
     }
     if (-not $helperRoot) {
         $helperRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
@@ -665,7 +1022,7 @@ Copy-Item -LiteralPath $launcherSource -Destination $launcher -Force
 
 $taskPath = "\Anet\"
 $taskName = "Supervisor"
-$taskArguments = "-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$launcher`" -NodeHome `"$nodePath`" -RuntimeRoot `"$rootPath`" -ControlUrl `"$ControlUrl`""
+$taskArguments = "-NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$launcher`" -NodeHome `"$nodePath`" -RuntimeRoot `"$rootPath`""
 $action = New-ScheduledTaskAction -Execute "PowerShell.exe" -Argument $taskArguments
 $settings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
@@ -698,22 +1055,54 @@ Register-ScheduledTask `
     -Settings $settings `
     -Force | Out-Null
 Start-ScheduledTask -TaskPath $taskPath -TaskName $taskName
+Wait-ManagedSupervisorTask $taskPath $taskName
+$supervisorHealth = Wait-AnetSupervisorHealth `
+    -Python $python `
+    -NodeHome $nodePath
 
-[ordered]@{
-    ok = $true
+$currentConfig = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+$runtimeReceipt = [ordered]@{
+    platform = "windows"
+    version = [string]$current.version
+    feature = [string]$current.feature
     runtime = [string]$current.runtime
     cli = [string]$current.cli
-    node_home = $nodePath
+}
+$nodeReceipt = [ordered]@{
+    home = $nodePath
+    node_id = $nodeId
     listen_host = $ListenHost
     port = $port
-    advertise = @(
-        (Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json).advertise
-    )
-    locator_contexts = @(
-        (Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json).locator_contexts
-    )
-    control_url = $ControlUrl
-    task = ($taskPath + $taskName)
-    mode = $mode
+    advertise = @($currentConfig.advertise)
+    locator_contexts = @($currentConfig.locator_contexts)
+}
+$controlReceipt = [ordered]@{
+    url = $ControlUrl
+    key_id = $primaryControlKeyId
+    key_ids = $controlKeyIds
+    verified = $true
+}
+$supervisorReceipt = [ordered]@{
+    kind = $mode
+    name = ($taskPath + $taskName)
+    state = "running"
+    autostart = $true
+    health = $supervisorHealth
+}
+$receipt = [ordered]@{
+    kind = "anet.deployment.receipt"
+    schema_version = 1
+    ok = $true
+    outcome = if ($nodeCreated) { "created" } else { "reused" }
+    platform = "windows"
+    runtime = $runtimeReceipt
+    node = $nodeReceipt
+    control = $controlReceipt
+    supervisor = $supervisorReceipt
     preflight = $preflight
-} | ConvertTo-Json -Depth 10 -Compress
+}
+Assert-DeploymentReceipt $receipt
+$result = $receipt | ConvertTo-Json -Depth 10 -Compress
+$installMutex.ReleaseMutex()
+$installMutex.Dispose()
+$result

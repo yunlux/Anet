@@ -13,7 +13,13 @@ from anet.ahub import (
     issue_ahub_request,
     issue_destination_settlement,
 )
-from anet.ahub_http import AhubASGI, AhubHTTPClient, ahub_json
+from anet.ahub_http import (
+    AhubASGI,
+    AhubHTTPClient,
+    AhubRateLimit,
+    AhubRateLimiter,
+    ahub_json,
+)
 from anet.control_plane import issue_node_descriptor
 from anet.identity import Identity
 from anet.packet import inspect_packet, seal_packet
@@ -29,6 +35,7 @@ async def invoke(
     *,
     body: bytes = b"",
     headers: dict[str, str] | None = None,
+    client: tuple[str, int] | None = None,
 ) -> tuple[int, dict[str, Any], dict[str, str]]:
     received = False
     events: list[dict[str, Any]] = []
@@ -48,6 +55,7 @@ async def invoke(
             "type": "http",
             "method": method,
             "path": path,
+            "client": client,
             "headers": [
                 (key.lower().encode("latin-1"), value.encode("latin-1"))
                 for key, value in (headers or {}).items()
@@ -280,6 +288,72 @@ def test_http_client_requires_tls_by_default() -> None:
         allow_insecure_http=True,
     )
     assert client.base_url == "http://127.0.0.1:8080"
+
+
+@pytest.mark.asyncio
+async def test_asgi_rate_limit_rejects_and_recovers_by_peer(
+    tmp_path: Path,
+) -> None:
+    now = [0.0]
+    with AhubService(tmp_path / "ahub") as service:
+        app = AhubASGI(
+            service,
+            rate_limit=AhubRateLimit(requests_per_minute=60, burst=2),
+            clock=lambda: now[0],
+        )
+        for _ in range(2):
+            status, value, _ = await invoke(
+                app,
+                "GET",
+                "/healthz",
+                client=("192.0.2.10", 1000),
+            )
+            assert status == 200
+            assert value["status"] == "ok"
+
+        status, value, headers = await invoke(
+            app,
+            "GET",
+            "/healthz",
+            client=("192.0.2.10", 1001),
+        )
+        assert status == 429
+        assert value == {
+            "detail": "request rate limit exceeded",
+            "error": "rate_limited",
+        }
+        assert headers["retry-after"] == "1"
+
+        status, _, _ = await invoke(
+            app,
+            "GET",
+            "/healthz",
+            client=("192.0.2.11", 1000),
+        )
+        assert status == 200
+
+        now[0] = 1.0
+        status, _, _ = await invoke(
+            app,
+            "GET",
+            "/healthz",
+            client=("192.0.2.10", 1002),
+        )
+        assert status == 200
+
+
+def test_rate_limiter_bucket_bound_does_not_reset_existing_peer() -> None:
+    limiter = AhubRateLimiter(
+        AhubRateLimit(requests_per_minute=60, burst=1, max_buckets=1),
+        clock=lambda: 0.0,
+    )
+    assert limiter.allow("peer:a") == (True, 0)
+    assert limiter.allow("peer:a") == (False, 1)
+    assert limiter.allow("peer:a") == (False, 1)
+    assert limiter.status() == {
+        "active_buckets": 1,
+        "limited_requests": 2,
+    }
 
 
 @pytest.mark.asyncio

@@ -3,12 +3,27 @@ from __future__ import annotations
 import pytest
 from cryptography.exceptions import InvalidSignature, InvalidTag
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
 
 from anet.encoding import pack, unpack
 from anet.identity import Identity, PeerCard
 from anet.packet import inspect_packet, open_packet, seal_packet
 from anet.prekeys import derive_prekey_id
+
+
+def test_tls_certificate_must_match_its_private_key(tmp_path) -> None:
+    identity = Identity.generate("node")
+    identity.ensure_tls_material(tmp_path)
+    replacement = Ed25519PrivateKey.generate().private_bytes(
+        serialization.Encoding.PEM,
+        serialization.PrivateFormat.PKCS8,
+        serialization.NoEncryption(),
+    )
+    (tmp_path / "tls-key.pem").write_bytes(replacement)
+
+    with pytest.raises(ValueError, match="do not match"):
+        identity.ensure_tls_material(tmp_path)
 
 
 def test_peer_card_is_self_authenticating() -> None:

@@ -13,7 +13,9 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from deployment_receipt import build_deployment_receipt
 from install_preflight import (
+    InstallationLock,
     PreflightConflict,
     assert_no_duplicate,
     collect_preflight,
@@ -28,11 +30,18 @@ from posix_oneclick import (
     download,
     platform_config,
     platform_software,
+    read_node_id,
+    repository_ref,
+    repository_source,
     read_json_url,
     resolve_reference,
     run,
-    sha256,
     string_list,
+    trusted_keys_from_args,
+    validate_cross_platform_locators,
+    validate_cross_platform_ports,
+    wait_for_supervisor_health,
+    wheel_hash_for_install,
 )
 from posix_runtime_installer import InstallError, install_runtime
 
@@ -160,6 +169,8 @@ def install_termux_service(
         "kind": "termux-services",
         "name": TERMUX_SERVICE,
         "service_dir": str(service_dir),
+        "state": "running",
+        "autostart": True,
         "status": status,
     }
 
@@ -189,6 +200,15 @@ def parser() -> argparse.ArgumentParser:
         description="Install one self-starting Anet node in Termux."
     )
     result.add_argument("--control-url", required=True)
+    result.add_argument("--control-key-id", default="")
+    result.add_argument("--control-public-key", default="")
+    result.add_argument(
+        "--control-trusted-key",
+        action="append",
+        default=[],
+        metavar="KEY_ID=BASE64URL_PUBLIC_KEY",
+        help="pin an additional control publisher; may be repeated",
+    )
     result.add_argument("--feature", choices=("core", "mcp"), default="core")
     result.add_argument("--version", default="")
     result.add_argument("--wheel", type=Path)
@@ -217,8 +237,7 @@ def parser() -> argparse.ArgumentParser:
     return result
 
 
-def main() -> int:
-    args = parser().parse_args()
+def _main_unlocked(args: argparse.Namespace) -> int:
     if not is_termux():
         raise DeploymentError("this entry point must run inside Termux on Android")
     prefix = termux_prefix()
@@ -230,7 +249,11 @@ def main() -> int:
         if args.node_home
         else root / "nodes" / "default"
     )
-    preflight = collect_preflight("termux", root)
+    preflight = collect_preflight(
+        "termux",
+        root,
+        node_homes=(node_home,),
+    )
     emit_preflight(preflight)
     try:
         assert_no_duplicate(
@@ -242,7 +265,12 @@ def main() -> int:
     except PreflightConflict as exc:
         raise DeploymentError(str(exc)) from exc
 
-    # Package changes happen only after the read-only duplicate check.
+    trusted_keys = trusted_keys_from_args(
+        args.control_key_id,
+        args.control_public_key,
+        args.control_trusted_key,
+    )
+    # Package changes happen only after duplicate and local publisher-policy checks.
     ensure_termux_packages(prefix, update=not args.no_package_update)
 
     page = read_json_url(args.control_url)
@@ -270,25 +298,63 @@ def main() -> int:
         contexts = string_list(
             page_config["locator_contexts"], "platform locator_contexts"
         )
+    validate_cross_platform_locators(
+        page,
+        "termux",
+        listen_host=listen_host,
+        advertise=advertise,
+        contexts=contexts,
+    )
+    validate_cross_platform_ports(
+        page,
+        "termux",
+        listen_port=requested_port,
+        contexts=contexts,
+        advertise=advertise,
+        listen_enabled=bool(page_config.get("listen_enabled", True)),
+    )
     version = str(args.version or software.get("version", "")).strip()
     if not version:
         raise DeploymentError("control page software.version is required")
 
     with tempfile.TemporaryDirectory(prefix="anet-termux-") as temporary:
         wheel = args.wheel.expanduser().resolve() if args.wheel else None
+        source_url = ""
+        source_ref = ""
         if wheel is None:
             wheel_url = str(software.get("wheel_url", "")).strip()
-            if not wheel_url:
-                raise DeploymentError(
-                    "control page software.wheel_url is required for initial install"
-                )
-            wheel = Path(temporary) / f"anet-fabric-{version}.whl"
-            download(resolve_reference(args.control_url, wheel_url), wheel)
-        if not wheel.is_file():
-            raise DeploymentError(f"wheel does not exist: {wheel}")
-        wheel_hash = str(args.wheel_sha256 or software.get("sha256", "")).strip()
-        if not wheel_hash:
-            wheel_hash = sha256(wheel)
+            if wheel_url:
+                if (
+                    trusted_keys
+                    or args.wheel_sha256
+                    or str(software.get("sha256", "")).strip()
+                ):
+                    wheel_hash_for_install(
+                        Path(temporary) / f"anet-fabric-{version}.whl",
+                        explicit_hash=args.wheel_sha256,
+                        declared_hash=software.get("sha256", ""),
+                        require_hash=bool(trusted_keys),
+                    )
+                wheel = Path(temporary) / f"anet-fabric-{version}.whl"
+                download(resolve_reference(args.control_url, wheel_url), wheel)
+            else:
+                source_url = repository_source(page, software, args.control_url)
+                source_ref = repository_ref(page, software)
+                if not source_url:
+                    raise DeploymentError(
+                        "control page software.wheel_url or software.repo_url "
+                        "is required for initial install"
+                    )
+        wheel_hash = ""
+        if wheel is not None:
+            if not wheel.is_file():
+                raise DeploymentError(f"wheel does not exist: {wheel}")
+            wheel_hash = wheel_hash_for_install(
+                wheel,
+                explicit_hash=args.wheel_sha256,
+                declared_hash=software.get("sha256", ""),
+                require_hash=bool(trusted_keys),
+            )
         try:
             runtime = install_runtime(
                 platform_name="termux",
@@ -301,6 +367,8 @@ def main() -> int:
                 install_dependencies=False,
                 use_uv=False,
                 verify_feature="core",
+                source_url=source_url,
+                source_ref=source_ref,
             )
         except InstallError as exc:
             raise DeploymentError(str(exc)) from exc
@@ -376,7 +444,6 @@ def main() -> int:
         contexts=contexts,
         advertise=advertise,
     )
-    current_config = json.loads(config_path.read_text(encoding="utf-8"))
 
     try:
         interval = max(5, min(float(page.get("poll_seconds", DEFAULT_POLL_SECONDS)), 86400))
@@ -385,34 +452,72 @@ def main() -> int:
     atomic_text(
         node_home / "remote-control.json",
         json.dumps(
-            {"version": 1, "url": args.control_url, "interval": interval},
+            {
+                "version": 1,
+                "url": args.control_url,
+                "interval": interval,
+                **({"trusted_keys": trusted_keys} if trusted_keys else {}),
+                **(
+                    {"root_key_id": next(iter(trusted_keys))}
+                    if trusted_keys
+                    else {}
+                ),
+            },
             indent=2,
             sort_keys=True,
         )
         + "\n",
     )
+    # Keep the first persistent service from starting with an unverified
+    # signed page.  Verification does not write sync state, so the supervisor
+    # still performs the initial software installation on its first poll.
+    run(
+        [
+            str(python),
+            "-m",
+            "anet",
+            "--home",
+            str(node_home),
+            "control-verify",
+            "--url",
+            args.control_url,
+        ]
+    )
+    current_config = json.loads(config_path.read_text(encoding="utf-8"))
+    node_id = read_node_id(python, node_home)
     service = install_termux_service(prefix, python, node_home)
+    service["health"] = wait_for_supervisor_health(python, node_home)
     boot_script = install_termux_boot(prefix)
-    result = {
-        "ok": True,
-        "outcome": "created" if created else "reused",
-        "platform": "termux",
-        "runtime": runtime,
-        "node": {
+    result = build_deployment_receipt(
+        platform="termux",
+        outcome="created" if created else "reused",
+        runtime=runtime,
+        node={
             "home": str(node_home),
+            "node_id": node_id,
             "listen_host": str(current_config.get("listen_host", listen_host)),
             "port": port,
             "advertise": current_config.get("advertise", []),
             "locator_contexts": current_config.get("locator_contexts", []),
-            "control_url": args.control_url,
         },
-        "service": service,
-        "boot_script": str(boot_script),
-        "boot_plugin": "Termux:Boot must be installed and opened once",
-        "preflight": preflight,
-    }
+        control_url=args.control_url,
+        control_key_id=next(iter(trusted_keys), ""),
+        control_key_ids=list(trusted_keys),
+        supervisor=service,
+        preflight=preflight,
+        platform_details={
+            "boot_script": str(boot_script),
+            "boot_plugin": "Termux:Boot must be installed and opened once",
+        },
+    )
     print(json.dumps(result, separators=(",", ":")))
     return 0
+
+
+def main() -> int:
+    args = parser().parse_args()
+    with InstallationLock(args.root.expanduser().resolve()):
+        return _main_unlocked(args)
 
 
 if __name__ == "__main__":

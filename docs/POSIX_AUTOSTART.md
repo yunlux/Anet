@@ -1,30 +1,66 @@
 # WSL, Linux, and macOS automatic node prototype
 
-Run these commands from an Anet checkout (or a source distribution containing
-the `scripts/` directory). The clean POSIX installers still install only a versioned Anet runtime. The
-explicit one-click deployment entry points add one persistent node, the remote
-control client, and the platform-native auto-start unit:
+On a new device, the checkout-free bootstrap downloads the selected entry point
+and shared installer modules into a temporary directory:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform wsl --control-url <CONTROL_URL> \
+  --control-key-id community-main \
+  --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
+```
+
+Use `--platform linux`, `--platform macos`, or `--platform termux` for the
+other POSIX targets. If an Anet checkout is already available, the direct
+platform scripts below are equivalent. The clean POSIX installers still
+install only a versioned Anet runtime. The explicit one-click deployment
+entry points add one persistent node, the remote control client, and the
+platform-native auto-start unit:
+
+The bootstrap helper files come from the official Anet GitHub repository and
+the explicit `--script-ref` (default `main`). A control page is not trusted to
+choose executable helper code before `control-verify`; its `repo_url` is used
+by the installer/supervisor as the runtime source. Use explicit
+`--repository <HTTPS_GITHUB_REPOSITORY>` together with `--script-ref` for a
+trusted fork.
 
 ```bash
 # WSL
 python3 scripts/install_wsl_oneclick.py \
-  --control-url https://example.invalid/anet/control.json
+  --control-url https://example.invalid/anet/control.json \
+  --control-key-id community-main \
+  --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 
 # non-WSL Linux
 python3 scripts/install_linux_oneclick.py \
-  --control-url https://example.invalid/anet/control.json
+  --control-url https://example.invalid/anet/control.json \
+  --control-key-id community-main \
+  --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 
 # macOS
 python3 scripts/install_macos_oneclick.py \
-  --control-url https://example.invalid/anet/control.json
+  --control-url https://example.invalid/anet/control.json \
+  --control-key-id community-main \
+  --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 ```
 
-The control page must contain `software.version` and an initial
-`software.wheel_url`, either at the root or in the selected platform overlay.
-If `software.sha256` is absent, the prototype computes the local wheel hash
-after downloading it. The rest of the page uses the same format as the
+The control page must contain `software.version` and either an initial
+`software.wheel_url` or `software.repo_url` (a top-level `repo_url` is also
+accepted), either at the root or in the selected platform overlay. If a wheel
+is supplied, `software.sha256` pins it. In unsigned compatibility mode, the
+prototype computes the local wheel hash when the declaration is absent; a
+pinned/signed page requires `software.sha256` before a wheel is downloaded.
+If `--wheel-sha256` is also supplied, it must match the page declaration.
+Without a wheel, the
+installer passes the repository URL to pip as a Git source, so Git must be
+available on the device. The rest of the page uses the same format as the
 Windows deployment prototype: default `config`, Peer Cards, `repo_url`,
 `pages`, and `kv` JSON sources.
+`default_config` is accepted as an alias for `config`, including inside a
+platform overlay.
+When a repository source is used, optional `software.repo_ref` (or top-level
+`repo_ref`) pins a Git branch, tag, or commit for the initial runtime and later
+source updates.
 
 After installation:
 
@@ -36,8 +72,9 @@ After installation:
   distribution is running; systemd alone does not start the WSL distribution
   after a Windows reboot.
 - macOS uses the current user's `net.anet.supervisor` LaunchAgent under
-  `~/Library/LaunchAgents`. It is loaded immediately and has `RunAtLoad` and
-  `KeepAlive` enabled.
+  `~/Library/LaunchAgents`. It is loaded immediately, has `RunAtLoad` and
+  `KeepAlive` enabled, and the installer verifies `launchctl print` reports
+  `state = running` before reporting success.
 - Each supervisor runs the remote control client and an `anet serve` child.
   Configuration or Peer Card changes restart the child; an unexpected child
   exit is noticed immediately instead of waiting for the next long control
@@ -45,13 +82,37 @@ After installation:
   the updated runtime.
 - A home-level OS lock prevents a second supervisor from operating the same
   node home concurrently.
-- A changed wheel or repository is applied even when its package version is
+- Deployment preflight also checks an explicit `--node-home` and the
+  `ANET_HOME` environment variable for an existing node home. Runtime-only
+  installation does not inspect those persistent-node markers. A node home
+  inside the requested runtime boundary is treated as part of that target;
+  one outside it stops the deployment unless `--allow-existing` is explicit.
+- The final JSON result includes the complete `node.node_id` read from the
+  installed CLI's `status` command; identity is never inferred from a path,
+  label, host, or port.
+- The final object uses the shared `anet.deployment.receipt` v1 interface;
+  systemd and launchd details remain inside `supervisor`. See
+  [`DEPLOYMENT_RECEIPT_V1.md`](DEPLOYMENT_RECEIPT_V1.md). Its observed state
+  includes fresh supervisor and server-child process evidence, but does not
+  replace a later logout/reboot release gate.
+- One-shot `anet control-sync` uses the same home lock, so a manual sync cannot
+  race the persistent supervisor while it applies config, Peer Cards, or a
+  package update.
+- Before registering the systemd/LaunchAgent service, the one-click installer
+  runs read-only `anet control-verify`. It checks the complete root/nested page,
+  local publisher policy, expiry, Peer Cards, and WSL port rules without
+  consuming remote-control state; the first supervisor sync still applies the
+  page's software update.
+- A changed wheel, repository, or repository reference is applied even when its package version is
   unchanged; only the first sync of the already-installed initial version is
   skipped.
 - Before a package update, the active Anet package and metadata are snapshotted
   when they belong to the managed runtime. A pip/CLI verification failure
   restores that snapshot; this is local package rollback, not full dependency
   or signed-manifest rollback.
+- Each page application snapshots `config.json`, the local signed `card.json`,
+  and `peers.json`; a configuration, Card, or software failure restores those
+  node-control files before the failed sequence is retried.
 - For host-scoped Windows/WSL overlays, the remote-control client rejects equal
   listener ports and loopback locators. Changes to listener or advertised
   address fields regenerate the local signed Card before restart.
@@ -76,7 +137,9 @@ another known Anet runtime/deployment in the same platform boundary stops a
 one-click install with the detected path. Pass `--allow-existing` only for an
 explicit second deployment. Known Ahub data roots and Ahub services/processes
 are reported separately and are not started or duplicated by this Anet node
-installer. When a WSL node is paired directly with native Windows, use a
+installer. A target-scoped temporary-file lock is acquired before the report,
+so concurrent commands cannot both pass preflight and mutate the same runtime
+or node deployment. When a WSL node is paired directly with native Windows, use a
 non-loopback shared host address and distinct ports; `127.0.0.1` is local to
 the runtime and is not a cross-platform locator.
 
@@ -93,7 +156,9 @@ bridge from an ordinary Windows PowerShell window:
 This creates `\\Anet\\WSL-KeepAlive` as a current-user logon task. It does not
 create a node or copy any identity; it starts `anet-supervisor.service` inside
 the selected distribution and holds a small shell process open with no
-execution time limit. The task has bounded automatic retries if WSL exits. A
+execution time limit. The task has bounded automatic retries if WSL exits.
+The registration command waits up to 30 seconds for the task to enter
+`Running` and reports its last task result if startup fails. A
 WSL distro is user-scoped, so this bridge intentionally uses the same Windows
 user that owns the distro rather than the Windows Anet `SYSTEM` task.
 
@@ -101,15 +166,44 @@ Diagnostics:
 
 ```bash
 # WSL/Linux
+anet --home "$HOME/.local/anet/nodes/default" supervisor-status
 systemctl --user status anet-supervisor.service
 journalctl --user -u anet-supervisor.service -n 100 --no-pager
 
 # macOS
+anet --home "$HOME/Library/Application Support/Anet/nodes/default" supervisor-status
 launchctl print gui/$(id -u)/net.anet.supervisor
 tail -n 100 "$HOME/Library/Application Support/Anet/nodes/default/supervisor.log"
 ```
 
-This is a functional unsigned bootstrap prototype. It can apply remote
-configuration, import Peer Cards, and install a wheel or Git source through
-the control page. Signed manifests, publisher quorum, rollback policy, and
-local approval gates are still required before using a public update channel.
+The cross-platform health semantics are defined in
+[`SUPERVISOR_HEALTH_V1.md`](SUPERVISOR_HEALTH_V1.md).
+
+The one-click entry points accept `--control-key-id` and
+`--control-public-key`. When supplied, the key is written to the node's
+`remote-control.json`; the supervisor then requires an Ed25519-signed root
+page and every nested `pages`/`kv` page, checks the page expiry, and rejects
+signed sequence reuse with different content. Create pages with
+`scripts/sign_control_page.py`. Omitting the key retains the unsigned
+compatibility bootstrap and is appropriate only for an explicitly trusted
+local source. Publisher key rotation and fleet-wide quorum remain deployment
+responsibilities.
+
+Nested sources may use `{ "url", "key_id" }` to require one exact publisher
+from the local trusted-key set or the signed root page's `control_publishers`
+map. This prevents another approved publisher from signing in that source's
+place and records verified attribution in
+`source_publishers`; see
+[`CONTROL_SOURCE_PINS_V1.md`](CONTROL_SOURCE_PINS_V1.md).
+Enroll additional local publishers during the same install by repeating
+`--control-trusted-key actor-a=<BASE64URL_KEY>`. The existing
+`--control-key-id`/`--control-public-key` pair remains the first publisher and
+is written as `root_key_id`; additional keys cannot sign the root page.
+Conflicting IDs or one public key assigned to several publisher IDs fail before
+runtime mutation.
+
+A root-delegated key is ephemeral and applies only to a child source that names
+it. It cannot sign the root, delegate again, enter local `trusted_keys`, or
+alter PeerBook trust, authorization, relationships, or reputation. Verify
+private `delegated_publisher_ids` and `source_publishers`; Deployment Receipt
+`control.key_ids` continues to list only locally enrolled keys.

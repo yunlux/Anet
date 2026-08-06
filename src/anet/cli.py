@@ -14,7 +14,9 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
+from .ahub_http import AhubHTTPClient
 from .bundle import create_bundle, import_bundle
+from .carriers.ahub import validate_peer_reachability
 from .carriers.directory import sync_directory_once
 from .config import (
     AhubCarrierConfig,
@@ -26,6 +28,7 @@ from .config import (
     WebDAVCarrierConfig,
     initialize_node,
 )
+from .continuity import prepare_continuity, verify_continuity
 from .control_plane import (
     HUMAN_DEVICE_GRANT_TYPE,
     HUMAN_DEVICE_REVOCATION_TYPE,
@@ -78,7 +81,13 @@ from .relationship_disclosure_recovery import (
 from .reported_relationship_views import (
     ReportedRelationshipViewProjector,
 )
-from .remote_control import run_supervisor, sync_remote_control
+from .remote_control import (
+    _normalise_trusted_keys,
+    run_supervisor,
+    sync_remote_control,
+    verify_remote_control,
+)
+from .supervisor_health import inspect_supervisor_health
 from .relationship_claims import (
     MutualRelationshipClaim,
     RelationshipClaimBook,
@@ -184,6 +193,71 @@ def cmd_peer_list(args: argparse.Namespace) -> int:
     peers = PeerBook(config.peers_path, own_node_id=identity.node_id)
     _print_json([card.to_dict() for card in peers.all()])
     return 0
+
+
+def cmd_peer_reachability(args: argparse.Namespace) -> int:
+    config = NodeConfig.load(args.home)
+    identity = Identity.load(config.identity_path)
+    peers = PeerBook(config.peers_path, own_node_id=identity.node_id)
+    peer = peers.require(args.peer)
+    carriers = [
+        carrier
+        for carrier in config.ahub_carriers
+        if not args.carrier or carrier.name == args.carrier
+    ]
+    if not carriers:
+        raise KeyError(f"unknown Ahub carrier: {args.carrier}")
+    sources: list[dict[str, Any]] = []
+    errors: dict[str, str] = {}
+    dynamic_candidates: list[str] = []
+    for carrier in carriers:
+        if not carrier.enabled:
+            errors[carrier.name] = "Ahub carrier is disabled"
+            continue
+        try:
+            client = AhubHTTPClient(
+                carrier.base_url,
+                identity,
+                timeout_seconds=carrier.timeout,
+                allow_insecure_http=carrier.allow_insecure_http,
+            )
+            descriptor, record = client.lookup(peer.node_id)
+            record = validate_peer_reachability(peer, descriptor, record)
+            if record is not None:
+                dynamic_candidates.extend(record.candidates)
+            sources.append(
+                {
+                    "carrier": carrier.name,
+                    "base_origin": carrier.base_url,
+                    "descriptor": {
+                        "sequence": descriptor.sequence,
+                        "digest": b64e(descriptor.digest),
+                        "issued_ms": descriptor.issued_ms,
+                        "expires_ms": descriptor.expires_ms,
+                        "capabilities": list(descriptor.capabilities),
+                    },
+                    "reachability": (
+                        None if record is None else record.to_dict()
+                    ),
+                    "candidates": (
+                        [] if record is None else list(record.candidates)
+                    ),
+                }
+            )
+        except Exception as exc:
+            errors[carrier.name] = str(exc)[:1000]
+    candidates = list(dict.fromkeys((*dynamic_candidates, *peer.addresses)))
+    _print_json(
+        {
+            "ok": bool(sources),
+            "peer_id": peer.node_id,
+            "static_card_addresses": list(peer.addresses),
+            "effective_candidates": candidates,
+            "sources": sources,
+            "errors": errors,
+        }
+    )
+    return 0 if sources else 1
 
 
 def cmd_peer_revoke(args: argparse.Namespace) -> int:
@@ -2639,12 +2713,36 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     return 0
 
 
+def _control_trusted_keys(args: argparse.Namespace) -> dict[str, str] | None:
+    key_id = str(getattr(args, "control_key_id", "") or "").strip()
+    public_key = str(getattr(args, "control_public_key", "") or "").strip()
+    if not key_id and not public_key:
+        return None
+    if not key_id or not public_key:
+        raise ValueError(
+            "--control-key-id and --control-public-key must be provided together"
+        )
+    return _normalise_trusted_keys({key_id: public_key})
+
+
 def cmd_control_sync(args: argparse.Namespace) -> int:
     _print_json(
         sync_remote_control(
             args.home,
             url=args.url,
+            trusted_keys=_control_trusted_keys(args),
             apply_software=not args.no_software,
+        )
+    )
+    return 0
+
+
+def cmd_control_verify(args: argparse.Namespace) -> int:
+    _print_json(
+        verify_remote_control(
+            args.home,
+            url=args.url,
+            trusted_keys=_control_trusted_keys(args),
         )
     )
     return 0
@@ -2655,6 +2753,7 @@ def cmd_supervisor(args: argparse.Namespace) -> int:
         run_supervisor(
             args.home,
             url=args.url,
+            trusted_keys=_control_trusted_keys(args),
             interval=args.interval,
             once=args.once,
             apply_software=not args.no_software,
@@ -2662,6 +2761,34 @@ def cmd_supervisor(args: argparse.Namespace) -> int:
     )
     if result is not None:
         _print_json(result)
+    return 0
+
+
+def cmd_supervisor_status(args: argparse.Namespace) -> int:
+    result = inspect_supervisor_health(args.home)
+    _print_json(result)
+    return 0 if result["ok"] else 1
+
+
+def cmd_continuity_prepare(args: argparse.Namespace) -> int:
+    _print_json(
+        prepare_continuity(
+            args.home,
+            output=args.out,
+            ttl_seconds=args.ttl_seconds,
+        )
+    )
+    return 0
+
+
+def cmd_continuity_verify(args: argparse.Namespace) -> int:
+    _print_json(
+        verify_continuity(
+            args.home,
+            args.challenge,
+            require_boot_change=args.require_boot_change,
+        )
+    )
     return 0
 
 
@@ -2807,7 +2934,7 @@ def cmd_ahub_serve(args: argparse.Namespace) -> int:
         ) from exc
 
     from .ahub import AhubService
-    from .ahub_http import AhubASGI
+    from .ahub_http import AhubASGI, AhubRateLimit
 
     root = _ahub_root(args.root)
     if not 1 <= args.port <= 65535:
@@ -2816,13 +2943,25 @@ def cmd_ahub_serve(args: argparse.Namespace) -> int:
         raise ValueError("Ahub concurrency limit must be between 1 and 10000")
     if not 1 <= args.keep_alive_seconds <= 60:
         raise ValueError("Ahub keep-alive must be between 1 and 60 seconds")
+    if not 1 <= args.rate_limit_per_minute <= 1_000_000:
+        raise ValueError(
+            "Ahub rate-limit per minute must be between 1 and 1000000"
+        )
+    if not 1 <= args.rate_limit_burst <= 100_000:
+        raise ValueError("Ahub rate-limit burst must be between 1 and 100000")
     if not _ahub_bind_is_loopback(args.host) and not args.allow_non_loopback:
         raise ValueError(
             "non-loopback Ahub binding requires --allow-non-loopback and "
             "must be protected by a TLS reverse proxy or private network"
         )
     service = AhubService(root)
-    app = AhubASGI(service)
+    app = AhubASGI(
+        service,
+        rate_limit=AhubRateLimit(
+            requests_per_minute=args.rate_limit_per_minute,
+            burst=args.rate_limit_burst,
+        ),
+    )
     LOGGER.info(
         "starting_ahub root=%s bind=%s:%d access_log=false proxy_headers=false",
         root,
@@ -2972,14 +3111,26 @@ def cmd_discord_social_status(args: argparse.Namespace) -> int:
         return 0
     config = DiscordSocialConfig.load(args.home)
     database_path = discord_social_database_path(args.home)
-    status = {"actors": 0, "events": 0, "routed": 0, "replied": 0}
+    status = {
+        "actors": 0,
+        "events": 0,
+        "routed": 0,
+        "replied": 0,
+        "runtime_state": "never_run",
+        "last_attempt_ms": 0,
+        "last_success_ms": 0,
+        "last_error_ms": 0,
+        "last_error_category": "",
+        "consecutive_failures": 0,
+        "next_retry_ms": 0,
+    }
     if database_path.exists():
         store = DiscordSocialStore(
             database_path,
             discord_social_key_path(args.home),
         )
         try:
-            status = store.status()
+            status = {**store.status(), **store.runtime_status()}
         finally:
             store.close()
     _print_json(
@@ -3124,6 +3275,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     peer_list = sub.add_parser("peer-list", help="list pinned peers")
     peer_list.set_defaults(func=cmd_peer_list)
+
+    peer_reachability = sub.add_parser(
+        "peer-reachability",
+        help="query signed short-lived Ahub reachability for a pinned peer",
+    )
+    peer_reachability.add_argument("peer")
+    peer_reachability.add_argument(
+        "--carrier",
+        default="",
+        help="limit the query to one configured Ahub carrier",
+    )
+    peer_reachability.set_defaults(func=cmd_peer_reachability)
 
     peer_revoke = sub.add_parser(
         "peer-revoke",
@@ -4335,6 +4498,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="fetch and apply one remote JSON control page",
     )
     control_sync.add_argument("--url", help="control page URL; otherwise use node settings")
+    control_sync.add_argument("--control-key-id", help="locally pinned control publisher key ID")
+    control_sync.add_argument(
+        "--control-public-key",
+        help="base64url Ed25519 public key for the control publisher",
+    )
     control_sync.add_argument(
         "--no-software",
         action="store_true",
@@ -4342,11 +4510,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     control_sync.set_defaults(func=cmd_control_sync)
 
+    control_verify = sub.add_parser(
+        "control-verify",
+        help="verify one remote JSON control page without applying it",
+    )
+    control_verify.add_argument(
+        "--url", help="control page URL; otherwise use node settings"
+    )
+    control_verify.add_argument(
+        "--control-key-id", help="locally pinned control publisher key ID"
+    )
+    control_verify.add_argument(
+        "--control-public-key",
+        help="base64url Ed25519 public key for the control publisher",
+    )
+    control_verify.set_defaults(func=cmd_control_verify)
+
     supervisor = sub.add_parser(
         "supervisor",
         help="run the remote control client and supervise an Anet server child",
     )
     supervisor.add_argument("--url", help="control page URL; otherwise use node settings")
+    supervisor.add_argument("--control-key-id", help="locally pinned control publisher key ID")
+    supervisor.add_argument(
+        "--control-public-key",
+        help="base64url Ed25519 public key for the control publisher",
+    )
     supervisor.add_argument("--interval", type=float)
     supervisor.add_argument(
         "--no-software",
@@ -4359,6 +4548,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="sync once and exit without starting the server child",
     )
     supervisor.set_defaults(func=cmd_supervisor)
+
+    supervisor_status = sub.add_parser(
+        "supervisor-status",
+        help="inspect durable supervisor, control-sync, and server-child health",
+    )
+    supervisor_status.set_defaults(func=cmd_supervisor_status)
+
+    continuity_prepare = sub.add_parser(
+        "continuity-prepare",
+        help="create private evidence before restarting a supervisor or device",
+    )
+    continuity_prepare.add_argument("--out", type=Path)
+    continuity_prepare.add_argument("--ttl-seconds", type=int, default=24 * 60 * 60)
+    continuity_prepare.set_defaults(func=cmd_continuity_prepare)
+
+    continuity_verify = sub.add_parser(
+        "continuity-verify",
+        help="verify identity and supervisor continuity after a restart",
+    )
+    continuity_verify.add_argument("challenge", type=Path)
+    continuity_verify.add_argument("--require-boot-change", action="store_true")
+    continuity_verify.set_defaults(func=cmd_continuity_verify)
 
     wake_bridge = sub.add_parser(
         "wake-bridge",
@@ -4430,6 +4641,18 @@ def build_parser() -> argparse.ArgumentParser:
     ahub_serve.add_argument("--allow-non-loopback", action="store_true")
     ahub_serve.add_argument("--limit-concurrency", type=int, default=100)
     ahub_serve.add_argument("--keep-alive-seconds", type=int, default=5)
+    ahub_serve.add_argument(
+        "--rate-limit-per-minute",
+        type=int,
+        default=600,
+        help="maximum HTTP/WebSocket handshakes per peer per minute",
+    )
+    ahub_serve.add_argument(
+        "--rate-limit-burst",
+        type=int,
+        default=120,
+        help="initial burst allowance per peer",
+    )
     ahub_serve.set_defaults(func=cmd_ahub_serve)
 
     bundle_export = sub.add_parser(

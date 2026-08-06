@@ -10,23 +10,29 @@ LaunchAgent on macOS.
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import getpass
 import hashlib
 import ipaddress
 import json
 import os
 import plistlib
+import re
 import shutil
 import socket
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
 
+from deployment_receipt import build_deployment_receipt
 from install_preflight import (
+    InstallationLock,
     PreflightConflict,
     assert_no_duplicate,
     collect_preflight,
@@ -40,10 +46,73 @@ PACKAGE_MAX_BYTES = 256 * 1024 * 1024
 DEFAULT_POLL_SECONDS = 300
 SYSTEMD_SERVICE = "anet-supervisor.service"
 LAUNCHD_LABEL = "net.anet.supervisor"
+CONTROL_KEY_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
 class DeploymentError(RuntimeError):
     """Raised when the explicit one-click deployment cannot be completed."""
+
+
+def _validated_control_key(key_id: object, public_key: object) -> tuple[str, str]:
+    clean_key_id = str(key_id or "").strip()
+    encoded = str(public_key or "").strip()
+    if not clean_key_id or not encoded:
+        raise DeploymentError("control publisher key ID and public key are required")
+    if not CONTROL_KEY_ID_PATTERN.fullmatch(clean_key_id):
+        raise DeploymentError("control publisher key ID is invalid")
+    try:
+        padded = (encoded + "=" * (-len(encoded) % 4)).encode("ascii")
+        decoded = base64.b64decode(padded, altchars=b"-_", validate=True)
+    except (UnicodeEncodeError, ValueError, binascii.Error) as exc:
+        raise DeploymentError("control publisher public key is not valid base64url") from exc
+    if len(decoded) != 32:
+        raise DeploymentError("control publisher public key must contain 32 bytes")
+    canonical = base64.urlsafe_b64encode(decoded).decode("ascii").rstrip("=")
+    return clean_key_id, canonical
+
+
+def trusted_keys_from_args(
+    key_id: str,
+    public_key: str,
+    trusted_key_specs: list[str] | None = None,
+) -> dict[str, str]:
+    pairs: list[tuple[object, object]] = []
+    clean_key_id = str(key_id or "").strip()
+    encoded = str(public_key or "").strip()
+    if clean_key_id or encoded:
+        if not clean_key_id or not encoded:
+            raise DeploymentError(
+                "--control-key-id and --control-public-key must be provided together"
+            )
+        pairs.append((clean_key_id, encoded))
+    for raw_spec in trusted_key_specs or []:
+        spec = str(raw_spec or "").strip()
+        spec_key_id, separator, spec_public_key = spec.partition("=")
+        if not separator:
+            raise DeploymentError(
+                "--control-trusted-key must use KEY_ID=BASE64URL_PUBLIC_KEY"
+            )
+        pairs.append((spec_key_id, spec_public_key))
+
+    result: dict[str, str] = {}
+    publisher_by_key: dict[str, str] = {}
+    for raw_key_id, raw_public_key in pairs:
+        clean_id, clean_public_key = _validated_control_key(
+            raw_key_id, raw_public_key
+        )
+        previous = result.get(clean_id)
+        if previous is not None and previous != clean_public_key:
+            raise DeploymentError(
+                f"control publisher key ID has conflicting public keys: {clean_id}"
+            )
+        previous_publisher = publisher_by_key.get(clean_public_key)
+        if previous_publisher is not None and previous_publisher != clean_id:
+            raise DeploymentError(
+                "one control publisher public key cannot identify multiple publishers"
+            )
+        result[clean_id] = clean_public_key
+        publisher_by_key[clean_public_key] = clean_id
+    return result
 
 
 def run(
@@ -66,6 +135,66 @@ def run(
             f"{' '.join(command[:4])}: {detail}"
         )
     return (completed.stdout or "").strip()
+
+
+def read_node_id(python: Path, node_home: Path) -> str:
+    """Read the complete Node ID through the installed CLI status path."""
+
+    output = run(
+        [
+            str(python),
+            "-m",
+            "anet",
+            "--home",
+            str(node_home),
+            "status",
+        ]
+    )
+    try:
+        status = json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise DeploymentError("Anet status returned invalid JSON") from exc
+    if not isinstance(status, dict):
+        raise DeploymentError("Anet status did not return an object")
+    node_id = str(status.get("node_id", "")).strip()
+    if not node_id.startswith("an1") or not 20 <= len(node_id) <= 128:
+        raise DeploymentError("Anet status did not return a complete Node ID")
+    return node_id
+
+
+def wait_for_supervisor_health(
+    python: Path, node_home: Path, *, timeout: float = 45.0
+) -> dict[str, Any]:
+    """Wait until both the persistent supervisor and its server child are healthy."""
+
+    deadline = time.monotonic() + timeout
+    last: dict[str, Any] = {}
+    while time.monotonic() < deadline:
+        completed = subprocess.run(
+            [
+                str(python),
+                "-m",
+                "anet",
+                "--home",
+                str(node_home),
+                "supervisor-status",
+            ],
+            text=True,
+            capture_output=True,
+            timeout=10,
+            check=False,
+        )
+        try:
+            candidate = json.loads(completed.stdout)
+        except json.JSONDecodeError:
+            candidate = None
+        if isinstance(candidate, dict):
+            last = candidate
+            if completed.returncode == 0 and candidate.get("ok") is True:
+                return candidate
+        time.sleep(0.5)
+    reason = str(last.get("reason", "health evidence was not produced"))
+    raise DeploymentError(f"Anet supervisor did not become healthy: {reason}")
 
 
 def is_wsl() -> bool:
@@ -123,8 +252,21 @@ def read_json_url(url: str) -> dict[str, Any]:
     return value
 
 
+def _deep_merge(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    """Apply an overlay with the same recursive semantics as remote sync."""
+
+    result = dict(base)
+    for key, value in patch.items():
+        previous = result.get(key)
+        if isinstance(previous, dict) and isinstance(value, dict):
+            result[key] = _deep_merge(previous, value)
+        else:
+            result[key] = value
+    return result
+
+
 def platform_config(page: dict[str, Any], platform_name: str) -> dict[str, Any]:
-    common = page.get("config", {})
+    common = page.get("config", page.get("default_config", {}))
     if common is None:
         common = {}
     if not isinstance(common, dict):
@@ -141,16 +283,14 @@ def platform_config(page: dict[str, Any], platform_name: str) -> dict[str, Any]:
         raise DeploymentError(
             f"control page platforms.{platform_name} must be an object"
         )
-    config = overlay.get("config", {})
+    config = overlay.get("config", overlay.get("default_config", {}))
     if config is None:
-        return {}
+        return dict(common)
     if not isinstance(config, dict):
         raise DeploymentError(
             f"control page platforms.{platform_name}.config must be an object"
         )
-    merged = dict(common)
-    merged.update(config)
-    return merged
+    return _deep_merge(common, config)
 
 
 def platform_software(page: dict[str, Any], platform_name: str) -> dict[str, Any]:
@@ -178,9 +318,30 @@ def platform_software(page: dict[str, Any], platform_name: str) -> dict[str, Any
         raise DeploymentError(
             f"control page platforms.{platform_name}.software must be an object"
         )
-    merged = dict(common)
-    merged.update(software)
-    return merged
+    return _deep_merge(common, software)
+
+
+def repository_source(
+    page: dict[str, Any], software: dict[str, Any], control_url: str
+) -> str:
+    """Return the effective repository source for an initial install."""
+
+    source = str(
+        software.get("repo_url", "")
+        or page.get("repo_url", "")
+        or page.get("anet_repo", "")
+    ).strip()
+    return resolve_reference(control_url, source) if source else ""
+
+
+def repository_ref(page: dict[str, Any], software: dict[str, Any]) -> str:
+    """Return the optional Git branch, tag, or commit for the source."""
+
+    return str(
+        software.get("repo_ref", "")
+        or page.get("repo_ref", "")
+        or page.get("anet_repo_ref", "")
+    ).strip()
 
 
 def string_list(value: Any, label: str) -> list[str]:
@@ -260,17 +421,17 @@ def _effective_platform_config(
     overlay = platforms.get(platform_name)
     if not isinstance(overlay, dict):
         return None
-    base = page.get("config", {})
+    base = page.get("config", page.get("default_config", {}))
     if not isinstance(base, dict):
         base = {}
-    patch = overlay.get("config", {})
+    patch = overlay.get("config", overlay.get("default_config", {}))
+    if patch is None:
+        patch = {}
     if not isinstance(patch, dict):
         raise DeploymentError(
             f"control page platforms.{platform_name}.config must be an object"
         )
-    merged = dict(base)
-    merged.update(patch)
-    return merged
+    return _deep_merge(base, patch)
 
 
 def _has_host_scope(config: dict[str, Any]) -> bool:
@@ -418,6 +579,37 @@ def sha256(path: Path) -> str:
     return digest.hexdigest().upper()
 
 
+def wheel_hash_for_install(
+    path: Path,
+    *,
+    explicit_hash: str = "",
+    declared_hash: Any = "",
+    require_hash: bool = False,
+) -> str:
+    """Return the wheel hash accepted by the initial runtime installer."""
+
+    explicit = str(explicit_hash or "").strip()
+    declared = str(declared_hash or "").strip()
+    for value in (explicit, declared):
+        if value and not re.fullmatch(r"[0-9A-Fa-f]{64}", value):
+            raise DeploymentError("wheel SHA-256 must contain 64 hex characters")
+    if explicit and declared and explicit.casefold() != declared.casefold():
+        raise DeploymentError(
+            "--wheel-sha256 does not match software.sha256"
+        )
+    value = explicit or declared
+    if not value:
+        if require_hash:
+            raise DeploymentError(
+                "pinned control page requires software.sha256 or --wheel-sha256 "
+                "for wheel installation"
+            )
+        return sha256(path)
+    if not re.fullmatch(r"[0-9A-Fa-f]{64}", value):
+        raise DeploymentError("wheel SHA-256 must contain 64 hex characters")
+    return value
+
+
 def choose_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as candidate:
         candidate.bind(("127.0.0.1", 0))
@@ -449,6 +641,7 @@ Wants=network-online.target
 Type=simple
 UMask=0077
 Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-%h/.config/anet/discord-social.env
 WorkingDirectory={systemd_quote(home)}
 ExecStart={systemd_quote(python)} -m anet --home {systemd_quote(home)} supervisor
 Restart=on-failure
@@ -508,6 +701,7 @@ def install_systemd_service(python: Path, home: Path, *, enable_linger: bool) ->
         "name": SYSTEMD_SERVICE,
         "unit": str(unit_path),
         "state": active,
+        "autostart": True,
         "linger": linger,
     }
 
@@ -535,6 +729,21 @@ def launchd_plist(python: Path, home: Path) -> bytes:
     return plistlib.dumps(value, fmt=plistlib.FMT_XML, sort_keys=False)
 
 
+def launchd_service_state(launchctl: str, target: str) -> str:
+    """Return the launchd state and fail when it cannot be observed."""
+
+    output = run([launchctl, "print", target])
+    for raw_line in output.splitlines():
+        line = raw_line.strip()
+        if line.startswith("state ="):
+            state = line.partition("=")[2].strip()
+            if state:
+                return state
+    raise DeploymentError(
+        f"launchd did not report a state for the Anet service: {target}"
+    )
+
+
 def install_launchd_service(python: Path, home: Path) -> dict[str, Any]:
     launchctl = shutil.which("launchctl")
     if not launchctl:
@@ -547,11 +756,17 @@ def install_launchd_service(python: Path, home: Path) -> dict[str, Any]:
     run([launchctl, "bootout", target], allow_failure=True)
     run([launchctl, "bootstrap", domain, str(plist_path)])
     run([launchctl, "kickstart", "-k", target])
+    state = launchd_service_state(launchctl, target)
+    if state != "running":
+        raise DeploymentError(
+            f"launchd service is not running: {target} (state: {state})"
+        )
     return {
         "kind": "launchd-user-agent",
         "name": LAUNCHD_LABEL,
         "plist": str(plist_path),
-        "state": "loaded",
+        "state": state,
+        "autostart": True,
     }
 
 
@@ -563,6 +778,15 @@ def parser(platform_name: str, default_root: Path) -> argparse.ArgumentParser:
         )
     )
     result.add_argument("--control-url", required=True)
+    result.add_argument("--control-key-id", default="")
+    result.add_argument("--control-public-key", default="")
+    result.add_argument(
+        "--control-trusted-key",
+        action="append",
+        default=[],
+        metavar="KEY_ID=BASE64URL_PUBLIC_KEY",
+        help="pin an additional control publisher; may be repeated",
+    )
     result.add_argument("--feature", choices=("core", "mcp", "full"), default="mcp")
     result.add_argument("--version", default="")
     result.add_argument("--wheel", type=Path)
@@ -587,8 +811,11 @@ def parser(platform_name: str, default_root: Path) -> argparse.ArgumentParser:
     return result
 
 
-def main(platform_name: str, default_root: Path) -> int:
-    args = parser(platform_name, default_root).parse_args()
+def _main_unlocked(
+    platform_name: str,
+    default_root: Path,
+    args: argparse.Namespace,
+) -> int:
     if platform_name == "wsl" and not is_wsl():
         raise DeploymentError("this entry point must run inside WSL")
     if platform_name == "linux":
@@ -609,7 +836,11 @@ def main(platform_name: str, default_root: Path) -> int:
         if args.node_home
         else root / "nodes" / "default"
     )
-    preflight = collect_preflight(platform_name, root)
+    preflight = collect_preflight(
+        platform_name,
+        root,
+        node_homes=(node_home,),
+    )
     emit_preflight(preflight)
     try:
         assert_no_duplicate(
@@ -621,6 +852,11 @@ def main(platform_name: str, default_root: Path) -> int:
     except PreflightConflict as exc:
         raise DeploymentError(str(exc)) from exc
     page = read_json_url(args.control_url)
+    trusted_keys = trusted_keys_from_args(
+        args.control_key_id,
+        args.control_public_key,
+        args.control_trusted_key,
+    )
     software = platform_software(page, platform_name)
     if not isinstance(software, dict):
         raise DeploymentError("control page must contain a software object")
@@ -665,22 +901,43 @@ def main(platform_name: str, default_root: Path) -> int:
         raise DeploymentError("control page software.version is required")
 
     wheel_path = args.wheel.expanduser().resolve() if args.wheel else None
+    source_url = ""
+    source_ref = ""
     with tempfile.TemporaryDirectory(prefix="anet-oneclick-") as temporary:
         if wheel_path is None:
             wheel_url = str(software.get("wheel_url", "")).strip()
-            if not wheel_url:
-                raise DeploymentError(
-                    "control page software.wheel_url is required for initial install"
-                )
-            wheel_path = Path(temporary) / f"anet-fabric-{version}.whl"
-            download(resolve_reference(args.control_url, wheel_url), wheel_path)
-        if not wheel_path.is_file():
-            raise DeploymentError(f"wheel does not exist: {wheel_path}")
-        wheel_hash = str(
-            args.wheel_sha256 or software.get("sha256", "")
-        ).strip()
-        if not wheel_hash:
-            wheel_hash = sha256(wheel_path)
+            if wheel_url:
+                if (
+                    trusted_keys
+                    or args.wheel_sha256
+                    or str(software.get("sha256", "")).strip()
+                ):
+                    wheel_hash_for_install(
+                        Path(temporary) / f"anet-fabric-{version}.whl",
+                        explicit_hash=args.wheel_sha256,
+                        declared_hash=software.get("sha256", ""),
+                        require_hash=bool(trusted_keys),
+                    )
+                wheel_path = Path(temporary) / f"anet-fabric-{version}.whl"
+                download(resolve_reference(args.control_url, wheel_url), wheel_path)
+            else:
+                source_url = repository_source(page, software, args.control_url)
+                source_ref = repository_ref(page, software)
+                if not source_url:
+                    raise DeploymentError(
+                        "control page software.wheel_url or software.repo_url "
+                        "is required for initial install"
+                    )
+        wheel_hash = ""
+        if wheel_path is not None:
+            if not wheel_path.is_file():
+                raise DeploymentError(f"wheel does not exist: {wheel_path}")
+            wheel_hash = wheel_hash_for_install(
+                wheel_path,
+                explicit_hash=args.wheel_sha256,
+                declared_hash=software.get("sha256", ""),
+                require_hash=bool(trusted_keys),
+            )
 
         try:
             runtime = install_runtime(
@@ -690,6 +947,8 @@ def main(platform_name: str, default_root: Path) -> int:
                 wheel_sha256=wheel_hash,
                 root=root,
                 feature=args.feature,
+                source_url=source_url,
+                source_ref=source_ref,
             )
         except InstallError as exc:
             raise DeploymentError(str(exc)) from exc
@@ -752,7 +1011,6 @@ def main(platform_name: str, default_root: Path) -> int:
         contexts=contexts,
         advertise=advertise,
     )
-    current_config = json.loads(config_path.read_text(encoding="utf-8"))
 
     interval = page.get("poll_seconds", DEFAULT_POLL_SECONDS)
     try:
@@ -762,13 +1020,41 @@ def main(platform_name: str, default_root: Path) -> int:
     atomic_text(
         node_home / "remote-control.json",
         json.dumps(
-            {"version": 1, "url": args.control_url, "interval": interval},
+            {
+                "version": 1,
+                "url": args.control_url,
+                "interval": interval,
+                **({"trusted_keys": trusted_keys} if trusted_keys else {}),
+                **(
+                    {"root_key_id": next(iter(trusted_keys))}
+                    if trusted_keys
+                    else {}
+                ),
+            },
             indent=2,
             sort_keys=True,
         )
         + "\n",
     )
 
+    # Verify the complete root/nested page and local policy before a
+    # persistent service is registered.  This is read-only; the first
+    # supervisor sync must still install the page's software artifact.
+    run(
+        [
+            str(python),
+            "-m",
+            "anet",
+            "--home",
+            str(node_home),
+            "control-verify",
+            "--url",
+            args.control_url,
+        ]
+    )
+    current_config = json.loads(config_path.read_text(encoding="utf-8"))
+
+    node_id = read_node_id(python, node_home)
     if platform_name in {"wsl", "linux"}:
         service = install_systemd_service(
             python,
@@ -777,24 +1063,34 @@ def main(platform_name: str, default_root: Path) -> int:
         )
     else:
         service = install_launchd_service(python, node_home)
-    result = {
-        "ok": True,
-        "outcome": "created" if created else "reused",
-        "platform": platform_name,
-        "runtime": runtime,
-        "node": {
+    service["health"] = wait_for_supervisor_health(python, node_home)
+    result = build_deployment_receipt(
+        platform=platform_name,
+        outcome="created" if created else "reused",
+        runtime=runtime,
+        node={
             "home": str(node_home),
+            "node_id": node_id,
             "listen_host": str(current_config.get("listen_host", listen_host)),
             "port": port,
             "advertise": current_config.get("advertise", []),
             "locator_contexts": current_config.get("locator_contexts", []),
-            "control_url": args.control_url,
         },
-        "service": service,
-        "preflight": preflight,
-    }
+        control_url=args.control_url,
+        control_key_id=next(iter(trusted_keys), ""),
+        control_key_ids=list(trusted_keys),
+        supervisor=service,
+        preflight=preflight,
+    )
     print(json.dumps(result, separators=(",", ":")))
     return 0
+
+
+def main(platform_name: str, default_root: Path) -> int:
+    args = parser(platform_name, default_root).parse_args()
+    root = args.root.expanduser().resolve()
+    with InstallationLock(root):
+        return _main_unlocked(platform_name, default_root, args)
 
 
 if __name__ == "__main__":

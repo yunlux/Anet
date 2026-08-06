@@ -68,7 +68,9 @@ provided a remote control page, use the separate deployment prototype:
 
 ```powershell
 .\scripts\install_windows_oneclick.ps1 `
-  -ControlUrl https://example.invalid/anet/control.json
+  -ControlUrl https://example.invalid/anet/control.json `
+  -ControlKeyId community-main `
+  -ControlPublicKey <BASE64URL_ED25519_PUBLIC_KEY>
 ```
 
 This path creates or reuses one node home after its preflight, imports the
@@ -77,8 +79,15 @@ scheduled task, and starts the supervisor with an `anet serve` child. For a
 machine-wide Windows deployment, run PowerShell as administrator and add
 `-Admin`; this uses `%ProgramData%\Anet`, the `SYSTEM` task principal, and an
 `AtStartup` trigger. Use explicit `-Port`, `-LocatorContext`, and `-Advertise`
-values when this Windows node must coexist with a WSL node. It is not the clean runtime install above. The prototype
-page is unsigned and can install a wheel or Git source; see
+values when this Windows node must coexist with a WSL node. It is not the clean runtime install above. A pinned
+`-ControlKeyId`/`-ControlPublicKey` makes the supervisor require signed root and
+nested control pages; omit them only for an explicitly trusted compatibility
+bootstrap. The one-click installer runs a read-only `anet control-verify` after
+the initial runtime/node exist and before registering the persistent service;
+it does not consume remote-control state, so the first supervisor sync can
+still install the page's software artifact. A pinned/signed page must provide
+`software.sha256` for wheel installation/update; a signed `repo_url` is the
+explicit source-install alternative. The page can install a wheel or Git source; see
 [`WINDOWS_AUTOSTART.md`](WINDOWS_AUTOSTART.md) before using it.
 
 For direct Windows/WSL connectivity, port numbers only isolate listeners. Bind
@@ -86,28 +95,47 @@ both nodes to a non-loopback shared host address (or `0.0.0.0` plus an explicit
 advertised address), use different ports, and never publish `127.0.0.1` under a
 shared `host:` locator context.
 
-The equivalent explicit POSIX deployment paths are:
+The equivalent checkout-free POSIX deployment path is:
 
 ```bash
-python3 scripts/install_wsl_oneclick.py --control-url <CONTROL_URL>
-python3 scripts/install_linux_oneclick.py --control-url <CONTROL_URL>
-python3 scripts/install_macos_oneclick.py --control-url <CONTROL_URL>
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform wsl --control-url <CONTROL_URL> \
+  --control-key-id community-main \
+  --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 ```
+
+Use `--platform linux`, `--platform macos`, or `--platform termux` for the
+other targets. If a checkout is already present, the direct
+`scripts/install_*_oneclick.py` entry points are equivalent. Use
+`--repository <HTTPS_GITHUB_REPOSITORY>` and `--script-ref <branch-or-tag>`
+when the temporary bootstrap helpers must come from a fork or non-`main` Git
+ref. The bootstrap does not execute a repository selected only by an
+unverified control page; that page's `repo_url` is consumed by the installer
+for the initial runtime and by the supervisor for later runtime updates. The
+installer still requires read-only `control-verify` before registering a
+persistent service.
 
 The first two create and enable `anet-supervisor.service` as a systemd user
 unit; macOS creates and loads `net.anet.supervisor` as a LaunchAgent. These
 paths also create one new node home and are separate from the runtime-only
 installers. See [`POSIX_AUTOSTART.md`](POSIX_AUTOSTART.md).
+The macOS entry point verifies the LaunchAgent reports `state = running`, and
+one-click installation runs the same read-only `anet control-verify` before
+service registration. One-shot `anet control-sync` shares the node-home lock
+with the supervisor.
 
 For WSL on Windows, `systemd --user` does not itself launch the distribution
 after a Windows reboot. After the WSL node is installed, the optional host
 bridge can be registered with
 `scripts/register_wsl_keepalive.ps1 -Distribution <DISTRO> -LinuxUser <USER>`.
 
-For Android inside Termux, use the separate Termux entry point:
+For Android inside Termux, use the same bootstrap with `--platform termux`:
 
 ```bash
-python3 scripts/install_termux_oneclick.py --control-url <CONTROL_URL>
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform termux --control-url <CONTROL_URL> \
+  --control-key-id community-main \
+  --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 ```
 
 It uses Termux-native packages, `termux-services`/runit, and a
@@ -133,9 +161,57 @@ existing runtime/Ahub location and retain their versioned-runtime semantics;
 the one-click deployment installers also inspect their platform service/task
 and process markers and stop before mutation when another same-platform
 persistent deployment is found. The target deployment is idempotently reused.
+The installer also acquires a target-scoped lock before preflight, so concurrent
+invocations cannot both pass the report and create the same runtime or service.
 Use `-AllowExisting` on Windows or `--allow-existing` on POSIX/Termux only as
 an explicit override. Windows and WSL are separate preflight boundaries and
 must not share a node home or identity.
+
+Persistent one-click entry points emit one compact Deployment Receipt v1 JSON
+object on stdout only after the control page and supervisor checks pass. An
+Agent must require `kind=anet.deployment.receipt`, `schema_version=1`,
+`ok=true`, `control.verified=true`, `supervisor.autostart=true`,
+`supervisor.health.ok=true`, `supervisor.health.sync_complete=true`, both
+health process-alive fields, and non-empty instance/boot-session IDs; it must not
+infer success from a zero exit code plus partial human-readable output. Keep the
+complete receipt private because it contains the Node ID, paths, addresses,
+control URL, and service metadata. See
+[`DEPLOYMENT_RECEIPT_V1.md`](DEPLOYMENT_RECEIPT_V1.md).
+
+For current post-install evidence, run `anet --home <ANET_HOME>
+supervisor-status`. A zero exit requires a fresh heartbeat and live supervisor
+plus server-child processes. Missing, stale, degraded, or stopped evidence is a
+nonzero result; see [`SUPERVISOR_HEALTH_V1.md`](SUPERVISOR_HEALTH_V1.md).
+
+When an operator asks for restart evidence, run `continuity-prepare` before the
+authorized restart and `continuity-verify` after it. Add
+`--require-boot-change` only when the OS, WSL distribution, or Android boot
+session was actually restarted. The challenge is one-time and both artifacts
+are private. This narrow gate proves supervisor/identity continuity, not route,
+queue, PeerBook, or physical-device delivery recovery; see
+[`CONTINUITY_GATE_V1.md`](CONTINUITY_GATE_V1.md). Do not initiate a disruptive
+restart without explicit authority.
+
+For community-composed control pages, prefer nested `{ "url", "key_id" }`
+sources. The key must be pinned in local `trusted_keys` or declared by the
+signed root page's `control_publishers`; require the child signature to match
+exactly and inspect private `source_publishers` plus
+`delegated_publisher_ids` evidence. A delegated key cannot sign the root,
+delegate again, persist as local trust, or affect PeerBook, authorization,
+relationships, or reputation. See
+[`CONTROL_SOURCE_PINS_V1.md`](CONTROL_SOURCE_PINS_V1.md).
+On a fresh Windows deployment, pass additional local keys as
+`-ControlTrustedKey "actor-a=<KEY>","actor-b=<KEY>"`. On POSIX/Termux, repeat
+`--control-trusted-key actor-a=<KEY>`. Require the final private Deployment
+Receipt `control.key_ids` to contain every requested publisher in the same
+order; `control.key_id` remains the first entry for v1 readers and is the
+locally pinned root-page publisher. Additional keys must not be accepted as
+root signers.
+
+When the signed root curates community publishers, only the root key needs to
+appear in the install command and Deployment Receipt. Do not require delegated
+IDs in receipt `control.key_ids`; require each one in the verified root
+`control_publishers` map and in the exact nested source `key_id` instead.
 
 ### macOS
 
@@ -194,10 +270,18 @@ Prefer an explicit home on every command:
 anet --home <ABSOLUTE_PRIVATE_NODE_HOME> doctor
 anet --home <ABSOLUTE_PRIVATE_NODE_HOME> status
 anet --home <ABSOLUTE_PRIVATE_NODE_HOME> peer-list
+anet --home <ABSOLUTE_PRIVATE_NODE_HOME> peer-reachability <PEER_NODE_ID>
 ```
 
 `doctor` must succeed before network or MCP use. A label, directory name, IP
 address, or service name is not identity; compare complete Node IDs.
+
+`peer-reachability` queries the configured Ahub carriers for the signed,
+short-lived reachability overlay of an already pinned peer. It verifies the
+descriptor keys against the PeerBook entry, returns dynamic candidates before
+the static Card fallback, and never edits `peers.json`. A running node performs
+the same validation during Ahub synchronization; its direct sync, health probe,
+and dialer probe can then use the dynamic candidates until they expire.
 
 ## 3. Create a node only when authorized
 

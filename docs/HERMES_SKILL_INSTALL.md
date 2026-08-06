@@ -14,9 +14,42 @@ The Skill has two deliberately separate modes:
    bootstrap-managed local Agents, writes a restrictive MCP config, and starts
    systemd user services.
 
-## One-sentence cross-platform prompt
+## Full persistent one-click deployment prompt
 
-Send this sentence to a new Agent on Windows, WSL, macOS, or Linux:
+Use this prompt only when the user has explicitly authorized creating a
+persistent node, remote-control configuration, and service/autostart state on
+the target device. It is the prompt for the new-device deployment path; the
+Skill-only prompt below remains runtime-only unless WSL bootstrap is separately
+authorized.
+
+For community-composed control pages, apply the publisher-pin contract in
+[`CONTROL_SOURCE_PINS_V1.md`](CONTROL_SOURCE_PINS_V1.md).
+
+Chinese:
+
+```text
+bootstrap 辅助脚本默认从官方 Anet 仓库/ref 获取；未验证控制页只能提供 runtime
+软件源，不能选择并执行 bootstrap 代码。若要使用 fork，显式传入
+`--repository`/`--script-ref`。
+从 https://github.com/yunlux/Anet 在本机完成 Anet 一键部署。用户已明确授权创建一个独立持久节点、服务/自启动，以及 supervisor 对这个控制页 URL 的轮询：<CONTROL_URL>（执行前替换占位符）。自动检测平台并使用对应的一键入口：原生 Windows 使用从 GitHub Raw 获取的 PowerShell 入口，只有需要整机开机启动且当前 PowerShell 已提升权限时才加入 -Admin；WSL、Linux、macOS、Termux 没有 checkout 时使用从 GitHub Raw 获取的 `bootstrap_posix.py` 管道并传入对应 `--platform`，已有 checkout 时才直接运行对应的 install_*_oneclick.py。让控制页提供软件版本，以及首次安装 `software.wheel_url` 或 `software.repo_url`（顶层 `repo_url` 也可以）。使用仓库地址时，可选的 `software.repo_ref`（或顶层 `repo_ref`）固定 Git 分支、tag 或 commit；如果页面已签名，wheel 首次安装和后续更新必须有有效的 `software.sha256`，签名 `repo_url` 才是源码安装替代路径；无签名兼容模式才可在缺少哈希时计算本地 wheel，设备通过 Git 源安装时需要有 Git。安装器让 pip 通过 Git 源安装，并让 supervisor 继续处理远程软件、默认配置、Peer Card、pages/kv 更新。嵌套 pages/kv 来源声明 `key_id` 时，该 key 必须已在本机 `trusted_keys` 中，且子页签名必须精确匹配；另一个受信发布者不能代签，也不能把 publisher pin 推断成信誉、信任或授权。若有多个发布者，Windows 在同一命令使用 `-ControlTrustedKey "actor-a=<KEY>",...`，POSIX/Termux 重复使用 `--control-trusted-key actor-a=<KEY>`；第一个/旧参数 key 必须成为 `root_key_id`，新增 key 不得签根页面，并要求最终私有回执的 `control.key_ids` 完整匹配。安装器在注册持久服务前必须调用已安装 CLI 的只读 `control-verify`；它不能写入首次同步状态，签名、有效期、Peer Card 或网络策略校验失败就停止。安装前先取得按目标目录隔离的安装锁，再执行有界重复检测；发现已有 Anet/Ahub 部署、服务、任务或进程时停止，只有用户明确要求第二套部署时才使用 -AllowExisting/--allow-existing。Windows 与 WSL 即使使用镜像网络也必须是不同 node home、identity、Node ID 和监听端口；host-scoped 地址不能发布 127.0.0.1。若要求 WSL 在 Windows 重启后恢复，且主机侧注册已获授权，再注册 WSL keepalive 任务。最后验证并报告 runtime、node home、完整 Node ID、服务/任务状态、控制页 URL、私有 `source_publishers` 归属和复用/创建结果。禁止复制其他设备的 identity、TLS 私钥、SQLite 状态或整个 node home；遇到身份、哈希、权限、控制页或授权冲突时停止并报告。
+根页委派模式是上述“本机 trusted_keys”要求的受限替代：只需在本机固定根 key；根页的 `control_publishers` 必须被根签名覆盖，委派 ID 还必须被嵌套 `{url,key_id}` 精确点名。委派 key 不能签根页、继续委派、写入本地信任或改变 PeerBook、授权、关系、信誉；检查私有 `delegated_publisher_ids` 和 `source_publishers`，不要要求它出现在 Deployment Receipt 的本地 `control.key_ids`。
+```
+
+English:
+
+```text
+The checkout-free bootstrap fetches helpers from the official Anet repository/ref;
+an unverified control page may provide the runtime source but may not select
+executable bootstrap code. Pass `--repository`/`--script-ref` explicitly for a fork.
+Deploy Anet on this device from https://github.com/yunlux/Anet. The user explicitly authorizes one independent persistent node, its service/autostart state, and supervisor polling of this control-page URL: <CONTROL_URL> (replace the placeholder before running). Detect the platform and use its one-click entry point: on native Windows fetch and run the PowerShell entry point, adding -Admin only from an elevated PowerShell when machine-wide boot startup is requested; on WSL, Linux, macOS, or Termux use the checkout-free `scripts/bootstrap_posix.py` pipe with the matching `--platform` value when no checkout is present, or the direct install_*_oneclick.py script from an existing checkout. Require the control page to provide the release version plus either an initial wheel or repo_url; when using repo_url, an optional repo_ref pins a Git branch, tag, or commit. For a signed page, require a valid software.sha256 for every wheel bootstrap/update; signed repo_url is the explicit source-install alternative. Only unsigned compatibility mode may compute a local wheel hash when the declaration is absent. Then let the supervisor apply later software, default-config, Peer Card, and pages/kv updates. When a nested pages/kv source declares `key_id`, require that key to exist in local `trusted_keys` and require the child signature to match exactly; another trusted publisher cannot substitute, and a publisher pin is not a reputation, trust, or authorization score. For multiple publishers, use `-ControlTrustedKey "actor-a=<KEY>",...` in the same Windows command or repeat `--control-trusted-key actor-a=<KEY>` on POSIX/Termux. The first/legacy key must become `root_key_id`; additional keys must not sign the root page. Require the private receipt's `control.key_ids` to match the complete requested set. Before registering a persistent service, require the installed CLI's read-only `control-verify`; it must not consume first-sync state, and signature, expiry, Peer Card, or network-policy failure must stop the install. Acquire the target-scoped install lock before running the bounded duplicate preflight; stop on an existing Anet/Ahub deployment, service, task, or process, and use -AllowExisting/--allow-existing only when a second deployment is explicitly requested. Windows and WSL remain different nodes even with mirrored networking: use separate node homes, identities, Node IDs, and listener ports, and never publish 127.0.0.1 as a host-scoped address. If WSL must return after a Windows reboot, register the host keepalive task only when that host-side action is authorized. Verify and report the runtime, node home, complete Node ID, service/task state, control-page URL, private `source_publishers` attribution, and reused/created resources. Never copy another device's identity, TLS private key, SQLite state, or entire node home; stop and report identity, hash, permission, control-page, or authorization conflicts.
+Root delegation is the constrained alternative to the local-`trusted_keys` requirement above: pin only the root locally; require its signature to cover `control_publishers`, and require each delegated ID to be named by the exact nested `{url,key_id}` source. A delegated key cannot sign the root, delegate again, persist as local trust, or change PeerBook, authorization, relationships, or reputation. Inspect private `delegated_publisher_ids` and `source_publishers`, and do not require delegated IDs in the Deployment Receipt's local `control.key_ids`.
+```
+
+## Skill-only prompt
+
+Use this narrower prompt when the user wants the bundled runtime, or the
+explicitly authorized WSL bootstrap, rather than the full cross-platform
+one-click deployment:
 
 ```text
 从 https://github.com/yunlux/Anet 安装 Anet 并自动检测平台：原生 Windows 使用 scripts/install_windows.ps1，macOS 使用 scripts/install_macos.py，Linux 使用 $install-anet Skill（skills/install-anet/scripts/install.py）。常规安全决策由你自主完成，不要让我选择路径、标签、端口、服务名或 Ahub 设置。在 WSL 上使用 $install-anet 的 bootstrap_wsl.py 完成已授权的持久引导（scripts/install_wsl.py 是只安装 runtime 的替代入口）；优先推导当前 profile 的稳定本地 ID，若没有则自行生成并持久保存一个 Agent 中立的 profile 本地 ID；复用本机已登记且健康的第一个 Ahub，只有确认不存在 Ahub 时才创建一个；为当前 Agent 创建或复用独立节点，将它与该 Ahub 下其他本机 Agent 显式配对，生成最小权限 MCP 配置并接入当前 profile，最后报告所有复用/创建结果、服务状态和路径。非 WSL 平台若未另行授权持久配置，则在验证 runtime 后停止。遇到身份、Ahub 状态、哈希、权限或授权冲突时停止并直接报告；禁止复制身份、启动第二个 Ahub、使用 sudo 或绕过校验。
@@ -25,7 +58,7 @@ Send this sentence to a new Agent on Windows, WSL, macOS, or Linux:
 The equivalent English prompt is:
 
 ```text
-Install Anet from https://github.com/yunlux/Anet and detect the platform: use scripts/install_windows.ps1 on native Windows, scripts/install_macos.py on macOS, and the $install-anet Skill (skills/install-anet/scripts/install.py) on Linux. Make safe routine decisions autonomously and do not ask me to choose paths, labels, ports, service names, or Ahub settings. On WSL, use $install-anet's bootstrap_wsl.py for the authorized persistent setup (scripts/install_wsl.py is the runtime-only alternative); derive this profile's stable local ID, or generate and persist an agent-neutral profile-local ID when none exists; reuse the first registered healthy host-local Ahub and create one only after confirming none exists; create or reuse one independent node for this Agent, explicitly pair it with the other local Agents managed around that Ahub, generate a least-privilege MCP configuration and register it with this profile, then report every reused/created resource, service state, and path. On non-WSL platforms stop after the verified runtime install unless persistent setup is separately authorized. Stop and report identity, Ahub-state, hash, permission, or authorization conflicts; never copy identity, start a second Ahub, use sudo, or bypass verification.
+Install Anet from https://github.com/yunlux/Anet and detect the platform: use the one-click deployment entry point when the user has authorized a persistent node, service/autostart, and control-page polling; the control page supplies the release version plus either a wheel (prefer its hash) or repo_url (Git is required for source installation). Use scripts/install_windows.ps1 on native Windows, scripts/install_macos.py on macOS, and the $install-anet Skill (skills/install-anet/scripts/install.py) on Linux only for the runtime-only path. Make safe routine decisions autonomously and do not ask me to choose paths, labels, ports, service names, or Ahub settings. On WSL, use the matching one-click entry point for the authorized persistent setup; derive this profile's stable local ID, or generate and persist an agent-neutral profile-local ID when none exists; reuse the first registered healthy host-local Ahub and create one only after confirming none exists; create or reuse one independent node for this Agent, explicitly pair it with the other local Agents managed around that Ahub, generate a least-privilege MCP configuration and register it with this profile, then report every reused/created resource, service state, and path. On non-WSL platforms stop after the verified runtime install unless persistent setup is separately authorized. Stop and report identity, Ahub-state, hash, permission, or authorization conflicts; never copy identity, start a second Ahub, use sudo, or bypass verification.
 ```
 
 On Linux and WSL, the Skill installation step may be implemented with:
