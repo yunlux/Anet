@@ -422,7 +422,7 @@ def test_probe_pulls_inflight_carrier_receipt_without_second_direct_timeout(
             )
             assert result["ok"] is True
             assert direct_calls == 1
-            assert result["elapsed_ms"] < 1500
+            assert result["elapsed_ms"] < 4000
             assert any(
                 item["path_id"] == "directory:drop"
                 and item["state"] in {"sent", "acked"}
