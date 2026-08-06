@@ -18,7 +18,7 @@ or a central message server. A packet can travel over a direct TLS connection,
 through an opaque carrier or Ahub, or inside an offline bundle without changing
 its end-to-end security model.
 
-> Anet is under active development. The current release is `v0.13.0`.
+> Anet is under active development. The current release is `v0.13.1`.
 
 ## One-command deployment
 

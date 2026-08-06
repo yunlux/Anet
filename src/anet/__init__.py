@@ -38,4 +38,4 @@ __all__ = [
     "seal_packet",
 ]
 
-__version__ = "0.13.0"
+__version__ = "0.13.1"

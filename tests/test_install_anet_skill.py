@@ -8,7 +8,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SKILL = ROOT / "skills" / "install-anet"
 EXPECTED_SHA256 = (
-    "1FCD6C8447E0DDF7D305B14575F1B14AE2799943547BB411E4A11217EB92943C"
+    "5562E425D1BD45998C240E727E7FC6910325DBAFEF2BD35BFD6B0A61F9604064"
 )
 
 
@@ -20,7 +20,7 @@ def test_install_anet_skill_is_self_contained() -> None:
         SKILL / "scripts" / "bootstrap_wsl.py",
         SKILL / "references" / "after-install.md",
         SKILL / "assets" / "SHA256SUMS",
-        SKILL / "assets" / "anet_fabric-0.13.0-py3-none-any.whl",
+        SKILL / "assets" / "anet_fabric-0.13.1-py3-none-any.whl",
     )
     assert all(path.is_file() for path in required)
 
@@ -29,7 +29,7 @@ def test_install_anet_skill_bundled_wheel_is_pinned() -> None:
     wheel = (
         SKILL
         / "assets"
-        / "anet_fabric-0.13.0-py3-none-any.whl"
+        / "anet_fabric-0.13.1-py3-none-any.whl"
     )
     assert hashlib.sha256(wheel.read_bytes()).hexdigest().upper() == (
         EXPECTED_SHA256

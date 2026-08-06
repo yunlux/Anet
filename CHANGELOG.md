@@ -1,5 +1,13 @@
 # Anet Changelog
 
+## 0.13.1 — 2026-08-06
+
+- 修复 sdist 打包缺陷：MANIFEST.in 补充 `experiments/`、`.github/`、`deploy/`、
+  `README.md`/`README.zh-CN.md`，保证从 sdist 解压后全量测试（526）可运行。
+- 修复 `wsl_release_gate.py` 隔离验证：将 `mcp>=1.0` 收紧为 `mcp>=1.0,<2`
+  （mcp 2.0 移除 `mcp.server.fastmcp`），并补充 `qrcode[pil]`/`zxing-cpp`
+  测试依赖；避免隔离 venv 因依赖版本漂移导致部署门禁误失败。
+
 ## 0.13.0 — 2026-08-06
 
 - 签名根控制页现在可通过 `control_publishers` 委派只用于被点名嵌套来源的社区

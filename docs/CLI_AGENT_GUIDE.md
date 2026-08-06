@@ -54,8 +54,8 @@ idempotent.
 
 ```powershell
 .\scripts\install_windows.ps1 `
-  -Version 0.13.0 `
-  -Wheel .\dist\anet_fabric-0.13.0-py3-none-any.whl `
+  -Version 0.13.1 `
+  -Wheel .\dist\anet_fabric-0.13.1-py3-none-any.whl `
   -WheelSha256 6AC09D43E470E9E3A88C8AACCFE47F3971CF78785103012C6FC645A2461CBCD7 `
   -Feature mcp
 ```
@@ -147,8 +147,8 @@ prerequisite; it cannot be installed by the Python runtime installer. See
 
 ```bash
 python3 scripts/install_wsl.py \
-  --version 0.13.0 \
-  --wheel dist/anet_fabric-0.13.0-py3-none-any.whl \
+  --version 0.13.1 \
+  --wheel dist/anet_fabric-0.13.1-py3-none-any.whl \
   --wheel-sha256 6AC09D43E470E9E3A88C8AACCFE47F3971CF78785103012C6FC645A2461CBCD7 \
   --feature mcp
 ```
@@ -217,8 +217,8 @@ IDs in receipt `control.key_ids`; require each one in the verified root
 
 ```bash
 python3 scripts/install_macos.py \
-  --version 0.13.0 \
-  --wheel dist/anet_fabric-0.13.0-py3-none-any.whl \
+  --version 0.13.1 \
+  --wheel dist/anet_fabric-0.13.1-py3-none-any.whl \
   --wheel-sha256 6AC09D43E470E9E3A88C8AACCFE47F3971CF78785103012C6FC645A2461CBCD7 \
   --feature mcp
 ```
@@ -233,7 +233,7 @@ anet --version
 anet --help
 ```
 
-Expected version: `Anet 0.13.0`.
+Expected version: `Anet 0.13.1`.
 
 For a new Linux host already running Hermes, the self-contained
 `skills/install-anet` workflow can install this runtime from one Skill prompt.

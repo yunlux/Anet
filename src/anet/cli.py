@@ -3247,7 +3247,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="anet", description="Anet encrypted store-and-forward fabric"
     )
-    parser.add_argument("--version", action="version", version="Anet 0.13.0")
+    parser.add_argument("--version", action="version", version="Anet 0.13.1")
     parser.add_argument(
         "--home", type=Path, default=default_home(), help="node state directory"
     )

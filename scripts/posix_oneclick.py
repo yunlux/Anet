@@ -231,7 +231,7 @@ def read_json_url(url: str) -> dict[str, Any]:
             target,
             headers={
                 "Accept": "application/json",
-                "User-Agent": "Anet-POSIX-OneClick/0.13.0",
+                "User-Agent": "Anet-POSIX-OneClick/0.13.1",
             },
         )
         try:
@@ -559,7 +559,7 @@ def download(url: str, destination: Path) -> None:
         raise DeploymentError(f"unsupported wheel URL scheme: {parsed.scheme}")
     request = urllib.request.Request(
         url,
-        headers={"User-Agent": "Anet-POSIX-OneClick/0.13.0"},
+        headers={"User-Agent": "Anet-POSIX-OneClick/0.13.1"},
     )
     try:
         with urllib.request.urlopen(request, timeout=120) as response:

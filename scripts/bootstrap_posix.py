@@ -119,7 +119,7 @@ def download_source(url: str, destination: Path) -> None:
         url,
         headers={
             "Accept": "text/plain",
-            "User-Agent": "Anet-POSIX-Bootstrap/0.13.0",
+            "User-Agent": "Anet-POSIX-Bootstrap/0.13.1",
         },
     )
     try:

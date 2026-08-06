@@ -25,11 +25,11 @@ an unverified wheel.
 
 4. Parse the JSON result. Require:
    - `outcome` is `installed` or `reused`;
-   - `version` is `0.13.0`;
+   - `version` is `0.13.1`;
    - `feature` is `mcp`;
    - `identity_files` is `0`;
    - `mcp_import` is `ok`.
-5. Run the returned `cli` path with `--version`. Require `Anet 0.13.0`.
+5. Run the returned `cli` path with `--version`. Require `Anet 0.13.1`.
 6. Report `runtime`, `cli`, `python`, and whether the install was new or
    reused.
 

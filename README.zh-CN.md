@@ -1,4 +1,4 @@
-# Anet v0.13.0
+# Anet v0.13.1
 
 [English](README.md) | **简体中文**
 
@@ -8,7 +8,7 @@
 [安全说明](SECURITY.md) ·
 [参与贡献](CONTRIBUTING.md)
 
-v0.13.0 现在以“一键部署”为新设备的默认路径：它在 Windows、WSL、Linux、macOS
+v0.13.1 现在以“一键部署”为新设备的默认路径：它在 Windows、WSL、Linux、macOS
 和 Android Termux 上创建一个独立节点，安装 Anet runtime，启动服务端/客户端进程，
 并把控制页地址保存到节点 home。运行中的 supervisor 会持续读取远程 JSON 控制页，
 按页面声明更新软件、默认配置、Peer Card，以及嵌套的 pages/kv 数据源。

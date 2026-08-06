@@ -14,7 +14,7 @@ Human-readable preflight diagnostics remain on stderr. The common interface is:
   "runtime": {
     "outcome": "installed",
     "platform": "wsl",
-    "version": "0.13.0",
+    "version": "0.13.1",
     "feature": "mcp",
     "runtime": "<RUNTIME>",
     "cli": "<CLI>"

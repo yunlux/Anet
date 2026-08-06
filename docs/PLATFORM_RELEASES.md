@@ -29,8 +29,8 @@ so installing MCP does not mutate an existing core runtime.
 
 ```powershell
 .\scripts\install_windows.ps1 `
-  -Version 0.13.0 `
-  -Wheel .\dist\anet_fabric-0.13.0-py3-none-any.whl `
+  -Version 0.13.1 `
+  -Wheel .\dist\anet_fabric-0.13.1-py3-none-any.whl `
   -WheelSha256 <PINNED_SHA256>
 ```
 
@@ -44,8 +44,8 @@ reuse rather than treating an existing target as a fresh install.
 
 ```bash
 python3 scripts/install_wsl.py \
-  --version 0.13.0 \
-  --wheel dist/anet_fabric-0.13.0-py3-none-any.whl \
+  --version 0.13.1 \
+  --wheel dist/anet_fabric-0.13.1-py3-none-any.whl \
   --wheel-sha256 <PINNED_SHA256>
 ```
 
@@ -59,8 +59,8 @@ or virtual-environment mutation.
 
 ```bash
 python3 scripts/install_macos.py \
-  --version 0.13.0 \
-  --wheel dist/anet_fabric-0.13.0-py3-none-any.whl \
+  --version 0.13.1 \
+  --wheel dist/anet_fabric-0.13.1-py3-none-any.whl \
   --wheel-sha256 <PINNED_SHA256>
 ```
 

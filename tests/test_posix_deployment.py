@@ -34,7 +34,7 @@ from posix_runtime_installer import source_requirement  # noqa: E402
 
 def test_systemd_unit_runs_the_remote_supervisor() -> None:
     unit = systemd_unit(
-        Path("<HOME>/.local/anet/versions/0.13.0-mcp/venv/bin/python"),
+        Path("<HOME>/.local/anet/versions/0.13.1-mcp/venv/bin/python"),
         Path("<HOME>/.local/anet/nodes/default"),
     )
     assert SYSTEMD_SERVICE == "anet-supervisor.service"
@@ -147,7 +147,7 @@ def test_platform_overlays_deep_merge_initial_config_and_software() -> None:
     page = {
         "config": {"capabilities": {"direct": True, "relay": False}},
         "software": {
-            "version": "0.13.0",
+            "version": "0.13.1",
             "metadata": {"channel": "stable", "track": "lts"},
         },
         "platforms": {
@@ -162,7 +162,7 @@ def test_platform_overlays_deep_merge_initial_config_and_software() -> None:
         "capabilities": {"direct": True, "relay": True}
     }
     assert platform_software(page, "wsl") == {
-        "version": "0.13.0",
+        "version": "0.13.1",
         "metadata": {"channel": "stable", "track": "edge"},
     }
 
@@ -170,7 +170,7 @@ def test_platform_overlays_deep_merge_initial_config_and_software() -> None:
 def test_platform_software_selects_the_platform_specific_artifact() -> None:
     page = {
         "software": {
-            "version": "0.13.0",
+            "version": "0.13.1",
             "wheel_url": "common.whl",
         },
         "platforms": {
@@ -183,7 +183,7 @@ def test_platform_software_selects_the_platform_specific_artifact() -> None:
         },
     }
     assert platform_software(page, "windows") == {
-        "version": "0.13.0",
+        "version": "0.13.1",
         "wheel_url": "windows.whl",
     }
     assert platform_software(page, "termux")["wheel_url"] == "termux.whl"
@@ -194,7 +194,7 @@ def test_repository_source_falls_back_to_the_page_repo_url() -> None:
     page = {"repo_url": "https://github.com/yunlux/Anet"}
     assert repository_source(
         page,
-        {"version": "0.13.0"},
+        {"version": "0.13.1"},
         "https://example.test/control.json",
     ) == "https://github.com/yunlux/Anet"
 
@@ -209,9 +209,9 @@ def test_repository_source_resolves_relative_repo_urls() -> None:
 
 def test_repository_ref_falls_back_to_the_page_ref() -> None:
     assert repository_ref(
-        {"repo_ref": "v0.13.0"},
-        {"version": "0.13.0"},
-    ) == "v0.13.0"
+        {"repo_ref": "v0.13.1"},
+        {"version": "0.13.1"},
+    ) == "v0.13.1"
 
 
 def test_control_publisher_pin_requires_a_valid_public_key() -> None:
@@ -264,8 +264,8 @@ def test_source_requirement_preserves_feature_extras() -> None:
     assert source_requirement(
         "https://github.com/yunlux/Anet",
         "core",
-        "v0.13.0",
-    ) == "git+https://github.com/yunlux/Anet@v0.13.0"
+        "v0.13.1",
+    ) == "git+https://github.com/yunlux/Anet@v0.13.1"
 
 
 def test_cross_platform_host_locators_cannot_use_loopback() -> None:

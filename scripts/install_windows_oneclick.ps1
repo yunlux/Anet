@@ -32,7 +32,7 @@ function Read-ControlPage {
     param([string]$Url)
     $response = Invoke-RestMethod -Uri $Url -Method Get -Headers @{
         Accept = "application/json"
-        "User-Agent" = "Anet-Windows-OneClick/0.13.0"
+        "User-Agent" = "Anet-Windows-OneClick/0.13.1"
     }
     if (-not $response) {
         throw "control page returned no JSON object"
