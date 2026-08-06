@@ -1,0 +1,25 @@
+# Amesh serve user unit template.
+#
+# Substitute @AMESH_PYTHON@ with the Python that has the `amesh` package and
+# @AMESH_HOME@ with the deployment-owned node home, then install as
+# ~/.config/systemd/user/amesh-serve.service. The companion installer script
+# `install-amesh-service.sh` performs this substitution and starts the unit.
+#
+# The serve process holds a home-exclusive lock, so a second supervisor for the
+# same home fails instead of polling the same ledgers.
+
+[Unit]
+Description=Amesh agent mesh shell
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=@AMESH_PYTHON@ -m amesh.cli --home @AMESH_HOME@ serve
+Environment=PYTHONUNBUFFERED=1
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+
+[Install]
+WantedBy=default.target
