@@ -125,3 +125,22 @@ def test_public_summary_excludes_peer_and_key_material(tmp_path) -> None:
     assert summary["status_gates"]["pending"] == 0
     assert "must-not-leak" not in encoded
     assert "peers" not in summary
+
+
+def test_isolated_test_env_points_home_into_check_root(tmp_path) -> None:
+    check = tmp_path / "check"
+    home, env = gate.isolated_test_env(check)
+    assert home == check / "home"
+    assert home.is_dir()
+    assert env["HOME"] == str(home)
+    assert check / "home" in list(check.rglob("home"))
+
+
+def test_isolated_test_env_preserves_parent_environment(tmp_path) -> None:
+    check = tmp_path / "check"
+    try:
+        os.environ["ANET_TEST_SENTINEL"] = "keep-me"
+        _home, env = gate.isolated_test_env(check)
+        assert env["ANET_TEST_SENTINEL"] == "keep-me"
+    finally:
+        os.environ.pop("ANET_TEST_SENTINEL", None)

@@ -90,6 +90,18 @@ def atomic_private_json(path: Path, value: dict[str, Any]) -> None:
         raise
 
 
+def isolated_test_env(check_root: Path) -> tuple[Path, dict[str, str]]:
+    """Return a private HOME and environment for isolated verification.
+
+    The isolated tests must not scan the operator's real deployment roots
+    (for example ``~/.local/anet`` on a machine that already runs Anet), so
+    they run under a fresh HOME inside the check directory.
+    """
+    isolated_home = Path(check_root) / "home"
+    isolated_home.mkdir(parents=True, exist_ok=False)
+    return isolated_home, {**os.environ, "HOME": str(isolated_home)}
+
+
 class ReleaseGate:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
@@ -299,9 +311,7 @@ class ReleaseGate:
         # Run the isolated tests under a private HOME so preflight checks do
         # not scan the operator's real deployment roots (for example
         # ~/.local/anet on a machine that already runs Anet).
-        isolated_home = check / "home"
-        isolated_home.mkdir(parents=True, exist_ok=False)
-        isolated_env = {**os.environ, "HOME": str(isolated_home)}
+        isolated_home, isolated_env = isolated_test_env(check)
         self.run(
             [
                 verify_python,
