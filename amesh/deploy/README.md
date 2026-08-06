@@ -24,8 +24,8 @@ Install a per-user unit that runs the serve loop with restart-on-failure:
 ```bash
 cd amesh/deploy
 ./install-amesh-service.sh \
-  --python /home/user/.local/anet/venv/bin/python \
-  --home /home/user/.local/anet/nodes/default
+  --python <HOME>/.local/anet/venv/bin/python \
+  --home <HOME>/.local/anet/nodes/default
 ```
 
 This substitutes the `@AMESH_PYTHON@` / `@AMESH_HOME@` placeholders in
