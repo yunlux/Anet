@@ -120,11 +120,13 @@ class ReleaseGate:
         *,
         cwd: Path | None = None,
         timeout: int | None = None,
+        env: dict[str, str] | None = None,
     ) -> str:
         values = [str(item) for item in command]
         completed = subprocess.run(
             values,
             cwd=cwd,
+            env=env,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -294,6 +296,12 @@ class ReleaseGate:
         verify_venv = check / "venv"
         self.run([sys.executable, "-m", "venv", verify_venv], timeout=120)
         verify_python = verify_venv / "bin" / "python"
+        # Run the isolated tests under a private HOME so preflight checks do
+        # not scan the operator's real deployment roots (for example
+        # ~/.local/anet on a machine that already runs Anet).
+        isolated_home = check / "home"
+        isolated_home.mkdir(parents=True, exist_ok=False)
+        isolated_env = {**os.environ, "HOME": str(isolated_home)}
         self.run(
             [
                 verify_python,
@@ -317,6 +325,7 @@ class ReleaseGate:
             [verify_python, "-m", "pytest", "-q"],
             cwd=project,
             timeout=self.args.test_timeout,
+            env=isolated_env,
         )
         passed = parse_pytest_count(pytest_output)
         if passed != self.args.expected_tests:
@@ -336,13 +345,14 @@ class ReleaseGate:
             ],
             cwd=project,
             timeout=self.args.test_timeout,
+            env=isolated_env,
         )
         cli = verify_venv / "bin" / "anet"
-        version_output = self.run([cli, "--version"])
+        version_output = self.run([cli, "--version"], env=isolated_env)
         if version_output != f"Anet {self.args.version}":
             raise GateError("isolated CLI version mismatch")
         for command in ("pair-offer", "peer-revoke", "peer-revocations"):
-            self.run([cli, command, "--help"])
+            self.run([cli, command, "--help"], env=isolated_env)
         self.record(
             "isolated_verification",
             directory=str(check),

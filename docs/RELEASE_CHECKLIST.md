@@ -26,7 +26,7 @@
 uv sync --locked --all-extras
 uv run ruff check src tests scripts
 uv run pytest -q
-uv run python -m build
+SOURCE_DATE_EPOCH=1754000000 uv run python -m build
 uv run python -m twine check dist/*
 ```
 
