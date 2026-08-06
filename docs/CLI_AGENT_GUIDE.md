@@ -54,8 +54,8 @@ idempotent.
 
 ```powershell
 .\scripts\install_windows.ps1 `
-  -Version 0.12.1 `
-  -Wheel .\dist\anet_fabric-0.12.1-py3-none-any.whl `
+  -Version 0.13.0 `
+  -Wheel .\dist\anet_fabric-0.13.0-py3-none-any.whl `
   -WheelSha256 6AC09D43E470E9E3A88C8AACCFE47F3971CF78785103012C6FC645A2461CBCD7 `
   -Feature mcp
 ```
@@ -147,8 +147,8 @@ prerequisite; it cannot be installed by the Python runtime installer. See
 
 ```bash
 python3 scripts/install_wsl.py \
-  --version 0.12.1 \
-  --wheel dist/anet_fabric-0.12.1-py3-none-any.whl \
+  --version 0.13.0 \
+  --wheel dist/anet_fabric-0.13.0-py3-none-any.whl \
   --wheel-sha256 6AC09D43E470E9E3A88C8AACCFE47F3971CF78785103012C6FC645A2461CBCD7 \
   --feature mcp
 ```
@@ -217,8 +217,8 @@ IDs in receipt `control.key_ids`; require each one in the verified root
 
 ```bash
 python3 scripts/install_macos.py \
-  --version 0.12.1 \
-  --wheel dist/anet_fabric-0.12.1-py3-none-any.whl \
+  --version 0.13.0 \
+  --wheel dist/anet_fabric-0.13.0-py3-none-any.whl \
   --wheel-sha256 6AC09D43E470E9E3A88C8AACCFE47F3971CF78785103012C6FC645A2461CBCD7 \
   --feature mcp
 ```
@@ -233,7 +233,7 @@ anet --version
 anet --help
 ```
 
-Expected version: `Anet 0.12.1`.
+Expected version: `Anet 0.13.0`.
 
 For a new Linux host already running Hermes, the self-contained
 `skills/install-anet` workflow can install this runtime from one Skill prompt.
@@ -241,8 +241,8 @@ See [`HERMES_SKILL_INSTALL.md`](HERMES_SKILL_INSTALL.md).
 
 ### Explicitly authorized WSL host bootstrap
 
-When the user asks for the complete persistent WSL environment—not merely an
-install—use the Skill's deterministic bootstrap:
+When the user asks for the complete persistent WSL environment鈥攏ot merely an
+install鈥攗se the Skill's deterministic bootstrap:
 
 ```bash
 python3 <SKILL_DIR>/scripts/bootstrap_wsl.py \
@@ -668,7 +668,7 @@ calls, or other side effects. Validate every payload under local policy.
 
 Normal CLI results are JSON. Agents should use exit status plus parsed fields,
 not human-oriented string matching. Keep stdout available for the result and
-send diagnostics to the calling runtime’s log. Never print node private files,
+send diagnostics to the calling runtime鈥檚 log. Never print node private files,
 claim tokens, bot tokens, approval execution tokens, or environment secrets.
 
 Use `anet <command> --help` as the installed-version parameter reference. This
@@ -680,4 +680,4 @@ for exact flags.
 If `doctor` fails, a home is missing, a Node ID changes, or a protected file
 appears copied, stop. Do not run `init` as a repair operation. Follow
 `openwiki/operations/onboarding-and-recovery.md` and restore only from the
-deployment owner’s verified backup.
+deployment owner鈥檚 verified backup.

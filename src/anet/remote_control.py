@@ -603,7 +603,7 @@ def _read_json_url(url: str, *, timeout: float) -> dict[str, Any] | list[Any]:
             target,
             headers={
                 "Accept": "application/json",
-                "User-Agent": "Anet-Control/0.12.1",
+                "User-Agent": "Anet-Control/0.13.0",
             },
         )
         try:
@@ -1379,7 +1379,7 @@ def _download(url: str, destination: Path, *, timeout: float) -> None:
         raise RemoteControlError(f"unsupported software URL scheme: {parsed.scheme}")
     request = urllib.request.Request(
         url,
-        headers={"User-Agent": "Anet-Control/0.12.1"},
+        headers={"User-Agent": "Anet-Control/0.13.0"},
     )
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:

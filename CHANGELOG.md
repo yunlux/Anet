@@ -1,6 +1,6 @@
 # Anet Changelog
 
-## Unreleased
+## 0.13.0 — 2026-08-06
 
 - 签名根控制页现在可通过 `control_publishers` 委派只用于被点名嵌套来源的社区
   发布者。委派 key 不写入本机 `trusted_keys`、不能签根页面或继续委派，也不改变

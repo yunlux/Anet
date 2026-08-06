@@ -243,11 +243,11 @@ def test_checkout_free_posix_bootstrap_fetches_only_known_entrypoints(
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    assert module.normalize_script_ref("release/v0.12.1") == "release/v0.12.1"
+    assert module.normalize_script_ref("release/v0.13.0") == "release/v0.13.0"
     assert module.github_raw_url(
-        "https://github.com/example/anet.git", "release/v0.12.1", "posix_oneclick.py"
+        "https://github.com/example/anet.git", "release/v0.13.0", "posix_oneclick.py"
     ) == (
-        "https://raw.githubusercontent.com/example/anet/release/v0.12.1/scripts/"
+        "https://raw.githubusercontent.com/example/anet/release/v0.13.0/scripts/"
         "posix_oneclick.py"
     )
     control = tmp_path / "control.json"
@@ -260,7 +260,7 @@ def test_checkout_free_posix_bootstrap_fetches_only_known_entrypoints(
                     "wsl": {
                         "software": {
                             "repo_url": "https://github.com/example/wsl",
-                            "repo_ref": "release/v0.12.1",
+                            "repo_ref": "release/v0.13.0",
                         }
                     }
                 },

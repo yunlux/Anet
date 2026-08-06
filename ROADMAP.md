@@ -235,7 +235,7 @@ queue 接入。Bridge 运行在已有 `anet serve` 中，不启动第二个使�
 
 2026-08-06 主体闭环已在真实 Discord 环境验证通过：WSL 独立测试节点
 （`~/.local/share/anet/nodes/discord-test`，systemd `anet-discord-test`）配置
-Guild `Yunlu`/channel `test`（`content-mode mentions`），bot token 仅存
+专用 test Guild/channel（`content-mode mentions`），bot token 仅存
 `~/.config/anet/discord-social.env`（600）并经 `ANET_DISCORD_BOT_TOKEN`
 注入，未写入配置/SQLite/日志。REST v10 polling 正常（`ingested` 随新消息
 递增）。非 mention 消息按 `metadata` 保存且正文为空；显式 bot 用户 mention

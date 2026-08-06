@@ -38,7 +38,7 @@ def sample_receipt(**overrides: object) -> dict[str, object]:
         "runtime": {
             "outcome": "installed",
             "platform": "wsl",
-            "version": "0.12.1",
+            "version": "0.13.0",
             "feature": "mcp",
             "runtime": "/runtime/venv",
             "cli": "/runtime/current/venv/bin/anet",
@@ -157,14 +157,14 @@ def test_receipt_rejects_incomplete_node_identity_and_invalid_port() -> None:
 
 def test_receipt_isolated_from_adapter_input() -> None:
     runtime = {
-        "version": "0.12.1",
+        "version": "0.13.0",
         "feature": "mcp",
         "runtime": "/runtime/venv",
         "cli": "/runtime/current/venv/bin/anet",
     }
     receipt = sample_receipt(runtime=runtime)
     runtime["version"] = "changed"
-    assert receipt["runtime"]["version"] == "0.12.1"  # type: ignore[index]
+    assert receipt["runtime"]["version"] == "0.13.0"  # type: ignore[index]
 
 
 def test_termux_receipt_keeps_boot_prerequisite_as_platform_detail() -> None:

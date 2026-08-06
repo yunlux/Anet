@@ -25,18 +25,18 @@ an unverified wheel.
 
 4. Parse the JSON result. Require:
    - `outcome` is `installed` or `reused`;
-   - `version` is `0.12.1`;
+   - `version` is `0.13.0`;
    - `feature` is `mcp`;
    - `identity_files` is `0`;
    - `mcp_import` is `ok`.
-5. Run the returned `cli` path with `--version`. Require `Anet 0.12.1`.
+5. Run the returned `cli` path with `--version`. Require `Anet 0.13.0`.
 6. Report `runtime`, `cli`, `python`, and whether the install was new or
    reused.
 
 ## Authorized WSL host bootstrap
 
 Use this only when the user explicitly asks to configure the persistent WSL
-Agent, local Ahub, local peers, MCP environment, and user services—not for a
+Agent, local Ahub, local peers, MCP environment, and user services鈥攏ot for a
 runtime-only install.
 
 Do not ask the user to choose routine paths, labels, ports, service names,

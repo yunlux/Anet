@@ -151,7 +151,7 @@ def test_control_verify_is_read_only_before_initial_supervisor_sync(
         {
             "config": {"sync_interval": 0.5},
             "software": {
-                "version": "0.12.1",
+                "version": "0.13.0",
                 "wheel_url": "https://example.invalid/anet.whl",
             },
         },
@@ -1609,10 +1609,10 @@ def test_same_version_software_change_is_not_silently_skipped(
     tmp_path: Path, monkeypatch
 ) -> None:
     software = {
-        "version": "0.12.1",
+        "version": "0.13.0",
         "wheel_url": "https://example.invalid/new.whl",
     }
-    monkeypatch.setattr(remote_control, "_current_version", lambda: "0.12.1")
+    monkeypatch.setattr(remote_control, "_current_version", lambda: "0.13.0")
     calls: list[list[str]] = []
 
     def fake_download(url: str, destination: Path, *, timeout: float) -> None:
@@ -1647,13 +1647,13 @@ def test_repository_software_update_uses_the_declared_ref(
         tmp_path,
         {
             "repo_url": "https://github.com/yunlux/Anet",
-            "repo_ref": "v0.12.1",
+            "repo_ref": "v0.13.0",
         },
         state,
     ) is True
 
     assert calls
-    assert "git+https://github.com/yunlux/Anet@v0.12.1" in calls[0]
+    assert "git+https://github.com/yunlux/Anet@v0.13.0" in calls[0]
     assert state["software_key"]
 
 
@@ -1672,13 +1672,13 @@ def test_empty_wheel_url_falls_back_to_repository_source(
         {
             "wheel_url": "",
             "repo_url": "https://github.com/yunlux/Anet",
-            "repo_ref": "v0.12.1",
+            "repo_ref": "v0.13.0",
         },
         {},
     ) is True
 
     assert calls
-    assert "git+https://github.com/yunlux/Anet@v0.12.1" in calls[0]
+    assert "git+https://github.com/yunlux/Anet@v0.13.0" in calls[0]
 
 
 def test_repository_software_update_rejects_an_invalid_ref(
@@ -1700,7 +1700,7 @@ def test_failed_software_update_restores_the_active_package(
 ) -> None:
     runtime = tmp_path / "runtime"
     package = runtime / "site-packages" / "anet"
-    metadata = runtime / "site-packages" / "anet_fabric-0.12.1.dist-info"
+    metadata = runtime / "site-packages" / "anet_fabric-0.13.0.dist-info"
     monkeypatch.setattr(remote_control.sys, "prefix", str(runtime))
     package.mkdir(parents=True)
     metadata.mkdir(parents=True)
@@ -1711,7 +1711,7 @@ def test_failed_software_update_restores_the_active_package(
         "_installed_package_paths",
         lambda: (package, metadata),
     )
-    monkeypatch.setattr(remote_control, "_current_version", lambda: "0.12.1")
+    monkeypatch.setattr(remote_control, "_current_version", lambda: "0.13.0")
 
     def fake_download(url: str, destination: Path, *, timeout: float) -> None:
         del url, timeout
@@ -1748,8 +1748,8 @@ def test_failed_software_update_restores_the_active_package(
 def test_initial_same_version_software_is_recorded_without_reinstall(
     tmp_path: Path, monkeypatch
 ) -> None:
-    software = {"version": "0.12.1", "wheel_url": "https://example.invalid/initial.whl"}
-    monkeypatch.setattr(remote_control, "_current_version", lambda: "0.12.1")
+    software = {"version": "0.13.0", "wheel_url": "https://example.invalid/initial.whl"}
+    monkeypatch.setattr(remote_control, "_current_version", lambda: "0.13.0")
     monkeypatch.setattr(
         remote_control,
         "_download",

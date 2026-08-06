@@ -12,7 +12,7 @@ Each claim below is limited to the strongest gate actually completed.
 ## Release candidate
 
 - Package: `anet-fabric`
-- Version: `0.12.1`
+- Version: `0.13.0`
 - Python: `>=3.11`
 - Platforms targeted by clean runtime installers: Windows, Linux/WSL, macOS
 - Default installation behavior: runtime only; no identity, node home, trust
@@ -65,7 +65,7 @@ They are not hard-coded here because rebuilding changes archive hashes.
   deployment Node IDs, GitHub tokens, caches, runtime state, or removed
   named-runtime compatibility files in either archive.
 - A clean Python 3.11 environment installed the rebuilt `mcp` wheel, imported
-  Anet/MCP/`defusedxml`, returned `Anet 0.12.1`, and created zero identity
+  Anet/MCP/`defusedxml`, returned `Anet 0.13.0`, and created zero identity
   files.
 - A separate core-only install loaded no `anet.ahub*` modules and installed
   none of MCP, Uvicorn, or WebSockets, confirming the optional dependency and

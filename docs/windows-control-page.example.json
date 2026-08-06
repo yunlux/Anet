@@ -6,7 +6,7 @@
   "repo_ref": "main",
   "poll_seconds": 300,
   "software": {
-    "version": "0.12.1"
+    "version": "0.13.0"
   },
   "config": {
     "sync_interval": 2.0,
