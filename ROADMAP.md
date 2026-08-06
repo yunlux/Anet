@@ -144,7 +144,18 @@ unadvertised loopback bridge 运行现有 TLS 1.3、签名身份、sync 和 rece
 节点间 TLS Relay，再保留 Mailbox StoreCarrier 作为离线回退。真实进程已覆盖
 Ahub 重启后的自动重建与第二次业务收敛。当前仍是一个复合 Ahub 路径，尚未
 完成 P1 的 `SessionCarrier`/`StoreCarrier` 窄腰，也没有生产级 rate limiter、
-正式服务包和真实公网/手机验证。详见
+正式服务包和真实公网/手机验证。
+
+2026-08-06 真实公网锚点验证已通过：`ahub-serve` 部署于 WSL 的
+`~/.local/state/anet/ahub-public`（loopback:8422，systemd user service
+`anet-ahub-public`），经 Cloudflare Tunnel 命名隧道暴露为
+`https://ahub.905527.xyz`（cloudflared 自身即"无公网入站端口"的真实场景）。
+公网 `/healthz` 返回 HTTP 200。两个 disposable WSL 测试节点（discord-test 与
+ahub-peer-b）经公网域名完成 Rendezvous（descriptors=2）、Live Relay
+（relay_reservations=1）、密文跨公网交付（inbox 收到
+"hello via public ahub"）与 settle 证明（retained_settlements=2）。日志仅含
+聚合 route 类，无 Node ID/正文。真实手机/mac 设备验证因 Android 端暂停、
+改用 Android Remote Control MCP 而推迟。详见
 [`docs/AHUB_V1.md`](docs/AHUB_V1.md) 与
 [`docs/AHUB_OPERATIONS.md`](docs/AHUB_OPERATIONS.md)，Relay 精确边界见
 [`docs/RELAY_V1.md`](docs/RELAY_V1.md)。
@@ -221,6 +232,19 @@ queue 接入。Bridge 运行在已有 `anet serve` 中，不启动第二个使�
 - 任何分数、role、标签或 `connect_candidate` 都不能建立 Anet trust。
 
 近期验收：
+
+2026-08-06 主体闭环已在真实 Discord 环境验证通过：WSL 独立测试节点
+（`~/.local/share/anet/nodes/discord-test`，systemd `anet-discord-test`）配置
+Guild `Yunlu`/channel `test`（`content-mode mentions`），bot token 仅存
+`~/.config/anet/discord-social.env`（600）并经 `ANET_DISCORD_BOT_TOKEN`
+注入，未写入配置/SQLite/日志。REST v10 polling 正常（`ingested` 随新消息
+递增）。非 mention 消息按 `metadata` 保存且正文为空；显式 bot 用户 mention
+（`@Guwen`）按 `mention` 保存 ≤2000 字符正文，标签含 `interaction:mention`，
+证据加权出现 `bounded mentions +2`（分数 50→51、置信度 5→8），门限判定
+`surface`；未达 reply 门限时 `discord-social-reply` fail-closed 拒绝。bot
+自消息被过滤（`discord_social.py:734`）。角色 mention（`<@&...>`）不进入
+Discord `mentions[]` 数组，v1 按 metadata 处理，属已知语义边界。仍待验证：
+达标 reply 实际发送、429/权限撤销恢复、WSL 重启恢复与七天连续性。
 
 1. 用专用 test Guild、最小权限 Bot 和非生产 token 在 WSL Node A 上运行；
 2. 验证 mention content、metadata-only、标签、分数、置信度和门限输出；
