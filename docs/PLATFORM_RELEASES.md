@@ -93,6 +93,13 @@ Release gates may back up and verify existing identities. Clean installers
 never read them. Neither layer creates, copies, renames, or infers a persistent
 node identity.
 
+For a platform-neutral service/device restart check, use the two-phase
+`continuity-prepare` / `continuity-verify` interface documented in
+[`CONTINUITY_GATE_V1.md`](CONTINUITY_GATE_V1.md). It proves a new supervisor
+incarnation, post-prepare sync, and unchanged identity/TLS material; add
+`--require-boot-change` only after an actual OS, WSL, or Android boot-session
+change. It is narrower than the complete route/store/peer recovery gate.
+
 ## Windows automatic deployment prototype
 
 For the requested self-starting Windows behavior, use the separate prototype
@@ -118,12 +125,15 @@ addresses equivalent.
 
 ## WSL, Linux, and macOS automatic deployment prototype
 
-The corresponding explicit POSIX deployment entry points are:
+The corresponding checkout-free POSIX bootstrap entry points are:
 
 ```bash
-python3 scripts/install_wsl_oneclick.py --control-url <CONTROL_URL>
-python3 scripts/install_linux_oneclick.py --control-url <CONTROL_URL>
-python3 scripts/install_macos_oneclick.py --control-url <CONTROL_URL>
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform wsl --control-url <CONTROL_URL>
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform linux --control-url <CONTROL_URL>
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform macos --control-url <CONTROL_URL>
 ```
 
 WSL and non-WSL Linux use `systemd --user`; macOS uses a LaunchAgent. WSL
@@ -131,15 +141,31 @@ requires the separate Windows host keepalive bridge when the distribution must
 be launched at Windows user logon. See [`POSIX_AUTOSTART.md`](POSIX_AUTOSTART.md)
 for service names, locations, diagnostics, and the required systemd
 user-session precondition. POSIX one-click preflight stops on another known
-same-platform deployment; `--allow-existing` is the explicit override.
+same-platform deployment; `--allow-existing` is the explicit override. It also
+checks an explicit node-home argument and `ANET_HOME` when either is set, while
+runtime-only installation leaves persistent node markers alone.
+The macOS installer also verifies the loaded LaunchAgent reports a running
+state before it reports a successful deployment. When an Anet checkout is
+already available, the direct `scripts/install_*_oneclick.py` entry points
+remain equivalent; `bootstrap_posix.py --script-ref <branch-or-tag>` selects
+the Git ref used for its temporary helper files. Use
+`--repository <HTTPS_GITHUB_REPOSITORY>` as well when those helpers must come
+from a fork. The control page's `repo_url` remains the runtime/software source;
+it does not select executable bootstrap code.
+
+Windows, WSL, Linux, macOS, and Termux persistent installers share one
+versioned stdout interface after successful service registration. The
+`anet.deployment.receipt` object separates runtime, node, verified control
+source, and supervisor state while retaining platform-specific detail inside
+the supervisor Adapter. See [`DEPLOYMENT_RECEIPT_V1.md`](DEPLOYMENT_RECEIPT_V1.md).
 
 ## Android Termux automatic deployment prototype
 
 Termux has its own entry point and does not use the Linux systemd entry point:
 
 ```bash
-python3 scripts/install_termux_oneclick.py \
-  --control-url <CONTROL_URL>
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform termux --control-url <CONTROL_URL>
 ```
 
 It uses Termux-native Python dependencies, `termux-services`/runit, and a

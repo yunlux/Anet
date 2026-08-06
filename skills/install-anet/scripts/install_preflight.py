@@ -4,13 +4,68 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, TextIO
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - the Skill only mutates Linux/WSL
+    fcntl = None  # type: ignore[assignment]
+
+
+class PreflightConflict(RuntimeError):
+    """Raised when another installer owns the same target lock."""
+
+
+class InstallationLock:
+    """Serialize Skill installers without creating a target marker."""
+
+    def __init__(self, target_root: Path) -> None:
+        self.target_root = _resolve(Path(target_root))
+        digest = hashlib.sha256(str(self.target_root).encode()).hexdigest()
+        self.path = Path(tempfile.gettempdir()) / f"anet-skill-install-{digest}.lock"
+        self._handle: Any | None = None
+
+    def acquire(self) -> None:
+        if self._handle is not None:
+            return
+        if fcntl is None:
+            raise PreflightConflict("POSIX file locking is unavailable")
+        handle = self.path.open("a+")
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as exc:
+            handle.close()
+            raise PreflightConflict(
+                "another Anet Skill installer already owns the install lock for "
+                f"{self.target_root}"
+            ) from exc
+        self._handle = handle
+
+    def release(self) -> None:
+        handle = self._handle
+        self._handle = None
+        if handle is None:
+            return
+        try:
+            if fcntl is not None:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
+
+    def __enter__(self) -> "InstallationLock":
+        self.acquire()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.release()
 
 
 _RUNTIME_MARKERS = ("current", "versions", "release.json")

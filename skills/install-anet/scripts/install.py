@@ -26,7 +26,7 @@ class InstallError(RuntimeError):
     pass
 
 
-def load_preflight() -> tuple[Any, Any]:
+def load_preflight() -> tuple[Any, Any, Any, Any]:
     path = Path(__file__).with_name("install_preflight.py")
     spec = importlib.util.spec_from_file_location(
         "anet_skill_install_preflight",
@@ -36,10 +36,10 @@ def load_preflight() -> tuple[Any, Any]:
         raise InstallError("Skill preflight module is missing")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.collect, module.emit
+    return module.collect, module.emit, module.InstallationLock, module.PreflightConflict
 
 
-collect, emit = load_preflight()
+collect, emit, InstallationLock, PreflightConflict = load_preflight()
 
 
 def run(command: list[str], *, timeout: int = 300) -> str:
@@ -102,8 +102,7 @@ def parser() -> argparse.ArgumentParser:
     return result
 
 
-def main() -> int:
-    args = parser().parse_args()
+def _main_unlocked(args: argparse.Namespace) -> int:
     feature = str(args.feature)
     if sys.platform != "linux":
         raise InstallError("this Skill supports Linux only")
@@ -228,6 +227,15 @@ def main() -> int:
     }
     print(json.dumps(result, separators=(",", ":")))
     return 0
+
+
+def main() -> int:
+    args = parser().parse_args()
+    try:
+        with InstallationLock(Path.home() / ".local" / "anet"):
+            return _main_unlocked(args)
+    except PreflightConflict as exc:
+        raise InstallError(str(exc)) from exc
 
 
 if __name__ == "__main__":

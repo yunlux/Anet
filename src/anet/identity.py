@@ -268,5 +268,23 @@ class Identity:
         common_names = certificate.subject.get_attributes_for_oid(NameOID.COMMON_NAME)
         if len(common_names) != 1 or common_names[0].value != self.node_id:
             raise ValueError("TLS certificate does not belong to this node")
+        tls_private = serialization.load_pem_private_key(
+            key_path.read_bytes(), password=None
+        )
+        certificate_public = certificate.public_key()
+        if not isinstance(tls_private, Ed25519PrivateKey) or not isinstance(
+            certificate_public, Ed25519PublicKey
+        ):
+            raise ValueError("TLS material must use Ed25519")
+        private_public_raw = tls_private.public_key().public_bytes(
+            serialization.Encoding.Raw,
+            serialization.PublicFormat.Raw,
+        )
+        certificate_public_raw = certificate_public.public_bytes(
+            serialization.Encoding.Raw,
+            serialization.PublicFormat.Raw,
+        )
+        if private_public_raw != certificate_public_raw:
+            raise ValueError("TLS certificate and private key do not match")
         fingerprint = hashlib.sha256(certificate.public_bytes(serialization.Encoding.DER)).digest()
         return cert_path, key_path, fingerprint

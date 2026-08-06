@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+from collections import OrderedDict
 import json
 import logging
+import math
 import re
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -117,12 +120,134 @@ def _bounded_fields(
         raise ValueError("Ahub JSON body has missing or unknown fields")
 
 
+DEFAULT_AHUB_REQUESTS_PER_MINUTE = 600
+DEFAULT_AHUB_REQUEST_BURST = 120
+MAX_AHUB_RATE_LIMIT_BUCKETS = 10_000
+
+
+@dataclass(frozen=True)
+class AhubRateLimit:
+    """Bounded in-process request rate limit for one Ahub worker."""
+
+    requests_per_minute: int = DEFAULT_AHUB_REQUESTS_PER_MINUTE
+    burst: int = DEFAULT_AHUB_REQUEST_BURST
+    max_buckets: int = MAX_AHUB_RATE_LIMIT_BUCKETS
+
+    def __post_init__(self) -> None:
+        values = (
+            self.requests_per_minute,
+            self.burst,
+            self.max_buckets,
+        )
+        if any(
+            isinstance(value, bool) or not isinstance(value, int) or value <= 0
+            for value in values
+        ):
+            raise ValueError("Ahub rate limits must be positive integers")
+        if self.max_buckets > MAX_AHUB_RATE_LIMIT_BUCKETS:
+            raise ValueError("Ahub rate-limit bucket count is too large")
+
+
+@dataclass
+class _RateBucket:
+    tokens: float
+    updated: float
+
+
+class AhubRateLimiter:
+    """Token bucket limiter keyed by the ASGI peer address.
+
+    This is intentionally a bounded per-worker guard. A reverse proxy or
+    shared edge limiter is still required for a multi-worker/public service.
+    """
+
+    def __init__(
+        self,
+        config: AhubRateLimit | None = None,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.config = AhubRateLimit() if config is None else config
+        self._clock = clock
+        self._rate_per_second = self.config.requests_per_minute / 60.0
+        self._buckets: OrderedDict[str, _RateBucket] = OrderedDict()
+        self._lock = threading.Lock()
+        self._limited_requests = 0
+
+    def _prune(self, now: float) -> None:
+        stale_after = max(
+            60.0,
+            (self.config.burst / self._rate_per_second) * 2.0,
+        )
+        while self._buckets:
+            key, bucket = next(iter(self._buckets.items()))
+            if now - bucket.updated <= stale_after:
+                break
+            self._buckets.pop(key)
+
+    def allow(self, key: str) -> tuple[bool, int]:
+        """Consume one token and return ``(allowed, retry_after_seconds)``."""
+
+        normalized = str(key)[:512] or "unknown"
+        now = float(self._clock())
+        with self._lock:
+            self._prune(now)
+            bucket = self._buckets.get(normalized)
+            if bucket is None:
+                while len(self._buckets) >= self.config.max_buckets:
+                    self._buckets.popitem(last=False)
+                bucket = _RateBucket(
+                    tokens=float(self.config.burst),
+                    updated=now,
+                )
+            else:
+                elapsed = max(0.0, now - bucket.updated)
+                bucket.tokens = min(
+                    float(self.config.burst),
+                    bucket.tokens + elapsed * self._rate_per_second,
+                )
+                bucket.updated = now
+            if bucket.tokens < 1.0:
+                retry_after = max(
+                    1,
+                    math.ceil((1.0 - bucket.tokens) / self._rate_per_second),
+                )
+                self._limited_requests += 1
+                self._buckets[normalized] = bucket
+                self._buckets.move_to_end(normalized)
+                return False, retry_after
+            bucket.tokens -= 1.0
+            self._buckets[normalized] = bucket
+            self._buckets.move_to_end(normalized)
+            return True, 0
+
+    def status(self) -> dict[str, int]:
+        """Return bounded, non-identifying in-process limiter counters."""
+
+        with self._lock:
+            return {
+                "active_buckets": len(self._buckets),
+                "limited_requests": self._limited_requests,
+            }
+
+
 class AhubASGI:
     """Small framework-free HTTP adapter; TLS is a deployment responsibility."""
 
-    def __init__(self, service: AhubService) -> None:
+    def __init__(
+        self,
+        service: AhubService,
+        *,
+        rate_limit: AhubRateLimit | None = None,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         self.service = service
         self.relay = RelayCoordinator(service.ahub.limits)
+        self.rate_limit = AhubRateLimit() if rate_limit is None else rate_limit
+        self.rate_limiter = AhubRateLimiter(
+            self.rate_limit,
+            clock=clock,
+        )
 
     async def __call__(
         self,
@@ -131,22 +256,48 @@ class AhubASGI:
         send: Callable[[dict[str, Any]], Awaitable[None]],
     ) -> None:
         scope_type = scope.get("type")
-        if scope_type == "websocket":
-            await self._handle_websocket(scope, receive, send)
-            return
-        if scope_type != "http":
+        if scope_type not in {"http", "websocket"}:
             return
         method = str(scope.get("method", "")).upper()
         path = str(scope.get("path", ""))
+        headers = {
+            bytes(key).decode("latin-1").lower(): bytes(value).decode("latin-1")
+            for key, value in scope.get("headers", ())
+        }
+        allowed, retry_after = self.rate_limiter.allow(
+            self._rate_limit_key(scope)
+        )
+        if not allowed:
+            if scope_type == "websocket":
+                await self.relay._close(send, 4429, "rate_limited")
+                LOGGER.info(
+                    "ahub_websocket route=%s status=rate_limited",
+                    self._route_name(method, path),
+                )
+                return
+            await self._respond(
+                send,
+                429,
+                {
+                    "error": "rate_limited",
+                    "detail": "request rate limit exceeded",
+                },
+                headers={"retry-after": str(retry_after)},
+            )
+            LOGGER.info(
+                "ahub_request method=%s route=%s status=429 body_bytes=0",
+                method,
+                self._route_name(method, path),
+            )
+            return
+        if scope_type == "websocket":
+            await self._handle_websocket(scope, receive, send)
+            return
         started = time.monotonic()
         body_size = 0
         try:
             body = await self._read_body(receive)
             body_size = len(body)
-            headers = {
-                bytes(key).decode("latin-1"): bytes(value).decode("latin-1")
-                for key, value in scope.get("headers", ())
-            }
             status, result = self._dispatch(method, path, headers, body)
         except PermissionError as exc:
             status, result = 403, {"error": "forbidden", "detail": str(exc)}
@@ -169,6 +320,13 @@ class AhubASGI:
             (time.monotonic() - started) * 1000,
         )
         await self._respond(send, status, result)
+
+    @staticmethod
+    def _rate_limit_key(scope: dict[str, Any]) -> str:
+        client = scope.get("client")
+        if isinstance(client, (tuple, list)) and client:
+            return f"peer:{str(client[0])[:255]}"
+        return "peer:unknown"
 
     @staticmethod
     def _route_name(method: str, path: str) -> str:
@@ -549,17 +707,24 @@ class AhubASGI:
         send: Callable[[dict[str, Any]], Awaitable[None]],
         status: int,
         value: dict[str, Any],
+        *,
+        headers: dict[str, str] | None = None,
     ) -> None:
         raw = ahub_json(value)
+        response_headers = [
+            (b"content-type", b"application/json"),
+            (b"content-length", str(len(raw)).encode("ascii")),
+            (b"cache-control", b"no-store"),
+        ]
+        for key, item in (headers or {}).items():
+            response_headers.append(
+                (str(key).lower().encode("latin-1"), str(item).encode("latin-1"))
+            )
         await send(
             {
                 "type": "http.response.start",
                 "status": status,
-                "headers": [
-                    (b"content-type", b"application/json"),
-                    (b"content-length", str(len(raw)).encode("ascii")),
-                    (b"cache-control", b"no-store"),
-                ],
+                "headers": response_headers,
             }
         )
         await send({"type": "http.response.body", "body": raw})

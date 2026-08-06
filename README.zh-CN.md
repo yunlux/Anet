@@ -15,47 +15,101 @@ v0.12.1 现在以“一键部署”为新设备的默认路径：它在 Windows�
 
 ## 新设备一条命令安装
 
-控制页至少需要提供 `software.version` 和首次安装用的
-`software.wheel_url`；建议同时提供 `software.sha256`，
-并提供 `software.repo_url` 以便远程入口下载匹配的辅助脚本和后续源码更新。
+控制页至少需要提供 `software.version`，以及首次安装用的
+`software.wheel_url` 或 `software.repo_url`（顶层 `repo_url` 也可以）。
+wheel 加 `software.sha256` 是可重复的安装路径；如果只提供仓库地址，
+安装器会让 pip 通过 Git 安装，因此设备需要有 Git。相同的 `repo_url` 还用于
+supervisor 后续的源码更新。
+可选的 `software.repo_ref`（或顶层 `repo_ref`）可以固定 Git 分支、tag 或 commit；
+首次安装和后续源码更新会使用这个引用。checkout-free bootstrap 默认只从官方
+Anet 仓库及其选定 ref 下载并执行辅助脚本，不会执行未验证控制页指定的仓库代码；
+如果确实要使用 fork 的辅助脚本，必须显式传入
+`--repository <HTTPS_GITHUB_REPOSITORY>` 和 `--script-ref <branch-or-tag>`。
 页面格式见 [控制页示例](docs/windows-control-page.example.json) 和
 [Windows 自动启动文档](docs/WINDOWS_AUTOSTART.md)。
+
+如果页面已签名并固定了发布者公钥，则每次 wheel 首次安装/更新都必须提供
+`software.sha256`；签名的 `repo_url` 仍可作为明确的源码安装路径。无签名兼容模式会
+计算本地 wheel 哈希，但只适用于明确可信的页面。如果命令显式传入
+`--wheel-sha256`/`-WheelSha256`，它必须与页面声明的 `software.sha256` 一致。
+
+如果控制页来自公开或社区维护的来源，建议在安装命令中同时固定发布者：
+Windows 使用 `-ControlKeyId`/`-ControlPublicKey`，POSIX/Termux 使用
+`--control-key-id`/`--control-public-key`。这样 supervisor 会要求根页面和
+嵌套 pages/kv 页面使用本地固定的 Ed25519 公钥签名，检查有效期，并拒绝
+签名页面复用序列号却改变内容。公钥可以公开分发，发布者私钥必须离线保存；
+不提供公钥时仍保留无签名兼容模式，但只适合明确可信的 bootstrap 来源。
+若控制页组合多个社区维护者，可把嵌套来源写成
+`{"url":"<SOURCE>","key_id":"<PUBLISHER>"}`，要求它只能由本机已固定的指定
+发布者签名。验证后的归属通过私有 `source_publishers` 证据返回；详见
+[`docs/CONTROL_SOURCE_PINS_V1.md`](docs/CONTROL_SOURCE_PINS_V1.md)。
+新设备可在同一条安装命令里加入多个本地 publisher pin：Windows 使用
+`-ControlTrustedKey "actor-a=<KEY>","actor-b=<KEY>"`，POSIX/Termux 重复使用
+`--control-trusted-key actor-a=<KEY>`。每个参数都是不可拆分的
+`key_id=public_key` 对，不会因两组数组错位而把 key 归给错误的 Actor。第一个/旧参数
+发布者会写成 `root_key_id`；新增 Actor key 不能签根页面，只能在嵌套来源点名时生效。
+
+也可以只在本机固定根发布者，由这个已签名根页通过 `control_publishers` 声明它策展的
+子来源发布者。委派 key 只在被 `{url,key_id}` 精确点名的嵌套来源中临时生效，不能签
+根页面或继续委派，也不会写入本机 `trusted_keys`，更不会变成 peer trust、授权、关系
+或信誉。`control-verify` 会以私有 `delegated_publisher_ids` 证据报告本次启用的 ID；
+要求每个发布者都由设备独立固定的操作者仍可继续使用多 key 安装参数。
 
 Windows 普通用户在 PowerShell 中直接执行这一条命令：
 
 ~~~powershell
-& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/yunlux/Anet/main/scripts/install_windows_oneclick.ps1))) -ControlUrl https://example.invalid/anet/control.json
+& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/yunlux/Anet/main/scripts/install_windows_oneclick.ps1))) `
+  -ControlUrl https://example.invalid/anet/control.json `
+  -ControlKeyId community-main `
+  -ControlPublicKey <BASE64URL_ED25519_PUBLIC_KEY>
 ~~~
 
 如果需要整机启动、无需用户登录，请在“以管理员身份运行”的 PowerShell 中加入
 `-Admin`：
 
 ~~~powershell
-& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/yunlux/Anet/main/scripts/install_windows_oneclick.ps1))) -Admin -ControlUrl https://example.invalid/anet/control.json
+& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/yunlux/Anet/main/scripts/install_windows_oneclick.ps1))) `
+  -Admin `
+  -ControlUrl https://example.invalid/anet/control.json `
+  -ControlKeyId community-main `
+  -ControlPublicKey <BASE64URL_ED25519_PUBLIC_KEY>
 ~~~
 
 普通用户模式使用 `%LOCALAPPDATA%\Anet` 和 `AtLogOn` 计划任务；
 管理员模式使用 `%ProgramData%\Anet`、`SYSTEM` 账户和
 `AtStartup` 计划任务。两种模式都会先执行有界的只读重复检测：发现已存在的
 Anet/Ahub runtime、服务、任务或进程时停止，不会静默创建第二套部署。明确需要第二套时才使用
-`-AllowExisting`。
+`-AllowExisting`。检测前还会取得按目标目录隔离的安装锁，避免两个并发命令同时通过检测并创建同一套 runtime 或服务。
 
-其他平台使用同一控制页和部署模型。以下入口需要在 Anet checkout 中运行（上面的
-Windows PowerShell 命令不需要先 checkout）：
+其他平台使用同一控制页和部署模型。新设备可以直接使用 checkout-free 的 POSIX
+bootstrap：它只把选定平台的入口和共享安装模块下载到临时目录，部署命令结束后删除；
+不需要先准备 Anet checkout：
 
 ~~~bash
 # WSL
-python3 scripts/install_wsl_oneclick.py --control-url <CONTROL_URL>
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform wsl --control-url <CONTROL_URL> \
+  --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 
 # 非 WSL Linux
-python3 scripts/install_linux_oneclick.py --control-url <CONTROL_URL>
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform linux --control-url <CONTROL_URL> \
+  --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 
 # macOS
-python3 scripts/install_macos_oneclick.py --control-url <CONTROL_URL>
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform macos --control-url <CONTROL_URL> \
+  --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 
 # Android Termux
-python3 scripts/install_termux_oneclick.py --control-url <CONTROL_URL>
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform termux --control-url <CONTROL_URL> \
+  --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 ~~~
+
+如果已有 Anet checkout，仍可直接运行 `scripts/install_*_oneclick.py`；如果辅助脚本需要
+来自 fork 或非 `main` 的分支/tag，可给 bootstrap 显式加入
+`--repository <HTTPS_GITHUB_REPOSITORY>` 和 `--script-ref <branch-or-tag>`。
 
 WSL 和 Linux 使用当前用户的 `systemd --user`，macOS 加载 `LaunchAgent`，
 Termux 使用 `termux-services`/runit 和 Termux:Boot。若要求 WSL 在 Windows
@@ -69,6 +123,24 @@ Windows 与 WSL 即使使用镜像网络仍是两个独立节点。两端必须�
 `host:<zone>` 上下文；端口只能隔离监听冲突，不能让两边的
 `127.0.0.1` 互相等价。host-scoped 直连必须使用两边都能到达的非回环地址，
 或监听 `0.0.0.0` 并显式设置 `-Advertise`/`--advertise`。
+
+每个 one-click 安装器都会在创建初始 runtime/node 后、注册持久服务前调用只读的
+`anet control-verify`。它会验证签名根页/嵌套页以及本地网络/Card 策略，且不会提前消费
+第一次 supervisor 软件更新所需的 remote-control 状态。
+
+成功后，每个平台的持久安装器都会在 stdout 输出一个版本化的
+`anet.deployment.receipt` JSON 对象，统一包含 runtime、独立节点、已验证控制页、
+原生 supervisor 状态、自动启动标志和预检报告。平台差异只保留在
+`supervisor` 内。安装器还会等待一份新鲜的 `supervisor.health` 证据，确认首次持久
+同步后 supervisor 与 `anet serve` 子进程都真实存活。收据包含私有部署元数据，必须留在本机；精确接口和声明限制见
+[`docs/DEPLOYMENT_RECEIPT_V1.md`](docs/DEPLOYMENT_RECEIPT_V1.md)。
+
+如果还要证明后续服务重启或设备重启后的连续性，应在已授权的重启前运行
+`continuity-prepare`，重启后运行 `continuity-verify`；实际 OS/WSL/Android
+启动会话变化时再加入 `--require-boot-change`。一次性收据会检查新 supervisor
+实例、准备之后的新控制页同步，以及 Node ID 与 identity/TLS 材料均未改变，但不替代
+路由恢复或双物理设备投递测试。详见
+[`docs/CONTINUITY_GATE_V1.md`](docs/CONTINUITY_GATE_V1.md)。
 
 如果只想安装 runtime、不创建持久节点或服务，仍可使用纯净安装入口：
 
@@ -87,16 +159,42 @@ Linux    skills/install-anet/scripts/install.py
 
 ~~~text
 从 https://github.com/yunlux/Anet 安装并部署 Anet。使用这个控制页 URL：
-<CONTROL_URL>（执行前替换占位符）。本请求已授权创建一个独立持久节点、服务/自启动
-以及 supervisor 对远程控制页的轮询。自动检测平台并调用对应的 one-click 入口；
+<CONTROL_URL>（执行前替换占位符）。控制页必须提供 `software.version` 以及
+`software.wheel_url` 或 `software.repo_url`；使用仓库地址时，可选的 `repo_ref` 可以固定
+Git 分支、tag 或 commit。未验证的控制页不能选择并执行 bootstrap 辅助代码；
+checkout-free bootstrap 默认使用官方 Anet 仓库/ref，只有显式传入
+`--repository` 和 `--script-ref` 才使用 fork/ref。控制页的 `repo_url` 作为首次安装和
+后续源码更新的 runtime 软件源；安装器仍会在注册持久服务前执行只读的
+`control-verify`。如果页面已签名，还要传入发布者固定信息：
+`<CONTROL_KEY_ID>` 和 `<BASE64URL_ED25519_PUBLIC_KEY>`；把它们传给对应平台入口，
+签名 wheel 首次安装/更新还必须提供 `software.sha256`，签名、有效期校验失败时停止。本请求已授权创建一个独立持久节点、服务/自启动
+以及 supervisor 对远程控制页的轮询。注册持久服务前必须完成只读的
+`anet control-verify`，且不能提前消费首次同步状态。自动检测平台并调用对应的 one-click 入口；
+嵌套 pages/kv 来源声明 `key_id` 时，必须确认该 key 已在本机 `trusted_keys` 或已签名
+根页的 `control_publishers` 中，并要求子页签名精确匹配。委派 key 只能用于被点名的
+子来源，不能签根页、继续委派或持久化为本地信任；检查私有
+`delegated_publisher_ids` 和 `source_publishers` 证据，不能把另一个签名者视为等价，
+也不能由 pin 推断 peer trust、授权、关系或信誉。
 原生 Windows 使用 PowerShell 一条命令，只有需要整机启动时才加入 -Admin；WSL、Linux、
-macOS、Termux 使用 checkout 中对应的一键脚本。如果 WSL 还必须在 Windows 重启后恢复，
+macOS、Termux 没有 checkout 时使用 `bootstrap_posix.py` 管道并传入对应的 `--platform`，
+已有 checkout 时可直接运行对应的一键脚本。如果 WSL 还必须在 Windows 重启后恢复，
 且主机侧操作已获授权，再注册 WSL keepalive 任务。Windows 与 WSL 必须视为两个节点：
 使用不同 node home、identity、Node ID 和监听端口，不能把 127.0.0.1 作为 host-scoped
 peer 地址发布。最后报告 runtime、独立节点、服务/任务状态、节点 ID、node home 和控制页地址。
-遇到已有部署、身份、哈希、权限或控制页格式冲突时停止；只有明确要求第二套部署时才使用
+先取得按目标目录隔离的安装锁，再执行有界重复检测。遇到已有部署、身份、哈希、权限或控制页格式冲突时停止；只有明确要求第二套部署时才使用
 -AllowExisting/--allow-existing。禁止从其他设备复制 identity、TLS 私钥、SQLite 状态或整个
 node home。
+只有最终 stdout 对象的 `kind` 为 `anet.deployment.receipt`、
+`schema_version` 为 `1`、`ok` 为 true、`control.verified` 为 true 且
+`supervisor.autostart`、`supervisor.health.ok`、
+`supervisor.health.supervisor_process_alive` 和
+`supervisor.health.child_process_alive`、`supervisor.health.sync_complete` 均为 true，
+且 supervisor instance/boot-session ID 非空时才解析为成功。完整收据属于私有证据；分享前必须
+脱敏 Node ID、路径、地址、控制 URL 和服务详情。
+若还要验证重启后存活，应在操作者授权的重启前执行 `continuity-prepare`，重启后执行
+`continuity-verify`；只有真实设备/OS/WSL 重启才加入 `--require-boot-change`。
+没有明确授权时不得重启设备或停止用户拥有的 runtime，continuity challenge/receipt
+也必须作为私有证据保存。
 ~~~
 
 这段提示词只是把上面的命令交给 Agent 执行，不改变各平台的 node home、身份隔离和重复检测规则。

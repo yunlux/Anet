@@ -28,23 +28,74 @@ runtime, registers the auto-start task, and starts the supervisor plus its
 anet serve child. The supervisor then polls the control page and can apply
 software, default configuration, Peer Cards, and nested pages/kv sources.
 
-The control page must provide software.version and an initial software.wheel_url.
-Add software.sha256 for a pinned package hash and software.repo_url so a
-downloaded entry point can fetch matching helper scripts and later source
-updates. See docs/windows-control-page.example.json and
-docs/WINDOWS_AUTOSTART.md.
+The control page must provide software.version and either an initial
+software.wheel_url or a repository source in software.repo_url (the top-level
+repo_url is also accepted). A wheel plus software.sha256 is the reproducible
+package path. With only repo_url, the installer passes the repository to pip as
+a Git source, so Git must be available on the device. The supervisor uses that
+source for later runtime updates. Set optional software.repo_ref (or top-level
+repo_ref) to pin a Git branch, tag, or commit for the initial runtime and later
+source updates. The checkout-free bootstrap fetches executable helper scripts
+from the official Anet repository and its selected ref by default; it does not
+execute a repository chosen by an unverified control page. To use a fork for
+the helper scripts, pass `--repository <HTTPS_GITHUB_REPOSITORY>` and
+`--script-ref <branch-or-tag>` explicitly. See
+docs/windows-control-page.example.json and docs/WINDOWS_AUTOSTART.md.
+
+When the page is signed and a publisher key is pinned, `software.sha256` is
+required for every wheel bootstrap/update; a signed `repo_url` remains the
+explicit source-install alternative. Unsigned compatibility mode may compute a
+local hash, but should only be used with an explicitly trusted page. If an
+explicit `--wheel-sha256`/`-WheelSha256` is supplied alongside a declaration,
+it must match the signed `software.sha256` value.
+
+For a public or community-maintained page, also pin the publisher in the
+deployment command with `-ControlKeyId`/`-ControlPublicKey` on Windows or
+`--control-key-id`/`--control-public-key` on POSIX/Termux. The supervisor then
+requires signed root and nested pages/KV sources, checks expiry, and rejects
+signed sequence reuse with different content. The key is public; keep the
+publisher identity offline. Omitting it retains the unsigned compatibility
+mode and is only appropriate for an explicitly trusted bootstrap source.
+For several community maintainers, nested sources can use
+`{"url":"<SOURCE>","key_id":"<PUBLISHER>"}` to require one exact locally
+pinned publisher. Verified attribution is returned as private
+`source_publishers` evidence; see
+[`docs/CONTROL_SOURCE_PINS_V1.md`](docs/CONTROL_SOURCE_PINS_V1.md).
+Pin additional maintainers during the same install with
+`-ControlTrustedKey "actor-a=<KEY>","actor-b=<KEY>"` on Windows or repeated
+`--control-trusted-key actor-a=<KEY>` options on POSIX/Termux. Each option is
+one atomic `key_id=public_key` pair, so parallel key-ID/key arrays cannot be
+silently misaligned. The first/legacy publisher is stored as `root_key_id`;
+additional Actor keys cannot sign the root page and apply only when a nested
+source names them.
+
+Alternatively, pin only the root publisher locally and let that signed root
+page declare a `control_publishers` map for curated child maintainers. A
+delegated key is ephemeral: it works only for a nested `{url,key_id}` source
+that names it, cannot sign the root or delegate again, and is never written to
+local `trusted_keys` or translated into peer trust, authorization, relationship
+state, or reputation. `control-verify` reports the active IDs as private
+`delegated_publisher_ids` evidence. Operators who require every publisher key
+to be an independent local pin can keep using the multi-key installer flags.
 
 Run this in an ordinary PowerShell window for a current-user installation:
 
 ~~~powershell
-& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/yunlux/Anet/main/scripts/install_windows_oneclick.ps1))) -ControlUrl https://example.invalid/anet/control.json
+& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/yunlux/Anet/main/scripts/install_windows_oneclick.ps1))) `
+  -ControlUrl https://example.invalid/anet/control.json `
+  -ControlKeyId community-main `
+  -ControlPublicKey <BASE64URL_ED25519_PUBLIC_KEY>
 ~~~
 
 For a machine-wide installation that starts at Windows boot, open PowerShell
 with Run as administrator and add -Admin:
 
 ~~~powershell
-& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/yunlux/Anet/main/scripts/install_windows_oneclick.ps1))) -Admin -ControlUrl https://example.invalid/anet/control.json
+& ([scriptblock]::Create((Invoke-RestMethod https://raw.githubusercontent.com/yunlux/Anet/main/scripts/install_windows_oneclick.ps1))) `
+  -Admin `
+  -ControlUrl https://example.invalid/anet/control.json `
+  -ControlKeyId community-main `
+  -ControlPublicKey <BASE64URL_ED25519_PUBLIC_KEY>
 ~~~
 
 Current-user mode uses %LOCALAPPDATA%/Anet and an AtLogOn task. Administrator
@@ -52,25 +103,42 @@ mode uses %ProgramData%/Anet, the SYSTEM principal, and an AtStartup task.
 Both modes run a bounded duplicate preflight first; a known existing Anet/Ahub
 runtime, service, task, or process stops the install instead of silently
 creating a second deployment. Use -AllowExisting only when a second explicit
-deployment is intended.
+deployment is intended. A target-scoped install lock is acquired before the
+preflight, so concurrent commands cannot both pass the check and create the
+same runtime or service.
 
-The same deployment model is available on the other platforms. Run these
-entry points from an Anet checkout (the Windows command above is the only
-checkout-free entry point):
+The same deployment model is available on the other platforms. On a new
+device, use the checkout-free POSIX bootstrap; it downloads only the selected
+platform entry point and its shared installer modules into a temporary
+directory, then removes them after the deployment command exits:
 
 ~~~bash
 # WSL
-python3 scripts/install_wsl_oneclick.py --control-url <CONTROL_URL>
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform wsl --control-url <CONTROL_URL> \
+  --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 
 # non-WSL Linux
-python3 scripts/install_linux_oneclick.py --control-url <CONTROL_URL>
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform linux --control-url <CONTROL_URL> \
+  --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 
 # macOS
-python3 scripts/install_macos_oneclick.py --control-url <CONTROL_URL>
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform macos --control-url <CONTROL_URL> \
+  --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 
 # Android Termux
-python3 scripts/install_termux_oneclick.py --control-url <CONTROL_URL>
+curl -fsSL https://raw.githubusercontent.com/yunlux/Anet/main/scripts/bootstrap_posix.py | \
+  python3 - --platform termux --control-url <CONTROL_URL> \
+  --control-key-id community-main --control-public-key <BASE64URL_ED25519_PUBLIC_KEY>
 ~~~
+
+If an Anet checkout is already present, the equivalent direct entry points
+remain available under `scripts/install_*_oneclick.py`. Use
+`--repository <HTTPS_GITHUB_REPOSITORY>` and `--script-ref <branch-or-tag>`
+with the bootstrap when the helper scripts must come from a fork or non-`main`
+Git ref.
 
 WSL and Linux create and start a systemd --user supervisor, macOS loads a
 LaunchAgent, and Termux uses termux-services/runit plus Termux:Boot. WSL also
@@ -86,6 +154,29 @@ distinct listener ports and the same opaque host:<zone> context. Port numbers
 only isolate listeners; they do not make the two runtimes' 127.0.0.1 addresses
 interchangeable. Host-scoped locators must use a shared non-loopback address
 (or 0.0.0.0 with explicit -Advertise/--advertise).
+
+Each one-click installer performs a read-only `anet control-verify` after the
+initial runtime/node are created and before registering its persistent service.
+This verifies the signed root/nested pages and local network/Card policy without
+marking the first software update as already applied.
+
+On success, every persistent installer prints one versioned
+`anet.deployment.receipt` JSON object with the runtime, independent node,
+verified control page, native supervisor state, autostart flag, and preflight
+report. The installer also waits for a fresh `supervisor.health` observation
+that proves both the supervisor and its `anet serve` child are alive after the
+first persistent sync. Platform differences stay inside the `supervisor` object. The receipt
+contains private deployment metadata; keep it local and see
+[`docs/DEPLOYMENT_RECEIPT_V1.md`](docs/DEPLOYMENT_RECEIPT_V1.md) for the exact
+interface and claim limits.
+
+To prove continuity across a later service or device restart, run
+`continuity-prepare` before the authorized restart and `continuity-verify`
+afterward. Add `--require-boot-change` for an actual OS/WSL/Android boot-session
+change. The one-time receipt checks a new supervisor instance, a post-prepare
+control sync, and unchanged Node ID plus identity/TLS material; it does not
+replace route or physical-device delivery tests. See
+[`docs/CONTINUITY_GATE_V1.md`](docs/CONTINUITY_GATE_V1.md).
 
 The original runtime-only installers remain available for operators who do not
 want a persistent node or service:
@@ -112,21 +203,57 @@ from another device:
 
 ~~~text
 Install and deploy Anet from https://github.com/yunlux/Anet. Use this control
-page URL: <CONTROL_URL> (replace the placeholder before running). This request
-authorizes one independent persistent node, its service/autostart integration,
+page URL: <CONTROL_URL> (replace the placeholder before running). The page
+must provide software.version plus software.wheel_url or repo_url; when using
+repo_url, an optional repo_ref can pin a branch, tag, or commit. An unverified
+control page cannot select executable bootstrap helpers: checkout-free
+bootstrap uses the official Anet repository/ref unless `--repository` and
+`--script-ref` are explicitly supplied. The page's repo_url remains the
+runtime source for the initial install and later source updates; the installer
+still requires read-only `control-verify` before registering a persistent
+service. This request
+also supplies the control publisher pin when the page is signed:
+`<CONTROL_KEY_ID>` and `<BASE64URL_ED25519_PUBLIC_KEY>`; pass them through the
+platform installer flags, require software.sha256 for signed wheel bootstrap or
+updates, and stop if the signature or expiry is invalid.
+When a nested pages/kv source declares `key_id`, require that key to exist in
+local `trusted_keys` or in the signed root page's `control_publishers`, and
+require the child signature to match it exactly. A delegated key must be used
+only for that named child source: it cannot sign the root, delegate again, or
+be persisted as local trust. Inspect private `delegated_publisher_ids` and
+`source_publishers` evidence; do not treat a different signer as equivalent or
+infer peer trust, authorization, relationship state, or reputation from a pin.
+Before registering the persistent service, require the installer to complete
+the read-only `anet control-verify`; it must not consume the first sync state.
+This request authorizes one independent persistent node, its service/autostart integration,
 and the supervisor's remote control-page polling. Detect the platform and use
 its one-click deployment entry point; on native Windows use the PowerShell
 one-command entry, adding -Admin only for machine-wide startup. On WSL, Linux,
-macOS, or Termux run the matching one-click script from the checkout. If WSL
-must restart after a Windows reboot, also register the host keepalive task when
-that host-side action is authorized. Treat Windows and WSL as separate nodes:
+macOS, or Termux use the checkout-free `bootstrap_posix.py` pipe with the
+matching `--platform` value when no checkout is available; use the direct
+script when a checkout is already present. If WSL must restart after a Windows
+reboot, also register the host keepalive task when that host-side action is
+authorized. Treat Windows and WSL as separate nodes:
 use separate homes, identities, Node IDs, and listener ports, and never publish
 127.0.0.1 as a host-scoped peer address. Report the installed runtime,
 independent node, auto-start service/task, node ID, node home, and control-page
-URL. Stop on an existing deployment, identity, hash, permission, or
+URL. Acquire the target-scoped install lock before the bounded duplicate
+preflight. Stop on an existing deployment, identity, hash, permission, or
 control-page conflict; use -AllowExisting/--allow-existing only when a second
 deployment is explicitly requested. Do not copy identity, TLS private keys,
 SQLite state, or an entire node home from another device.
+Parse the final stdout object only when `kind` is `anet.deployment.receipt`,
+`schema_version` is `1`, `ok` is true, `control.verified` is true, and
+`supervisor.autostart` is true, `supervisor.health.ok` is true, and both health
+process-alive fields plus `supervisor.health.sync_complete` are true; require
+non-empty supervisor instance and boot-session IDs. Treat the complete receipt as private evidence;
+redact the Node ID, paths, addresses, control URL, and service details before
+sharing it.
+If restart survival must be verified, run `continuity-prepare` before the
+operator-authorized restart and `continuity-verify` afterward; use
+`--require-boot-change` only for a real device/OS/WSL restart. Never reboot or
+stop a user-owned runtime without explicit authorization. Keep both continuity
+artifacts private.
 ~~~
 
 This prompt only delegates the commands above to an agent; it does not change

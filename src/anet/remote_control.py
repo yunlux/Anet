@@ -1,9 +1,9 @@
-"""Prototype remote control plane for a self-starting Anet Windows node.
+"""Remote control plane for a self-starting Anet node.
 
-This module deliberately starts with a plain JSON control page so the runtime
-and installer workflow can be exercised before the signed publication protocol
-is introduced.  The page is a data source for configuration, peer cards and
-optional package updates; it is never executed as a script.
+The control page is a data source for configuration, peer cards and optional
+package updates; it is never executed as a script. Unsigned pages remain a
+compatibility mode, while a locally pinned publisher key enables signed-page
+verification and expiry/sequence policy.
 """
 
 from __future__ import annotations
@@ -16,26 +16,36 @@ import ipaddress
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
 import time
 import urllib.parse
 import urllib.request
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from pathlib import Path
 from typing import Any
 
 from .config import NodeConfig
-from .encoding import atomic_json, atomic_write
+from .encoding import atomic_json, atomic_write, b64d, b64e, canonical_pack
 from .identity import Identity, PeerCard
 from .locator import parse_locator, validate_locator_context
 from .peers import PeerBook
+from .supervisor_health import SupervisorHealthReporter
 
 
 LOGGER = logging.getLogger("anet.remote_control")
 CONTROL_SETTINGS_NAME = "remote-control.json"
 CONTROL_STATE_NAME = "remote-control-state.json"
 CONTROL_VERSION = 1
+CONTROL_SIGNATURE_VERSION = 1
+CONTROL_SIGNATURE_FIELD = "_anet_control"
+CONTROL_CLOCK_SKEW_MS = 5 * 60 * 1000
+CONTROL_DEFAULT_TTL_MS = 7 * 24 * 60 * 60 * 1000
+CONTROL_MAX_TTL_MS = 30 * 24 * 60 * 60 * 1000
+MAX_CONTROL_TRUSTED_KEYS = 16
 DEFAULT_POLL_SECONDS = 300.0
 MAX_PAGE_BYTES = 8 * 1024 * 1024
 MAX_PAGE_COUNT = 64
@@ -50,6 +60,8 @@ _NETWORK_CONFIG_KEYS = frozenset(
         "capabilities",
     }
 )
+_REPOSITORY_REF_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+_CONTROL_KEY_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
 class RemoteControlError(RuntimeError):
@@ -135,6 +147,261 @@ def _json_digest(value: Any) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return hashlib.sha256(raw).hexdigest()
+
+
+def _control_document_digest(document: dict[str, Any]) -> str:
+    """Digest applied policy while preserving pre-source-pin state compatibility."""
+
+    value = dict(document)
+    value.pop("source_publishers", None)
+    source_pins = list(value.pop("source_pins", []))
+    if source_pins:
+        value["source_pins"] = source_pins
+    return _json_digest(value)
+
+
+def _control_signing_fields(
+    payload: dict[str, Any],
+    *,
+    key_id: str,
+    issued_ms: int,
+    expires_ms: int,
+) -> list[Any]:
+    return [
+        CONTROL_SIGNATURE_VERSION,
+        key_id,
+        issued_ms,
+        expires_ms,
+        payload,
+    ]
+
+
+def _validate_control_window(
+    issued_ms: Any,
+    expires_ms: Any,
+    *,
+    now_ms: int | None = None,
+) -> tuple[int, int]:
+    if (
+        isinstance(issued_ms, bool)
+        or isinstance(expires_ms, bool)
+        or not isinstance(issued_ms, int)
+        or not isinstance(expires_ms, int)
+    ):
+        raise RemoteControlError("control signature timestamps must be integers")
+    current = _now_ms() if now_ms is None else int(now_ms)
+    if issued_ms > current + CONTROL_CLOCK_SKEW_MS:
+        raise RemoteControlError("control signature is issued too far in the future")
+    if expires_ms <= issued_ms:
+        raise RemoteControlError("control signature expiry must follow issuance")
+    if expires_ms <= current - CONTROL_CLOCK_SKEW_MS:
+        raise RemoteControlError("control signature has expired")
+    if expires_ms - issued_ms > CONTROL_MAX_TTL_MS:
+        raise RemoteControlError("control signature lifetime is too long")
+    return issued_ms, expires_ms
+
+
+def _normalise_trusted_keys(value: Any) -> dict[str, str]:
+    if value in (None, {}):
+        return {}
+    if not isinstance(value, dict):
+        raise RemoteControlError("control trusted_keys must be an object")
+    if len(value) > MAX_CONTROL_TRUSTED_KEYS:
+        raise RemoteControlError("control trusted key set is too large")
+    result: dict[str, str] = {}
+    for raw_key_id, raw_public_key in value.items():
+        key_id = str(raw_key_id).strip()
+        if not _CONTROL_KEY_ID_PATTERN.fullmatch(key_id):
+            raise RemoteControlError("control trusted key id is invalid")
+        encoded = str(raw_public_key).strip()
+        try:
+            public_key = b64d(encoded)
+        except (TypeError, ValueError) as exc:
+            raise RemoteControlError(
+                f"control trusted key {key_id} is not valid base64"
+            ) from exc
+        if len(public_key) != 32:
+            raise RemoteControlError(
+                f"control trusted key {key_id} must contain 32 public-key bytes"
+            )
+        result[key_id] = b64e(public_key)
+    return result
+
+
+def _normalise_delegated_publishers(
+    value: Any,
+    *,
+    trusted_keys: dict[str, str],
+) -> dict[str, str]:
+    delegated = _normalise_trusted_keys(value)
+    if len(trusted_keys) + len(delegated) > MAX_CONTROL_TRUSTED_KEYS:
+        raise RemoteControlError("combined control publisher set is too large")
+    existing_public_keys = set(trusted_keys.values())
+    delegated_public_keys: dict[str, str] = {}
+    for key_id, public_key in delegated.items():
+        if key_id in trusted_keys:
+            raise RemoteControlError(
+                f"delegated publisher conflicts with local key ID: {key_id}"
+            )
+        if public_key in existing_public_keys:
+            raise RemoteControlError(
+                "a delegated publisher cannot reuse a local publisher public key"
+            )
+        previous = delegated_public_keys.get(public_key)
+        if previous is not None and previous != key_id:
+            raise RemoteControlError(
+                "one delegated public key cannot identify multiple publishers"
+            )
+        delegated_public_keys[public_key] = key_id
+    return delegated
+
+
+def sign_control_page(
+    payload: dict[str, Any],
+    identity: Identity,
+    *,
+    key_id: str,
+    issued_ms: int | None = None,
+    expires_ms: int | None = None,
+) -> dict[str, Any]:
+    """Return a control page signed by an offline Ed25519 publisher identity."""
+
+    if not isinstance(payload, dict):
+        raise RemoteControlError("signed control page payload must be an object")
+    clean_key_id = str(key_id).strip()
+    if not _CONTROL_KEY_ID_PATTERN.fullmatch(clean_key_id):
+        raise RemoteControlError("control signing key id is invalid")
+    issued = _now_ms() if issued_ms is None else int(issued_ms)
+    expires = (
+        issued + CONTROL_DEFAULT_TTL_MS if expires_ms is None else int(expires_ms)
+    )
+    issued, expires = _validate_control_window(issued, expires)
+    document = dict(payload)
+    document.pop(CONTROL_SIGNATURE_FIELD, None)
+    signature = identity.sign(
+        canonical_pack(
+            _control_signing_fields(
+                document,
+                key_id=clean_key_id,
+                issued_ms=issued,
+                expires_ms=expires,
+            )
+        )
+    )
+    document[CONTROL_SIGNATURE_FIELD] = {
+        "version": CONTROL_SIGNATURE_VERSION,
+        "algorithm": "ed25519",
+        "key_id": clean_key_id,
+        "issued_ms": issued,
+        "expires_ms": expires,
+        "signature": b64e(signature),
+    }
+    return document
+
+
+def _verify_control_page(
+    value: dict[str, Any] | list[Any],
+    *,
+    trusted_keys: dict[str, str],
+    source_url: str,
+    now_ms: int | None = None,
+) -> tuple[dict[str, Any] | list[Any], dict[str, Any]]:
+    """Verify and strip the optional local-policy control-page signature."""
+
+    if not isinstance(value, dict):
+        if trusted_keys:
+            raise RemoteControlError(
+                f"signed control page required for source: {source_url}"
+            )
+        return value, {
+            "signed": False,
+            "key_id": "",
+            "issued_ms": 0,
+            "expires_ms": 0,
+        }
+    marker = value.get(CONTROL_SIGNATURE_FIELD)
+    if marker is None:
+        if trusted_keys:
+            raise RemoteControlError(
+                f"signed control page required for source: {source_url}"
+            )
+        return value, {
+            "signed": False,
+            "key_id": "",
+            "issued_ms": 0,
+            "expires_ms": 0,
+        }
+    if not isinstance(marker, dict):
+        raise RemoteControlError("control signature metadata must be an object")
+    if not trusted_keys:
+        raise RemoteControlError(
+            "control page is signed but no local trusted key is configured"
+        )
+    if marker.get("version") != CONTROL_SIGNATURE_VERSION:
+        raise RemoteControlError("unsupported control signature version")
+    if str(marker.get("algorithm", "")).casefold() != "ed25519":
+        raise RemoteControlError("unsupported control signature algorithm")
+    key_id = str(marker.get("key_id", "")).strip()
+    if key_id not in trusted_keys:
+        raise RemoteControlError(f"control signing key is not locally trusted: {key_id}")
+    issued_ms, expires_ms = _validate_control_window(
+        marker.get("issued_ms"),
+        marker.get("expires_ms"),
+        now_ms=now_ms,
+    )
+    try:
+        public_key = b64d(trusted_keys[key_id])
+        signature = b64d(str(marker.get("signature", "")))
+        Ed25519PublicKey.from_public_bytes(public_key).verify(
+            signature,
+            canonical_pack(
+                _control_signing_fields(
+                    {key: item for key, item in value.items() if key != CONTROL_SIGNATURE_FIELD},
+                    key_id=key_id,
+                    issued_ms=issued_ms,
+                    expires_ms=expires_ms,
+                )
+            ),
+        )
+    except (TypeError, ValueError, InvalidSignature) as exc:
+        raise RemoteControlError(
+            f"control page signature verification failed: {source_url}"
+        ) from exc
+    payload = {
+        key: item for key, item in value.items() if key != CONTROL_SIGNATURE_FIELD
+    }
+    return payload, {
+        "signed": True,
+        "key_id": key_id,
+        "issued_ms": issued_ms,
+        "expires_ms": expires_ms,
+    }
+
+
+def _normalize_repository_ref(value: Any) -> str:
+    reference = str(value or "").strip()
+    if not reference:
+        return ""
+    if (
+        not _REPOSITORY_REF_PATTERN.fullmatch(reference)
+        or ".." in reference
+        or "//" in reference
+        or "@{" in reference
+        or reference.endswith((".", "/"))
+    ):
+        raise RemoteControlError("software repo_ref contains an invalid Git reference")
+    return reference
+
+
+def _git_source(source: str, reference: str) -> str:
+    package = source if source.startswith("git+") else f"git+{source}"
+    if not reference:
+        return package
+    base, separator, fragment = package.partition("#")
+    package = f"{base}@{reference}"
+    if separator:
+        package += f"#{fragment}"
+    return package
 
 
 def _is_windows_path(value: str) -> bool:
@@ -267,10 +534,12 @@ def _effective_platform_config(
     overlay = platforms.get(platform_name)
     if not isinstance(overlay, dict):
         return None
-    base = document.get("config", {})
+    base = document.get("config", document.get("default_config", {}))
     if not isinstance(base, dict):
         base = {}
-    patch = overlay.get("config", {})
+    patch = overlay.get("config", overlay.get("default_config", {}))
+    if patch is None:
+        patch = {}
     if not isinstance(patch, dict):
         raise RemoteControlError(
             f"control page platforms.{platform_name}.config must be an object"
@@ -370,12 +639,20 @@ def _empty_document(
         "sequence": 0,
         "network": "",
         "repo_url": "",
+        "repo_ref": "",
         "poll_seconds": poll_seconds,
         "config": {},
         "software": {},
         "nodes": [],
         "sources": [],
+        "source_publishers": [],
+        "source_pins": [],
+        "control_publishers": {},
         "cross_platform_windows_wsl": False,
+        "control_signed": False,
+        "control_key_id": "",
+        "control_issued_ms": 0,
+        "control_expires_ms": 0,
     }
 
 
@@ -406,22 +683,78 @@ def runtime_platform() -> str:
 
 
 def _normalise_document(
-    value: dict[str, Any],
+    value: dict[str, Any] | list[Any],
     *,
     source_url: str,
     visited: set[str],
     depth: int,
     sources: list[str],
+    source_publishers: list[dict[str, Any]] | None = None,
+    source_pins: list[dict[str, str]] | None = None,
+    expected_key_id: str = "",
+    record_source_pin: bool = True,
+    trusted_keys: dict[str, str] | None = None,
+    delegated_key_ids: set[str] | None = None,
+    now_ms: int | None = None,
     default_poll_seconds: float = DEFAULT_POLL_SECONDS,
 ) -> dict[str, Any]:
     if depth > MAX_PAGE_DEPTH:
         raise RemoteControlError("control page nesting exceeds the prototype limit")
+    if source_url not in visited and len(sources) >= MAX_PAGE_COUNT:
+        raise RemoteControlError("control page fan-out exceeds the prototype limit")
+    value, signature = _verify_control_page(
+        value,
+        trusted_keys={} if trusted_keys is None else trusted_keys,
+        source_url=source_url,
+        now_ms=now_ms,
+    )
+    clean_expected_key_id = str(expected_key_id).strip()
+    if clean_expected_key_id:
+        if not _CONTROL_KEY_ID_PATTERN.fullmatch(clean_expected_key_id):
+            raise RemoteControlError("control source key_id is invalid")
+        if signature["key_id"] != clean_expected_key_id:
+            raise RemoteControlError(
+                f"control source publisher mismatch: expected "
+                f"{clean_expected_key_id}, received "
+                f"{signature['key_id'] or 'unsigned'}"
+            )
+    delegated_publishers: dict[str, str] = {}
+    if isinstance(value, dict) and "control_publishers" in value:
+        if depth != 0:
+            raise RemoteControlError(
+                "nested control sources cannot delegate publishers"
+            )
+        if not signature["signed"]:
+            raise RemoteControlError(
+                "control publisher delegation requires a signed root page"
+            )
+        delegated_publishers = _normalise_delegated_publishers(
+            value.get("control_publishers"),
+            trusted_keys={} if trusted_keys is None else trusted_keys,
+        )
+    effective_trusted_keys = dict(trusted_keys or {})
+    effective_trusted_keys.update(delegated_publishers)
+    effective_delegated_key_ids = set(delegated_key_ids or ())
+    effective_delegated_key_ids.update(delegated_publishers)
     if source_url in visited:
         return _empty_document(poll_seconds=default_poll_seconds)
-    if len(sources) >= MAX_PAGE_COUNT:
-        raise RemoteControlError("control page fan-out exceeds the prototype limit")
+    if source_publishers is None:
+        source_publishers = []
+    if source_pins is None:
+        source_pins = []
     visited.add(source_url)
     sources.append(source_url)
+    source_publishers.append(
+        {
+            "url": source_url,
+            "signed": bool(signature["signed"]),
+            "key_id": str(signature["key_id"]),
+        }
+    )
+    if clean_expected_key_id and record_source_pin:
+        source_pins.append(
+            {"url": source_url, "key_id": clean_expected_key_id}
+        )
 
     documents: list[dict[str, Any]]
     if isinstance(value, list):
@@ -452,6 +785,15 @@ def _normalise_document(
     documents = expanded_documents
 
     result = _empty_document(poll_seconds=default_poll_seconds)
+    result["control_publishers"] = dict(delegated_publishers)
+    result.update(
+        {
+            "control_signed": bool(signature["signed"]),
+            "control_key_id": str(signature["key_id"]),
+            "control_issued_ms": int(signature["issued_ms"]),
+            "control_expires_ms": int(signature["expires_ms"]),
+        }
+    )
     result["cross_platform_windows_wsl"] = any(
         isinstance(document.get("platforms"), dict)
         and isinstance(document["platforms"].get("windows"), dict)
@@ -502,6 +844,10 @@ def _normalise_document(
             result["repo_url"] = _resolve_reference(
                 source_url, str(document["anet_repo"])
             )
+        if document.get("repo_ref"):
+            result["repo_ref"] = str(document["repo_ref"]).strip()
+        if document.get("anet_repo_ref"):
+            result["repo_ref"] = str(document["anet_repo_ref"]).strip()
         if "poll_seconds" in document:
             result["poll_seconds"] = _bounded_interval(
                 document.get("poll_seconds"),
@@ -521,6 +867,8 @@ def _normalise_document(
             result["software"] = _deep_merge(result["software"], software)
         if result["repo_url"] and "repo_url" not in result["software"]:
             result["software"]["repo_url"] = result["repo_url"]
+        if result["repo_ref"] and "repo_ref" not in result["software"]:
+            result["software"]["repo_ref"] = result["repo_ref"]
         for key in ("nodes", "peers"):
             values = document.get(key, [])
             if isinstance(values, list):
@@ -532,19 +880,49 @@ def _normalise_document(
             if not isinstance(raw_pages, list):
                 raise RemoteControlError(f"control page {page_key} must be a list")
             for page in raw_pages:
+                page_key_id = ""
                 if isinstance(page, str):
                     page_url = _resolve_reference(source_url, page)
                 elif isinstance(page, dict) and page.get("url"):
+                    unknown_fields = set(page) - {"url", "key_id"}
+                    if unknown_fields:
+                        raise RemoteControlError(
+                            "nested control source contains unsupported fields"
+                        )
                     page_url = _resolve_reference(source_url, str(page["url"]))
+                    if "key_id" in page:
+                        page_key_id = str(page["key_id"]).strip()
+                        if not _CONTROL_KEY_ID_PATTERN.fullmatch(page_key_id):
+                            raise RemoteControlError(
+                                "nested control source key_id is invalid"
+                            )
+                        if page_key_id not in effective_trusted_keys:
+                            raise RemoteControlError(
+                                f"nested control source publisher is not approved "
+                                f"by local policy or root delegation: {page_key_id}"
+                            )
                 else:
                     raise RemoteControlError("control page entries must be URLs")
                 child_value = _read_json_url(page_url, timeout=20.0)
+                child_trusted_keys = effective_trusted_keys
+                if not page_key_id:
+                    child_trusted_keys = {
+                        key_id: public_key
+                        for key_id, public_key in effective_trusted_keys.items()
+                        if key_id not in effective_delegated_key_ids
+                    }
                 child = _normalise_document(
                     child_value,
                     source_url=page_url,
                     visited=visited,
                     depth=depth + 1,
                     sources=sources,
+                    source_publishers=source_publishers,
+                    source_pins=source_pins,
+                    expected_key_id=page_key_id,
+                    trusted_keys=child_trusted_keys,
+                    delegated_key_ids=effective_delegated_key_ids,
+                    now_ms=now_ms,
                     default_poll_seconds=default_poll_seconds,
                 )
                 result["sequence"] = max(result["sequence"], child["sequence"])
@@ -557,6 +935,8 @@ def _normalise_document(
                     result["network"] = child["network"]
                 if child["repo_url"]:
                     result["repo_url"] = child["repo_url"]
+                if child["repo_ref"]:
+                    result["repo_ref"] = child["repo_ref"]
                 result["poll_seconds"] = min(
                     result["poll_seconds"], child["poll_seconds"]
                 )
@@ -565,15 +945,110 @@ def _normalise_document(
                     or child.get("cross_platform_windows_wsl", False)
                 )
     result["sources"] = list(sources)
+    result["source_publishers"] = list(source_publishers)
+    result["source_pins"] = list(source_pins)
     return result
 
 
+def verify_remote_control(
+    home: Path,
+    *,
+    url: str | None = None,
+    trusted_keys: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Verify one control page without applying state or changing the node.
+
+    One-click installers use this read-only boundary after the initial
+    runtime and node home exist but before registering a persistent service.
+    It deliberately does not write ``remote-control-state.json``: the first
+    supervisor sync must still be allowed to install the page's software
+    artifact.
+    """
+
+    home = Path(home).expanduser().resolve()
+    settings = _load_control_settings(home, url)
+    page_url = str(settings["url"]).strip()
+    default_poll_seconds = _bounded_interval(
+        settings.get("interval", DEFAULT_POLL_SECONDS)
+    )
+    configured_trusted_keys = _normalise_trusted_keys(
+        settings.get("trusted_keys", {})
+    )
+    trusted_keys_overridden = trusted_keys is not None
+    effective_trusted_keys = (
+        configured_trusted_keys
+        if trusted_keys is None
+        else _normalise_trusted_keys(trusted_keys)
+    )
+    root_key_id = (
+        next(iter(effective_trusted_keys), "")
+        if trusted_keys_overridden
+        else _expected_root_key_id(settings, effective_trusted_keys)
+    )
+    now_ms = _now_ms()
+    raw = _read_json_url(page_url, timeout=20.0)
+    document = _normalise_document(
+        raw,
+        source_url=page_url,
+        visited=set(),
+        depth=0,
+        sources=[],
+        expected_key_id=root_key_id,
+        record_source_pin=len(effective_trusted_keys) > 1,
+        trusted_keys=effective_trusted_keys,
+        now_ms=now_ms,
+        default_poll_seconds=default_poll_seconds,
+    )
+    try:
+        for item in document["nodes"]:
+            PeerCard.from_dict(_card_value(item, base_url=page_url))
+    except (KeyError, TypeError, ValueError) as exc:
+        raise RemoteControlError(
+            "remote control page contains an invalid Peer Card"
+        ) from exc
+    _validate_network_config(
+        document["config"],
+        cross_platform_windows_wsl=bool(
+            document.get("cross_platform_windows_wsl", False)
+        ),
+    )
+    return {
+        "ok": True,
+        "url": page_url,
+        "sequence": int(document["sequence"]),
+        "control_signed": bool(document["control_signed"]),
+        "control_key_id": str(document["control_key_id"]),
+        "control_issued_ms": int(document["control_issued_ms"]),
+        "control_expires_ms": int(document["control_expires_ms"]),
+        "sources": list(document["sources"]),
+        "source_publishers": list(document["source_publishers"]),
+        "delegated_publisher_ids": list(document["control_publishers"]),
+        "poll_seconds": float(document["poll_seconds"]),
+        "node_count": len(document["nodes"]),
+        "software_present": bool(document["software"]),
+    }
+
+
 def _load_control_settings(home: Path, url: str | None) -> dict[str, Any]:
+    path = Path(home) / CONTROL_SETTINGS_NAME
+    local_value: dict[str, Any] = {}
+    if path.exists():
+        try:
+            raw_local = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RemoteControlError(f"invalid control settings: {path}") from exc
+        if not isinstance(raw_local, dict):
+            raise RemoteControlError(f"control settings must be an object: {path}")
+        local_value = dict(raw_local)
+    trusted_keys = _normalise_trusted_keys(local_value.get("trusted_keys", {}))
+    root_key_id = str(local_value.get("root_key_id", "")).strip()
     if url:
         return {
             "version": CONTROL_VERSION,
             "url": str(url),
             "interval": DEFAULT_POLL_SECONDS,
+            "trusted_keys": trusted_keys,
+            "root_key_id": root_key_id,
         }
     configured = os.environ.get("ANET_CONTROL_URL", "").strip()
     if configured:
@@ -581,24 +1056,38 @@ def _load_control_settings(home: Path, url: str | None) -> dict[str, Any]:
             "version": CONTROL_VERSION,
             "url": configured,
             "interval": DEFAULT_POLL_SECONDS,
+            "trusted_keys": trusted_keys,
+            "root_key_id": root_key_id,
         }
-    path = Path(home) / CONTROL_SETTINGS_NAME
-    if not path.exists():
+    if not local_value:
         raise RemoteControlError(
             f"no control page configured; create {path} or set ANET_CONTROL_URL"
         )
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise RemoteControlError(f"invalid control settings: {path}") from exc
-    if not isinstance(value, dict) or not str(value.get("url", "")).strip():
+    if not str(local_value.get("url", "")).strip():
         raise RemoteControlError(f"control settings require a url: {path}")
-    value = dict(value)
+    value = local_value
+    value["trusted_keys"] = trusted_keys
+    value["root_key_id"] = root_key_id
     value["interval"] = _bounded_interval(
         value.get("interval", DEFAULT_POLL_SECONDS),
         label=f"control settings interval: {path}",
     )
     return value
+
+
+def _expected_root_key_id(
+    settings: dict[str, Any], trusted_keys: dict[str, str]
+) -> str:
+    root_key_id = str(settings.get("root_key_id", "")).strip()
+    if not root_key_id:
+        return ""
+    if not _CONTROL_KEY_ID_PATTERN.fullmatch(root_key_id):
+        raise RemoteControlError("control root_key_id is invalid")
+    if root_key_id not in trusted_keys:
+        raise RemoteControlError(
+            f"control root publisher is not locally trusted: {root_key_id}"
+        )
+    return root_key_id
 
 
 def _load_state(home: Path) -> dict[str, Any]:
@@ -902,11 +1391,29 @@ def _download(url: str, destination: Path, *, timeout: float) -> None:
     destination.write_bytes(data)
 
 
-def _install_software(home: Path, software: dict[str, Any], state: dict[str, Any]) -> bool:
+def _install_software(
+    home: Path,
+    software: dict[str, Any],
+    state: dict[str, Any],
+    *,
+    require_wheel_hash: bool = False,
+) -> bool:
     source = str(software.get("wheel_url", "") or software.get("repo_url", "")).strip()
     if not source:
         return False
+    source_ref = _normalize_repository_ref(software.get("repo_ref", ""))
     software_key = _json_digest(software)
+    wheel_source = bool(str(software.get("wheel_url", "")).strip()) or source.lower().endswith(
+        ".whl"
+    )
+    expected = str(software.get("sha256", "")).strip().lower()
+    if wheel_source:
+        if require_wheel_hash and not expected:
+            raise RemoteControlError(
+                "signed control page requires software.sha256 for wheel updates"
+            )
+        if expected and not re.fullmatch(r"[0-9a-f]{64}", expected):
+            raise RemoteControlError("software SHA-256 must contain 64 hex characters")
     if state.get("software_key") == software_key:
         return False
     target_version = str(software.get("version", "")).strip()
@@ -925,10 +1432,9 @@ def _install_software(home: Path, software: dict[str, Any], state: dict[str, Any
 
     cache = Path(home) / "control-cache"
     cache.mkdir(parents=True, exist_ok=True)
-    if "wheel_url" in software or source.lower().endswith(".whl"):
+    if wheel_source:
         wheel = cache / "anet-update.whl"
         _download(source, wheel, timeout=120.0)
-        expected = str(software.get("sha256", "")).strip().lower()
         if expected:
             observed = hashlib.sha256(wheel.read_bytes()).hexdigest().lower()
             if observed != expected:
@@ -941,7 +1447,7 @@ def _install_software(home: Path, software: dict[str, Any], state: dict[str, Any
             str(wheel),
         ]
     else:
-        package = source if source.startswith("git+") else f"git+{source}"
+        package = _git_source(source, source_ref)
         package_arguments = [
             "install",
             "--disable-pip-version-check",
@@ -975,13 +1481,14 @@ def _install_software(home: Path, software: dict[str, Any], state: dict[str, Any
     return True
 
 
-def sync_remote_control(
+def _sync_remote_control_unlocked(
     home: Path,
     *,
     url: str | None = None,
+    trusted_keys: dict[str, str] | None = None,
     apply_software: bool = True,
 ) -> dict[str, Any]:
-    """Fetch and apply one control page plus its nested pages."""
+    """Fetch and apply one control page while the caller owns the home lock."""
 
     home = Path(home).expanduser().resolve()
     settings = _load_control_settings(home, url)
@@ -989,7 +1496,22 @@ def sync_remote_control(
     default_poll_seconds = _bounded_interval(
         settings.get("interval", DEFAULT_POLL_SECONDS)
     )
+    configured_trusted_keys = _normalise_trusted_keys(
+        settings.get("trusted_keys", {})
+    )
+    trusted_keys_overridden = trusted_keys is not None
+    trusted_keys = (
+        configured_trusted_keys
+        if trusted_keys is None
+        else _normalise_trusted_keys(trusted_keys)
+    )
+    root_key_id = (
+        next(iter(trusted_keys), "")
+        if trusted_keys_overridden
+        else _expected_root_key_id(settings, trusted_keys)
+    )
     state = _load_state(home)
+    now_ms = _now_ms()
     raw = _read_json_url(page_url, timeout=20.0)
     document = _normalise_document(
         raw,
@@ -997,29 +1519,51 @@ def sync_remote_control(
         visited=set(),
         depth=0,
         sources=[],
+        expected_key_id=root_key_id,
+        record_source_pin=len(trusted_keys) > 1,
+        trusted_keys=trusted_keys,
+        now_ms=now_ms,
         default_poll_seconds=default_poll_seconds,
     )
-    digest = _json_digest(document)
+    digest = _control_document_digest(document)
     sequence = int(document.get("sequence", 0))
-    if sequence < int(state.get("sequence", -1)):
+    current_sequence = int(state.get("sequence", -1))
+    current_digest = str(state.get("digest", ""))
+    if sequence < current_sequence:
         return {
             "ok": True,
             "changed": False,
             "stale": True,
             "sequence": sequence,
-            "current_sequence": int(state.get("sequence", -1)),
+            "current_sequence": current_sequence,
             "sources": document["sources"],
+            "source_publishers": document["source_publishers"],
+            "delegated_publisher_ids": list(document["control_publishers"]),
             "poll_seconds": document["poll_seconds"],
         }
-    if digest == str(state.get("digest", "")):
-        state["last_sync_ms"] = _now_ms()
+    if (
+        document["control_signed"]
+        and sequence == current_sequence
+        and current_digest
+        and digest != current_digest
+    ):
+        raise RemoteControlError(
+            "signed control page reused a sequence number with different content"
+        )
+    if digest == current_digest:
+        state["last_sync_ms"] = now_ms
         atomic_json(home / CONTROL_STATE_NAME, state, private=True)
         return {
             "ok": True,
             "changed": False,
             "sequence": sequence,
             "digest": digest,
+            "control_signed": document["control_signed"],
+            "control_key_id": document["control_key_id"],
+            "control_expires_ms": document["control_expires_ms"],
             "sources": document["sources"],
+            "source_publishers": document["source_publishers"],
+            "delegated_publisher_ids": list(document["control_publishers"]),
             "poll_seconds": document["poll_seconds"],
         }
 
@@ -1036,7 +1580,12 @@ def sync_remote_control(
         nodes_changed = nodes_added + nodes_updated
         software_updated = False
         if apply_software:
-            software_updated = _install_software(home, document["software"], state)
+            software_updated = _install_software(
+                home,
+                document["software"],
+                state,
+                require_wheel_hash=bool(document["control_signed"]),
+            )
     except Exception:
         try:
             _restore_control_files(control_snapshot)
@@ -1054,7 +1603,13 @@ def sync_remote_control(
             "network": document["network"],
             "repo_url": document["repo_url"],
             "sources": document["sources"],
-            "last_sync_ms": _now_ms(),
+            "source_publishers": document["source_publishers"],
+            "delegated_publisher_ids": list(document["control_publishers"]),
+            "last_sync_ms": now_ms,
+            "control_signed": document["control_signed"],
+            "control_key_id": document["control_key_id"],
+            "control_issued_ms": document["control_issued_ms"],
+            "control_expires_ms": document["control_expires_ms"],
         }
     )
     atomic_json(home / CONTROL_STATE_NAME, state, private=True)
@@ -1068,11 +1623,35 @@ def sync_remote_control(
         "restart_required": bool(config_changed or nodes_changed),
         "sequence": sequence,
         "digest": digest,
+        "control_signed": document["control_signed"],
+        "control_key_id": document["control_key_id"],
+        "control_expires_ms": document["control_expires_ms"],
         "network": document["network"],
         "repo_url": document["repo_url"],
         "sources": document["sources"],
+        "source_publishers": document["source_publishers"],
+        "delegated_publisher_ids": list(document["control_publishers"]),
         "poll_seconds": document["poll_seconds"],
     }
+
+
+def sync_remote_control(
+    home: Path,
+    *,
+    url: str | None = None,
+    trusted_keys: dict[str, str] | None = None,
+    apply_software: bool = True,
+) -> dict[str, Any]:
+    """Serialize one-shot control syncs with the persistent supervisor."""
+
+    home = Path(home).expanduser().resolve()
+    with SupervisorLock(home):
+        return _sync_remote_control_unlocked(
+            home,
+            url=url,
+            trusted_keys=trusted_keys,
+            apply_software=apply_software,
+        )
 
 
 async def _wait_for_child_or_interval(
@@ -1105,6 +1684,7 @@ async def run_supervisor(
     home: Path,
     *,
     url: str | None = None,
+    trusted_keys: dict[str, str] | None = None,
     interval: float | None = None,
     once: bool = False,
     apply_software: bool = True,
@@ -1116,6 +1696,7 @@ async def run_supervisor(
     supervisor_lock.acquire()
     child: asyncio.subprocess.Process | None = None
     next_interval = interval or DEFAULT_POLL_SECONDS
+    health: SupervisorHealthReporter | None = None
 
     async def stop_child() -> None:
         nonlocal child
@@ -1145,17 +1726,22 @@ async def run_supervisor(
         LOGGER.info("Anet server child started: PID=%s", child.pid)
 
     try:
+        if not once:
+            health = SupervisorHealthReporter(home)
         while True:
             try:
                 result = await asyncio.to_thread(
-                    sync_remote_control,
+                    _sync_remote_control_unlocked,
                     home,
                     url=url,
+                    trusted_keys=trusted_keys,
                     apply_software=apply_software,
                 )
                 next_interval = interval or float(
                     result.get("poll_seconds", DEFAULT_POLL_SECONDS)
                 )
+                if health is not None:
+                    health.synced(result, poll_seconds=next_interval)
                 LOGGER.info(
                     "remote control sync: changed=%s sequence=%s sources=%s",
                     result.get("changed"),
@@ -1165,21 +1751,38 @@ async def run_supervisor(
                 if result.get("software_updated"):
                     await stop_child()
                     LOGGER.info("restarting supervisor after software update")
+                    if health is not None:
+                        health.restarting()
                     supervisor_lock.release()
-                    os.execv(
-                        sys.executable,
-                        [sys.executable, "-m", "anet", *sys.argv[1:]],
-                    )
+                    try:
+                        os.execv(
+                            sys.executable,
+                            [sys.executable, "-m", "anet", *sys.argv[1:]],
+                        )
+                    except BaseException:
+                        supervisor_lock.acquire()
+                        raise
                 if once:
                     return result
                 if result.get("restart_required"):
                     await stop_child()
                 await start_child()
+                if health is not None and child is not None:
+                    health.child_running(child.pid)
             except Exception as exc:
                 if once:
                     raise
                 LOGGER.warning("remote control sync failed: %s", exc)
                 await start_child()
+                if health is not None:
+                    health.degraded(
+                        exc,
+                        child_pid=(
+                            child.pid
+                            if child is not None and child.returncode is None
+                            else None
+                        ),
+                    )
             if once:
                 return None
             exit_code = await _wait_for_child_or_interval(child, next_interval)
@@ -1189,28 +1792,54 @@ async def run_supervisor(
                     "retrying in 5 seconds",
                     exit_code,
                 )
+                if health is not None:
+                    health.child_exited(exit_code)
                 child = None
                 await asyncio.sleep(5.0)
     finally:
         try:
             await stop_child()
         finally:
-            supervisor_lock.release()
+            try:
+                if health is not None:
+                    health.stopped()
+            finally:
+                supervisor_lock.release()
 
 
 def control_settings_path(home: Path) -> Path:
     return Path(home).expanduser().resolve() / CONTROL_SETTINGS_NAME
 
 
-def write_control_settings(home: Path, *, url: str, interval: float = DEFAULT_POLL_SECONDS) -> Path:
+def write_control_settings(
+    home: Path,
+    *,
+    url: str,
+    interval: float = DEFAULT_POLL_SECONDS,
+    trusted_keys: dict[str, str] | None = None,
+    root_key_id: str = "",
+) -> Path:
     path = control_settings_path(home)
+    normalized_keys = _normalise_trusted_keys(trusted_keys or {})
+    value: dict[str, Any] = {
+        "version": CONTROL_VERSION,
+        "url": str(url),
+        "interval": _bounded_interval(interval),
+    }
+    if normalized_keys:
+        value["trusted_keys"] = normalized_keys
+    clean_root_key_id = str(root_key_id).strip()
+    if clean_root_key_id:
+        if not _CONTROL_KEY_ID_PATTERN.fullmatch(clean_root_key_id):
+            raise RemoteControlError("control root_key_id is invalid")
+        if clean_root_key_id not in normalized_keys:
+            raise RemoteControlError(
+                f"control root publisher is not locally trusted: {clean_root_key_id}"
+            )
+        value["root_key_id"] = clean_root_key_id
     atomic_json(
         path,
-        {
-            "version": CONTROL_VERSION,
-            "url": str(url),
-            "interval": _bounded_interval(interval),
-        },
+        value,
         private=True,
     )
     return path

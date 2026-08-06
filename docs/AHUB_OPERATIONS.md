@@ -3,6 +3,12 @@
 This runbook operates the P0.2 Rendezvous/Mailbox service implemented by
 `AhubService`. It does not operate an Anet node.
 
+The reference `ahub-serve` process also applies a bounded in-process token
+bucket to HTTP requests and WebSocket handshakes. The defaults are 600
+requests per minute with an initial burst of 120 per peer address; rejected
+HTTP requests return 429 with `Retry-After`. This is a per-worker guard, not a
+replacement for a shared reverse-proxy rate limiter.
+
 ## State boundary
 
 Choose a dedicated deployment-owned `AHUB_ROOT`. It is not `ANET_HOME` and
@@ -79,7 +85,8 @@ access cannot substitute for revoking a `HumanDeviceGrant`.
 The safe default binds only loopback:
 
 ```powershell
-anet ahub-serve --root $root --host 127.0.0.1 --port 8422
+anet ahub-serve --root $root --host 127.0.0.1 --port 8422 `
+  --rate-limit-per-minute 600 --rate-limit-burst 120
 ```
 
 Expose it through a TLS reverse proxy. The proxy must:
@@ -103,7 +110,9 @@ network or when the selected reverse proxy cannot reach loopback.
 Uvicorn proxy-header trust is disabled, so `X-Forwarded-For` is not an
 authorization or audit identity. The current deployment is intentionally one
 worker with SQLite WAL; horizontal multi-instance coordination is not yet a
-supported topology.
+supported topology. The in-process limiter keys only the ASGI peer address and
+does not trust spoofable forwarding headers; keep the external proxy limiter
+enabled for public deployments.
 
 ## Health and local metrics
 
@@ -219,7 +228,7 @@ owner node continuously refreshes its bounded reservation/listener; an allowed
 peer discovers only its matching reservation and AdaptiveRouter attempts the
 live path before retaining Mailbox StoreCarrier behavior for offline work.
 Ahub restart recovery is automatic, but this remains single-worker P0 code
-without production external rate limiting or real public/mobile validation.
+without real public/mobile validation.
 
 Example node-side configuration:
 
@@ -235,6 +244,7 @@ Every persistent runtime keeps its own private node home; do not copy identity,
 TLS, config, Card, or SQLite files between machines to create the other side.
 
 The service does not yet provide QUIC, NAT traversal, Companion, multi-Ahub
-federation, public registration, multi-worker coordination, or a production
-rate-limiter. See [`RELAY_V1.md`](RELAY_V1.md) for the live-stream boundary and
-next adaptive integration gate.
+federation, public registration, or multi-worker coordination. The in-process
+rate limiter is only a bounded worker-local guard; external production
+admission control remains required. See [`RELAY_V1.md`](RELAY_V1.md) for the
+live-stream boundary and next adaptive integration gate.

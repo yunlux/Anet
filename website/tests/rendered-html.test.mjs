@@ -30,6 +30,15 @@ test("renders the Anet product homepage", async () => {
   assert.match(html, /scripts\/install_windows_oneclick\.ps1/);
   assert.match(html, /matching install_\*_oneclick\.py/);
   assert.match(html, /bounded duplicate preflight/);
+  assert.match(html, /target-scoped install lock/);
+  assert.match(html, /software\.wheel_url/);
+  assert.match(html, /software\.repo_url/);
+  assert.match(html, /software\.sha256/);
+  assert.match(html, /control-verify/);
+  assert.match(html, /explicit .*wheel-sha256.*match/i);
+  assert.match(html, /repo_ref/);
+  assert.match(html, /Git source/);
+  assert.match(html, /Git 源/);
   assert.match(html, /用户已授权创建一个独立持久节点/);
   assert.match(html, /Windows and WSL remain separate nodes/);
   assert.match(html, /Windows 与 WSL 即使使用镜像网络也必须是不同/);

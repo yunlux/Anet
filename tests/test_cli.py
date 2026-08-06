@@ -704,6 +704,8 @@ def test_ahub_serve_uses_bounded_single_worker_without_access_log(
     assert captured["server_header"] is False
     assert captured["limit_concurrency"] == 17
     assert captured["timeout_keep_alive"] == 3
+    assert captured["app"].rate_limit.requests_per_minute == 600
+    assert captured["app"].rate_limit.burst == 120
 
 
 def test_cli_persists_identity_authenticated_ahub_carrier(
