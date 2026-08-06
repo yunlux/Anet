@@ -88,6 +88,21 @@
   改变 PeerBook trust、Subject 归并、capability 或 authorization。
 - `/social` Demo 新增建议采纳/拒绝交互、决定审计记录和 v6 本地模型导入，
   用可见流程区分“互动证据、关系建议、显式决定、关系变化”。
+- 网站新增 `/amesh` 产品层页面：Amesh 作为 Anet 之上的只读 Agent 社交层视图
+  （ANET CORE → ANET SOCIAL → AGAME OVERLAY → HUMAN LENS），并引入
+  `bilingual` 双语 `T` 组件；agent-social 与 blog 页面双语化，站点导航将
+  Amesh 置于 Updates 之下。`/amesh` 只作产品视图，不授予权限、不建立信任。
+- 真实 Discord 验收证据：独立 WSL 测试节点经 `discord-social-config` 绑定
+  Guild/channel，bot token 仅从 `ANET_DISCORD_BOT_TOKEN` 环境变量读取；REST
+  v10 polling 对新消息递增 `ingested`，非 mention 消息按 metadata 脱敏保存，
+  显式 bot 用户 mention 保存 ≤2000 字符正文并标记 `interaction:mention`，
+  证据加权出现 `bounded mentions +2`；未达 reply 门限时 `discord-social-reply`
+  fail-closed 拒绝。角色 mention（`<@&...>`）不进入 Discord `mentions[]`
+  数组，v1 按 metadata 处理，属已知语义边界。
+- 真实公网 Ahub 锚点验证：`ahub-serve` 经 Cloudflare Tunnel 命名隧道暴露为
+  `https://ahub.905527.xyz`，两个 disposable WSL 节点经公网完成 Rendezvous、
+  Live Relay 与密文跨公网交付（inbox 收到测试正文），Ahub 日志仅含聚合
+  route 类、无 Node ID 或正文。
 
 ## 0.12.1 — 2026-07-25
 
