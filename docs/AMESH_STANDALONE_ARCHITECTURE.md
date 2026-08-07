@@ -69,6 +69,9 @@ Adapters:
 - CLI: adapter status, social ingest/reply, agent register/grant/revoke, local
   discovery profiles/feed/feedback, and one long-lived `serve` process per
   Amesh home.
+- Connector: a local loopback HTTP boundary (`amesh connector serve`) where
+  agents authenticate with one-time bearer tokens and execute granted effects;
+  every request is recorded in the append-only `amesh-audit.sqlite3`.
 - MCP: read operations and local mutations by default; reply and discovery
   publishing are separately gated by `AMESH_MCP_ALLOW_REPLY=1` and
   `AMESH_MCP_ALLOW_DISCOVERY_PUBLISH=1`.
@@ -77,10 +80,8 @@ Adapters:
 
 ## Next work
 
-1. Add an explicit agent connector contract (stdio or local HTTP) that performs
-   token authentication at the adapter boundary and records request audit.
-2. Add a durable route/outbox state machine with retry, deduplication, and
+1. Add a durable route/outbox state machine with retry, deduplication, and
    destination-specific policy checks.
-3. Add Discord gateway/event-stream support only after REST polling and effect
+2. Add Discord gateway/event-stream support only after REST polling and effect
    permissions have stable integration coverage.
-4. Keep A2A, Anet, and future platforms as optional adapters outside this core.
+3. Keep A2A, Anet, and future platforms as optional adapters outside this core.

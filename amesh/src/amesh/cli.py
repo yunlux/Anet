@@ -15,6 +15,7 @@ from .discovery import (
     discovery_database_path,
 )
 from .agent import AGENT_ACTIONS, AgentStore, agent_database_path
+from .connector import ConnectorAudit, EffectConnector, amesh_audit_path
 
 from .adapter import builtin_adapter_names, load_adapter
 from .model import (
@@ -119,7 +120,9 @@ def cmd_social_reply(args: argparse.Namespace) -> int:
         adapter.require_agent(
             args.agent_id,
             "reply",
-            token=os.environ.get(args.agent_token_env, "") if args.agent_id != "operator" else "",
+            token=os.environ.get(args.agent_token_env, "")
+            if args.agent_id != "operator"
+            else "",
         )
         _print_json(adapter.reply(args.event_key, content))
     finally:
@@ -161,7 +164,15 @@ def cmd_agent_revoke(args: argparse.Namespace) -> int:
 def cmd_agent_grant(args: argparse.Namespace) -> int:
     store = _agent_store(args.home)
     try:
-        _print_json(store.grant(args.agent_id, args.adapter, args.action, args.effect, reason=args.reason))
+        _print_json(
+            store.grant(
+                args.agent_id,
+                args.adapter,
+                args.action,
+                args.effect,
+                reason=args.reason,
+            )
+        )
     finally:
         store.close()
     return 0
@@ -380,6 +391,32 @@ def cmd_mcp_server(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_connector_serve(args: argparse.Namespace) -> int:
+    connector = EffectConnector(
+        args.home,
+        host=args.host,
+        port=args.port,
+    ).start()
+    print(
+        f"amesh connector listening on {connector.host}:{connector.port}",
+        file=sys.stderr,
+    )
+    try:
+        connector.serve_forever()
+    except KeyboardInterrupt:
+        return 0
+    return 0
+
+
+def cmd_connector_audit(args: argparse.Namespace) -> int:
+    store = ConnectorAudit(amesh_audit_path(args.home))
+    try:
+        _print_json({"audit": store.recent(limit=args.limit)})
+    finally:
+        store.close()
+    return 0
+
+
 def _require_adapter(name: str) -> str:
     name = validate_adapter_name(name)
     if name not in builtin_adapter_names():
@@ -579,9 +616,7 @@ def build_parser() -> argparse.ArgumentParser:
         "discovery",
         help="manage Amesh discovery profiles and feeds",
     )
-    discovery_sub = discovery.add_subparsers(
-        dest="discovery_command", required=True
-    )
+    discovery_sub = discovery.add_subparsers(dest="discovery_command", required=True)
 
     profile_cmd = discovery_sub.add_parser(
         "profile", help="create or update one local discovery profile"
@@ -645,12 +680,16 @@ def build_parser() -> argparse.ArgumentParser:
     publish_cmd = discovery_sub.add_parser(
         "publish", help="publish a public-safe discovery signal"
     )
-    publish_cmd.add_argument("--intent", required=True, choices=("know", "need", "offer", "capability"))
+    publish_cmd.add_argument(
+        "--intent", required=True, choices=("know", "need", "offer", "capability")
+    )
     publish_cmd.add_argument("--summary", required=True)
     publish_cmd.add_argument("--topic", action="append", default=[])
     publish_cmd.add_argument("--capability", action="append", default=[])
     publish_cmd.add_argument("--language", action="append", default=[])
-    publish_cmd.add_argument("--visibility", default="public", choices=("public", "tenant"))
+    publish_cmd.add_argument(
+        "--visibility", default="public", choices=("public", "tenant")
+    )
     publish_cmd.add_argument("--tenant", default="")
     publish_cmd.add_argument("--source", default="operator")
     publish_cmd.add_argument("--adapter", dest="adapter_name", default="amesh-cli")
@@ -666,14 +705,18 @@ def build_parser() -> argparse.ArgumentParser:
     agent_register = agent_sub.add_parser("register", help="register one local agent")
     agent_register.add_argument("agent_id")
     agent_register.add_argument("name")
-    agent_register.add_argument("--scope", action="append", choices=AGENT_ACTIONS, default=[])
+    agent_register.add_argument(
+        "--scope", action="append", choices=AGENT_ACTIONS, default=[]
+    )
     agent_register.set_defaults(func=cmd_agent_register)
     agent_list = agent_sub.add_parser("list", help="list local agents without tokens")
     agent_list.set_defaults(func=cmd_agent_list)
     agent_revoke = agent_sub.add_parser("revoke", help="disable one local agent")
     agent_revoke.add_argument("agent_id")
     agent_revoke.set_defaults(func=cmd_agent_revoke)
-    agent_grant = agent_sub.add_parser("grant", help="grant one adapter action to an agent")
+    agent_grant = agent_sub.add_parser(
+        "grant", help="grant one adapter action to an agent"
+    )
     agent_grant.add_argument("agent_id")
     agent_grant.add_argument("adapter")
     agent_grant.add_argument("action", choices=AGENT_ACTIONS)
@@ -753,6 +796,25 @@ def build_parser() -> argparse.ArgumentParser:
 
     mcp_cmd = sub.add_parser("mcp-server", help="run the Amesh stdio MCP server")
     mcp_cmd.set_defaults(func=cmd_mcp_server)
+
+    connector = sub.add_parser(
+        "connector", help="run the token-authenticated local effect connector"
+    )
+    connector_sub = connector.add_subparsers(dest="connector_command", required=True)
+
+    connector_serve = connector_sub.add_parser(
+        "serve", help="serve /v1/effects on loopback with bearer-token auth"
+    )
+    connector_serve.add_argument("--adapter", default="loopback")
+    connector_serve.add_argument("--host", default="127.0.0.1")
+    connector_serve.add_argument("--port", type=int, default=8765)
+    connector_serve.set_defaults(func=cmd_connector_serve)
+
+    connector_audit = connector_sub.add_parser(
+        "audit", help="read the append-only connector request audit"
+    )
+    connector_audit.add_argument("--limit", type=int, default=100)
+    connector_audit.set_defaults(func=cmd_connector_audit)
 
     return parser
 

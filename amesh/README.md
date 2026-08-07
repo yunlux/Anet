@@ -112,6 +112,20 @@ amesh --home <HOME> discovery publish --intent need --summary "Need a protocol r
 amesh --home <HOME> discovery feed needs
 ```
 
+## Connector
+
+`amesh connector serve` runs the token-authenticated agent connector: a local
+loopback HTTP boundary at `POST /v1/effects` where an Agent presents its bearer
+token and executes a granted effect (currently `reply`) on an adapter. Every
+request is recorded in the append-only `amesh-audit.sqlite3`; the token is
+authenticated, the adapter/action grant is required, and the audit shows only
+agent IDs and outcomes, never tokens.
+
+```powershell
+amesh --home <HOME> connector serve --adapter loopback --port 8765
+amesh --home <HOME> connector audit --limit 100
+```
+
 ## Management
 
 `amesh serve` owns one exclusive home lock and hosts configured adapters. The
