@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from amesh.adapters.discord import DiscordAdapter
+from amesh.adapter import PlatformAdapter
 from amesh.policy import PermissionStore, amesh_database_path
 from amesh.adapters.discord_backend import (
     DISCORD_SIGNAL_KIND,
@@ -174,3 +175,53 @@ def test_unsupported_signal_kind_rejected(tmp_path) -> None:
             gate("dest-node", "social.other.signal", {"actor_key": ACTOR})
     finally:
         adapter.close()
+
+
+class StubExternalAdapter(PlatformAdapter):
+    name = "myplatform"
+
+    def descriptor(self) -> dict:
+        return {"name": self.name, "configured": True, "external": True}
+
+    def status(self) -> dict:
+        return {"name": self.name, "ok": True}
+
+    def actor(self, actor_key: str) -> dict:
+        return {"actor_key": actor_key}
+
+    def set_labels(self, actor_key, *, add, remove, source="operator") -> dict:
+        return {"actor_key": actor_key}
+
+    def project(self, *, limit: int = 1000) -> dict:
+        return {"events_examined": 0}
+
+    def reply(self, event_key: str, content: str) -> dict:
+        return {"sent": True, "event_key": event_key}
+
+    def relation(self, actor_key: str) -> dict:
+        return {"observed": False, "actor_id": actor_key}
+
+
+def test_register_external_adapter(tmp_path) -> None:
+    from amesh.adapter import (
+        _REGISTRY,
+        adapter_names,
+        load_adapter,
+        register_adapter,
+    )
+
+    _REGISTRY.clear()
+    try:
+        register_adapter("myplatform", StubExternalAdapter)
+        assert "myplatform" in adapter_names()
+        instance = load_adapter(tmp_path, "myplatform")
+        assert isinstance(instance, StubExternalAdapter)
+        assert instance.descriptor()["external"] is True
+        with pytest.raises(ValueError, match="already exists"):
+            register_adapter("myplatform", StubExternalAdapter)
+        with pytest.raises(ValueError, match="already exists"):
+            register_adapter("discord", StubExternalAdapter)
+        with pytest.raises(TypeError, match="callable"):
+            register_adapter("bad", None)
+    finally:
+        _REGISTRY.clear()

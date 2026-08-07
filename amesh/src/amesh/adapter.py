@@ -149,8 +149,41 @@ def builtin_adapter_names() -> list[str]:
     return ["discord", "loopback"]
 
 
+_REGISTRY: dict[str, Callable[[Path], PlatformAdapter]] = {}
+
+
+def register_adapter(
+    name: str,
+    factory: Callable[[Path], PlatformAdapter],
+) -> None:
+    """Register an external adapter factory for an Amesh home.
+
+    External adapter packages call this once at import time so the CLI, MCP,
+    connector, and serve can discover them without the core importing another
+    application's models. A name that already belongs to a built-in or
+    registered adapter is rejected.
+    """
+    name = validate_adapter_name(name)
+    if name in builtin_adapter_names() or name in _REGISTRY:
+        raise ValueError(f"Amesh adapter already exists: {name}")
+    if not callable(factory):
+        raise TypeError("Amesh adapter factory must be callable")
+    _REGISTRY[name] = factory
+
+
+def discovered_adapter_names() -> list[str]:
+    names = set(_REGISTRY)
+    for entry in _entry_points():
+        names.add(str(entry.name))
+    return sorted(names)
+
+
+def adapter_names() -> list[str]:
+    return sorted(set(builtin_adapter_names()) | set(discovered_adapter_names()))
+
+
 def load_adapter(home: Path, name: str) -> PlatformAdapter:
-    """Load one built-in adapter by name for an Amesh home."""
+    """Load one built-in, registered, or entry-point adapter for an Amesh home."""
     name = validate_adapter_name(name)
     if name == "discord":
         from .adapters.discord import DiscordAdapter
@@ -160,4 +193,33 @@ def load_adapter(home: Path, name: str) -> PlatformAdapter:
         from .adapters.loopback import LoopbackAdapter
 
         return LoopbackAdapter(home)
+    factory = _REGISTRY.get(name)
+    if factory is not None:
+        return _as_adapter(factory(home), name)
+    entry = _find_entry_point(name)
+    if entry is not None:
+        loaded = entry.load()
+        return _as_adapter(loaded(home), name)
     raise KeyError(f"unknown Amesh adapter: {name}")
+
+
+def _as_adapter(value: Any, name: str) -> PlatformAdapter:
+    if not isinstance(value, PlatformAdapter):
+        raise TypeError(f"adapter {name!r} did not produce a PlatformAdapter")
+    return value
+
+
+def _entry_points() -> list[Any]:
+    try:
+        from importlib.metadata import entry_points
+
+        return list(entry_points(group="amesh.adapters"))
+    except Exception:  # pragma: no cover - metadata is best-effort
+        return []
+
+
+def _find_entry_point(name: str) -> Any | None:
+    for entry in _entry_points():
+        if str(entry.name) == name:
+            return entry
+    return None

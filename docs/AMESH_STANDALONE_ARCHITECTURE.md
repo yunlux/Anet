@@ -46,6 +46,9 @@ Adapters:
   rate-limit/error categories.
 - `adapters/loopback.py`: offline spool adapter used for development and
   integration tests.
+- External adapters: discovered through the `amesh.adapters` entry-point group
+  or `amesh.adapter.register_adapter()`, so A2A, Anet, and future platforms
+  stay in separate packages outside this core.
 
 ## Security invariants
 
@@ -84,4 +87,5 @@ Adapters:
 
 1. Add Discord gateway/event-stream support only after REST polling and effect
    permissions have stable integration coverage.
-2. Keep A2A, Anet, and future platforms as optional adapters outside this core.
+2. Publish an optional Anet (or A2A) adapter package that implements
+   `PlatformAdapter` and registers itself via `amesh.adapters`.

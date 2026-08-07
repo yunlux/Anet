@@ -27,6 +27,33 @@ registration, and effect auditing. A social match or platform account never
 creates an agent identity, capability, trust relationship, or authorization
 outside Amesh.
 
+## External adapters
+
+The core discovers external platform adapters through an in-process registry
+and the `amesh.adapters` entry-point group, so Anet, A2A, and future platforms
+can live in separate packages without the core importing their models. A
+package registers once at import time:
+
+```python
+from amesh.adapter import register_adapter
+from amesh import PlatformAdapter
+
+class MyPlatformAdapter(PlatformAdapter):
+    name = "myplatform"
+    # implement descriptor / status / actor / set_labels / project / reply / relation
+
+register_adapter("myplatform", MyPlatformAdapter)
+```
+
+```toml
+# packaging: entry point alternative
+[project.entry-points."amesh.adapters"]
+myplatform = "my_adapter:MyPlatformAdapter"
+```
+
+`amesh adapter list`, MCP, the connector, and `amesh serve --adapter` all
+discover registered adapters automatically.
+
 ## Package
 
 The package has no runtime dependency on Anet or another application. The

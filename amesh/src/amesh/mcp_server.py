@@ -16,7 +16,7 @@ from .agent import AgentStore, agent_database_path
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.server import Settings as FastMCPSettings
 
-from .adapter import PlatformAdapter, builtin_adapter_names, load_adapter
+from .adapter import PlatformAdapter, adapter_names, load_adapter
 from .model import (
     validate_action,
     validate_actor_key,
@@ -78,7 +78,7 @@ def _require_discovery_publish_enabled() -> None:
 
 def _load(name: str) -> PlatformAdapter:
     name = validate_adapter_name(name)
-    if name not in builtin_adapter_names():
+    if name not in adapter_names():
         raise ValueError(f"unknown Amesh adapter: {name}")
     return load_adapter(_home(), name)
 
@@ -97,7 +97,7 @@ def _agents() -> AgentStore:
 )
 async def amesh_adapters() -> str:
     rows = []
-    for name in builtin_adapter_names():
+    for name in adapter_names():
         adapter = load_adapter(_home(), name)
         try:
             rows.append(adapter.descriptor())
@@ -282,7 +282,7 @@ async def amesh_social_inject(
 )
 async def amesh_social_signals(adapter: str, limit: int = 1000) -> str:
     adapter = validate_adapter_name(adapter)
-    if adapter not in builtin_adapter_names():
+    if adapter not in adapter_names():
         raise ValueError(f"unknown Amesh adapter: {adapter}")
     sink = DirectorySignalSink(amesh_outbound_dir(_home()))
     signals = sink.list(platform=adapter, limit=limit)
@@ -504,7 +504,7 @@ async def amesh_permit_add(
     reason: str = "",
 ) -> str:
     adapter = validate_adapter_name(adapter)
-    if adapter not in builtin_adapter_names():
+    if adapter not in adapter_names():
         raise ValueError(f"unknown Amesh adapter: {adapter}")
     actor_key = validate_actor_key(actor_key, wildcard=True)
     action = validate_action(action, wildcard=True)

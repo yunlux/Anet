@@ -18,7 +18,7 @@ from .agent import AGENT_ACTIONS, AgentStore, agent_database_path
 from .connector import ConnectorAudit, EffectConnector, amesh_audit_path
 from .route import RouteStore, route_database_path
 
-from .adapter import builtin_adapter_names, load_adapter
+from .adapter import adapter_names, load_adapter
 from .model import (
     validate_action,
     validate_actor_key,
@@ -45,8 +45,14 @@ def _load_adapter(args: argparse.Namespace):
 
 def cmd_adapter_list(args: argparse.Namespace) -> int:
     adapters = []
-    for name in builtin_adapter_names():
-        adapter = load_adapter(args.home, name)
+    for name in adapter_names():
+        try:
+            adapter = load_adapter(args.home, name)
+        except Exception as exc:
+            adapters.append(
+                {"name": name, "configured": False, "load_error": str(exc)}
+            )
+            continue
         try:
             adapters.append(adapter.descriptor())
         finally:
@@ -376,7 +382,7 @@ def cmd_serve(args: argparse.Namespace) -> int:
         signal.signal(signal.SIGTERM, _terminate)
     except (ValueError, AttributeError):
         pass
-    names = tuple(args.adapter) if args.adapter else tuple(builtin_adapter_names())
+    names = tuple(args.adapter) if args.adapter else tuple(adapter_names())
     try:
         result = asyncio.run(serve(args.home, names=names, stop=stop))
         _print_json(result)
@@ -513,7 +519,7 @@ def cmd_route_policy_list(args: argparse.Namespace) -> int:
 
 def _require_adapter(name: str) -> str:
     name = validate_adapter_name(name)
-    if name not in builtin_adapter_names():
+    if name not in adapter_names():
         raise ValueError(f"unknown Amesh adapter: {name}")
     return name
 
