@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from .adapter import PlatformAdapter, load_adapter
+from .route import RouteStore, route_database_path
 from .signal import DirectorySignalSink
 
 
@@ -16,6 +17,9 @@ def amesh_outbound_dir(home: Path) -> Path:
 
 def amesh_lock_path(home: Path) -> Path:
     return Path(home) / "amesh-serve.lock"
+
+
+DELIVER_INTERVAL_SECONDS = 0.5
 
 
 LOGGER = logging.getLogger("amesh.serve")
@@ -109,12 +113,38 @@ async def _serve(
     stop: asyncio.Event,
 ) -> dict[str, Any]:
     sink = DirectorySignalSink(amesh_outbound_dir(home))
+    outbox = RouteStore(route_database_path(home))
     adapters: list[PlatformAdapter] = []
     tasks: list[asyncio.Task[Any]] = []
 
-    def queue_signal(destination_id: str, kind: str, body: Mapping[str, Any]) -> str:
-        del destination_id, kind
-        return sink.emit(dict(body))
+    def make_queue_signal(adapter_name: str):
+        def queue_signal(
+            destination_id: str, kind: str, body: Mapping[str, Any]
+        ) -> str:
+            result = outbox.enqueue(destination_id, adapter_name, kind, dict(body))
+            return result["route_id"]
+
+        return queue_signal
+
+    def deliver(signal: Mapping[str, Any]) -> Any:
+        return sink.emit(dict(signal))
+
+    async def deliver_loop() -> None:
+        while not stop.is_set():
+            try:
+                outbox.deliver_due(deliver)
+            except Exception as exc:
+                LOGGER.warning(
+                    "route delivery failed: %s",
+                    type(exc).__name__,
+                )
+            try:
+                await asyncio.wait_for(
+                    stop.wait(),
+                    timeout=DELIVER_INTERVAL_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                pass
 
     def project_event(
         adapter: PlatformAdapter,
@@ -146,11 +176,14 @@ async def _serve(
         adapters.append(adapter)
         callback = project_event(adapter)
         task = asyncio.create_task(
-            adapter.run(stop, queue_signal, callback),
+            adapter.run(stop, make_queue_signal(adapter.name), callback),
             name=f"amesh-{adapter.name}",
         )
         tasks.append(task)
         LOGGER.info("amesh hosting adapter %s", adapter.name)
+
+    deliver_task = asyncio.create_task(deliver_loop(), name="amesh-route-delivery")
+    tasks.append(deliver_task)
 
     try:
         await stop.wait()
@@ -159,10 +192,16 @@ async def _serve(
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+        outbox.deliver_due(deliver)
+        counts = outbox.status()
         for adapter in adapters:
             adapter.close()
+        outbox.close()
 
     return {
         "hosted": [adapter.name for adapter in adapters],
         "signal_count": sink.count(),
+        "routes_delivered": counts["delivered"],
+        "routes_pending": counts["pending"] + counts["retrying"],
+        "routes_failed": counts["failed"],
     }

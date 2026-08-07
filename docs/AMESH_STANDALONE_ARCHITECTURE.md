@@ -75,13 +75,13 @@ Adapters:
 - MCP: read operations and local mutations by default; reply and discovery
   publishing are separately gated by `AMESH_MCP_ALLOW_REPLY=1` and
   `AMESH_MCP_ALLOW_DISCOVERY_PUBLISH=1`.
-- Outbox: local validated signal files consumed by a future transport or agent
-  connector. There is no implicit Anet or A2A delivery path.
+- Outbox: a durable route/outbox state machine (`amesh-routes.sqlite3`) queues
+  one route per (destination, signal_id) with deduplication, exponential-backoff
+  retry, signal expiry, and destination/adapter policy rules. Delivery writes
+  validated signal files; there is no implicit Anet or A2A delivery path.
 
 ## Next work
 
-1. Add a durable route/outbox state machine with retry, deduplication, and
-   destination-specific policy checks.
-2. Add Discord gateway/event-stream support only after REST polling and effect
+1. Add Discord gateway/event-stream support only after REST polling and effect
    permissions have stable integration coverage.
-3. Keep A2A, Anet, and future platforms as optional adapters outside this core.
+2. Keep A2A, Anet, and future platforms as optional adapters outside this core.

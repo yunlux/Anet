@@ -126,6 +126,24 @@ amesh --home <HOME> connector serve --adapter loopback --port 8765
 amesh --home <HOME> connector audit --limit 100
 ```
 
+## Routes
+
+`amesh.social` signals are queued into a durable route/outbox state machine
+(`amesh-routes.sqlite3`): one route per (destination, signal_id), so a re-polled
+signal is deduplicated. `amesh serve` delivers due routes to the outbound
+directory with exponential-backoff retries, marks signals expired past their TTL,
+and fails routes after `MAX_ATTEMPTS`. Destination/adapter policy rules deny a
+route before it is stored.
+
+```powershell
+amesh --home <HOME> route status
+amesh --home <HOME> route list --state failed
+amesh --home <HOME> route retry <route_id>
+amesh --home <HOME> route flush
+amesh --home <HOME> route policy <destination> <adapter> deny
+amesh --home <HOME> route policy-list
+```
+
 ## Management
 
 `amesh serve` owns one exclusive home lock and hosts configured adapters. The

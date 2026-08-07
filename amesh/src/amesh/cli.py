@@ -16,6 +16,7 @@ from .discovery import (
 )
 from .agent import AGENT_ACTIONS, AgentStore, agent_database_path
 from .connector import ConnectorAudit, EffectConnector, amesh_audit_path
+from .route import RouteStore, route_database_path
 
 from .adapter import builtin_adapter_names, load_adapter
 from .model import (
@@ -412,6 +413,99 @@ def cmd_connector_audit(args: argparse.Namespace) -> int:
     store = ConnectorAudit(amesh_audit_path(args.home))
     try:
         _print_json({"audit": store.recent(limit=args.limit)})
+    finally:
+        store.close()
+    return 0
+
+
+def _route_store(home: Path) -> RouteStore:
+    return RouteStore(route_database_path(home))
+
+
+def cmd_route_status(args: argparse.Namespace) -> int:
+    store = _route_store(args.home)
+    try:
+        _print_json(store.status())
+    finally:
+        store.close()
+    return 0
+
+
+def cmd_route_list(args: argparse.Namespace) -> int:
+    store = _route_store(args.home)
+    try:
+        _print_json(
+            {
+                "routes": [
+                    {
+                        key: route[key]
+                        for key in (
+                            "route_id",
+                            "destination",
+                            "adapter",
+                            "kind",
+                            "state",
+                            "attempts",
+                            "next_retry_ms",
+                            "expires_ms",
+                            "created_ms",
+                            "updated_ms",
+                            "last_error",
+                        )
+                    }
+                    for route in store.list(state=args.state, limit=args.limit)
+                ]
+            }
+        )
+    finally:
+        store.close()
+    return 0
+
+
+def cmd_route_retry(args: argparse.Namespace) -> int:
+    store = _route_store(args.home)
+    try:
+        _print_json(store.retry(args.route_id))
+    finally:
+        store.close()
+    return 0
+
+
+def cmd_route_flush(args: argparse.Namespace) -> int:
+    from .serve import amesh_outbound_dir
+    from .signal import DirectorySignalSink
+
+    store = _route_store(args.home)
+    sink = DirectorySignalSink(amesh_outbound_dir(args.home))
+    try:
+        _print_json(
+            {
+                "delivery": store.deliver_due(
+                    lambda signal: sink.emit(dict(signal)),
+                    limit=args.limit,
+                ),
+                "status": store.status(),
+            }
+        )
+    finally:
+        store.close()
+    return 0
+
+
+def cmd_route_policy(args: argparse.Namespace) -> int:
+    store = _route_store(args.home)
+    try:
+        allowed = str(args.effect).strip().lower() == "allow"
+        _print_json(store.set_policy(args.destination, args.adapter, allowed))
+    finally:
+        store.close()
+    return 0
+
+
+def cmd_route_policy_list(args: argparse.Namespace) -> int:
+    store = _route_store(args.home)
+    try:
+        _print_json({"rules": store.policy_rules()})
     finally:
         store.close()
     return 0
@@ -815,6 +909,42 @@ def build_parser() -> argparse.ArgumentParser:
     )
     connector_audit.add_argument("--limit", type=int, default=100)
     connector_audit.set_defaults(func=cmd_connector_audit)
+
+    route = sub.add_parser(
+        "route", help="manage the durable route/outbox state machine"
+    )
+    route_sub = route.add_subparsers(dest="route_command", required=True)
+
+    route_status = route_sub.add_parser("status", help="show route counts by state")
+    route_status.set_defaults(func=cmd_route_status)
+
+    route_list = route_sub.add_parser("list", help="list routes")
+    route_list.add_argument("--state", default="")
+    route_list.add_argument("--limit", type=int, default=100)
+    route_list.set_defaults(func=cmd_route_list)
+
+    route_retry = route_sub.add_parser("retry", help="reset one failed route to retry")
+    route_retry.add_argument("route_id")
+    route_retry.set_defaults(func=cmd_route_retry)
+
+    route_flush = route_sub.add_parser(
+        "flush", help="attempt delivery of due routes to the outbound sink"
+    )
+    route_flush.add_argument("--limit", type=int, default=100)
+    route_flush.set_defaults(func=cmd_route_flush)
+
+    route_policy = route_sub.add_parser(
+        "policy", help="allow or deny one destination/adapter route"
+    )
+    route_policy.add_argument("destination")
+    route_policy.add_argument("adapter")
+    route_policy.add_argument("effect", choices=("allow", "deny"))
+    route_policy.set_defaults(func=cmd_route_policy)
+
+    route_policy_list = route_sub.add_parser(
+        "policy-list", help="list destination/adapter policy rules"
+    )
+    route_policy_list.set_defaults(func=cmd_route_policy_list)
 
     return parser
 

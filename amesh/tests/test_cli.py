@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 
 from amesh.cli import main
 from amesh.policy import PermissionStore, amesh_database_path
@@ -176,3 +177,76 @@ def test_social_signals_lists_outbound(tmp_path, capsys) -> None:
     out = json.loads(capsys.readouterr().out)
     assert out["count"] == 1
     assert out["signals"][0]["provenance"]["platform"] == "loopback"
+
+
+def test_route_status_policy_and_flush(tmp_path, capsys) -> None:
+    from amesh.route import RouteStore, route_database_path
+    from amesh.signal import build_signal
+
+    code = main(
+        [
+            "--home",
+            str(tmp_path),
+            "route",
+            "policy",
+            "blocked-agent",
+            "loopback",
+            "deny",
+        ]
+    )
+    assert code == 0
+    rule = json.loads(capsys.readouterr().out)
+    assert rule["allowed"] is False
+
+    code = main(["--home", str(tmp_path), "route", "policy-list"])
+    assert code == 0
+    assert (
+        json.loads(capsys.readouterr().out)["rules"][0]["destination"]
+        == "blocked-agent"
+    )
+
+    store = RouteStore(route_database_path(tmp_path))
+    try:
+        created = int(time.time() * 1000)
+        signal = build_signal(
+            platform="loopback",
+            adapter="loopback-spool-v1",
+            source_event_id="c" * 32,
+            actor_key="d" * 64,
+            created_ms=created,
+            expires_ms=created + 1_000_000,
+            content_level="mention",
+            content="hi",
+            labels=set(),
+            evaluation={
+                "action": "surface",
+                "allowed_actions": ["observe", "surface"],
+                "reasons": ["test"],
+                "policy_version": 1,
+                "reputation": {
+                    "score": 50,
+                    "raw_score": 50,
+                    "confidence": 0,
+                    "algorithm": "amesh-evidence-v1",
+                },
+            },
+            provenance={},
+        )
+        store.enqueue("review-agent", "loopback", "amesh.loopback.signal", signal)
+    finally:
+        store.close()
+
+    code = main(["--home", str(tmp_path), "route", "status"])
+    assert code == 0
+    assert json.loads(capsys.readouterr().out)["pending"] == 1
+
+    code = main(["--home", str(tmp_path), "route", "flush"])
+    assert code == 0
+    flushed = json.loads(capsys.readouterr().out)
+    assert flushed["delivery"]["delivered"] == 1
+
+    code = main(["--home", str(tmp_path), "route", "list", "--state", "delivered"])
+    assert code == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert len(listed["routes"]) == 1
+    assert listed["routes"][0]["destination"] == "review-agent"
