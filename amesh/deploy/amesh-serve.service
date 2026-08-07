@@ -1,7 +1,7 @@
 # Amesh serve user unit template.
 #
 # Substitute @AMESH_PYTHON@ with the Python that has the `amesh` package and
-# @AMESH_HOME@ with the deployment-owned node home, then install as
+# @AMESH_HOME@ with the deployment-owned Amesh home, then install as
 # ~/.config/systemd/user/amesh-serve.service. The companion installer script
 # `install-amesh-service.sh` performs this substitution and starts the unit.
 #

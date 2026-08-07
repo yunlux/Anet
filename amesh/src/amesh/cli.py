@@ -9,12 +9,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from anet.discovery import (
-    DISCOVERY_SIGNAL_KIND,
+from .discovery import (
     DiscoveryStore,
     build_discovery_signal,
     discovery_database_path,
 )
+from .agent import AGENT_ACTIONS, AgentStore, agent_database_path
 
 from .adapter import builtin_adapter_names, load_adapter
 from .model import (
@@ -30,7 +30,7 @@ from .signal import DirectorySignalSink
 
 
 def default_home() -> Path:
-    return Path(os.environ.get("ANET_HOME", "~/.config/anet")).expanduser()
+    return Path(os.environ.get("AMESH_HOME", "~/.config/amesh")).expanduser()
 
 
 def _print_json(value: Any) -> None:
@@ -116,9 +116,54 @@ def cmd_social_reply(args: argparse.Namespace) -> int:
     content = args.text if args.text is not None else sys.stdin.read()
     adapter = _load_adapter(args)
     try:
+        adapter.require_agent(
+            args.agent_id,
+            "reply",
+            token=os.environ.get(args.agent_token_env, "") if args.agent_id != "operator" else "",
+        )
         _print_json(adapter.reply(args.event_key, content))
     finally:
         adapter.close()
+    return 0
+
+
+def _agent_store(home: Path) -> AgentStore:
+    return AgentStore(agent_database_path(home))
+
+
+def cmd_agent_register(args: argparse.Namespace) -> int:
+    store = _agent_store(args.home)
+    try:
+        _print_json(store.register(args.agent_id, args.name, scopes=tuple(args.scope)))
+    finally:
+        store.close()
+    return 0
+
+
+def cmd_agent_list(args: argparse.Namespace) -> int:
+    store = _agent_store(args.home)
+    try:
+        _print_json({"agents": [record.to_dict() for record in store.list()]})
+    finally:
+        store.close()
+    return 0
+
+
+def cmd_agent_revoke(args: argparse.Namespace) -> int:
+    store = _agent_store(args.home)
+    try:
+        _print_json({"agent_id": args.agent_id, "revoked": store.revoke(args.agent_id)})
+    finally:
+        store.close()
+    return 0
+
+
+def cmd_agent_grant(args: argparse.Namespace) -> int:
+    store = _agent_store(args.home)
+    try:
+        _print_json(store.grant(args.agent_id, args.adapter, args.action, args.effect, reason=args.reason))
+    finally:
+        store.close()
     return 0
 
 
@@ -266,7 +311,7 @@ def cmd_discovery_ingest(args: argparse.Namespace) -> int:
     value = json.loads(args.file.read_text(encoding="utf-8"))
     store = _discovery_store(args.home)
     try:
-        _print_json(store.ingest(value, sender_node_id=args.sender))
+        _print_json(store.ingest(value, source_id=args.source))
     finally:
         store.close()
     return 0
@@ -292,30 +337,14 @@ def cmd_discovery_publish(args: argparse.Namespace) -> int:
             "revision": args.revision,
         },
     )
-    if args.destination:
-        from anet.config import NodeConfig
-        from anet.node import AnetNode
-
-        node = AnetNode(NodeConfig.load(args.home))
-        try:
-            packet_id = node.queue(
-                args.destination,
-                kind=DISCOVERY_SIGNAL_KIND,
-                body=signal,
-                ttl_seconds=args.ttl,
-                qos="normal",
-            )
-        finally:
-            node.close()
-        _print_json({"signal": signal, "packet_id": packet_id, "queued": True})
-        return 0
     sink = DirectorySignalSink(amesh_outbound_dir(args.home))
     signal_id = sink.emit(signal)
     _print_json(
         {
             "signal": signal,
             "signal_id": signal_id,
-            "queued": False,
+            "queued": True,
+            "destination": args.destination,
             "outbox": str(amesh_outbound_dir(args.home)),
         }
     )
@@ -459,14 +488,14 @@ def cmd_relations_circle(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="amesh",
-        description="Agent mesh shell for third-party social platforms above Anet",
+        description="Independent social-security middleware for agents and platforms",
     )
     parser.add_argument("--version", action="version", version="Amesh 0.1.0")
     parser.add_argument(
         "--home",
         type=Path,
         default=default_home(),
-        help="Anet node state directory (default: $ANET_HOME or ~/.config/anet)",
+        help="Amesh private state directory (default: $AMESH_HOME or ~/.config/amesh)",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -521,6 +550,8 @@ def build_parser() -> argparse.ArgumentParser:
     reply_cmd.add_argument("event_key")
     reply_cmd.add_argument("--text")
     reply_cmd.add_argument("--stdin", action="store_true")
+    reply_cmd.add_argument("--agent-id", default="operator")
+    reply_cmd.add_argument("--agent-token-env", default="AMESH_AGENT_TOKEN")
     reply_cmd.set_defaults(func=cmd_social_reply)
 
     poll_cmd = social_sub.add_parser("poll", help="run one single-shot ingest poll")
@@ -546,7 +577,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     discovery = sub.add_parser(
         "discovery",
-        help="manage EigenFlux-inspired Anet discovery profiles and feeds",
+        help="manage Amesh discovery profiles and feeds",
     )
     discovery_sub = discovery.add_subparsers(
         dest="discovery_command", required=True
@@ -605,9 +636,9 @@ def build_parser() -> argparse.ArgumentParser:
     status_cmd.set_defaults(func=cmd_discovery_status)
 
     ingest_cmd = discovery_sub.add_parser(
-        "ingest", help="ingest a trusted Anet signal JSON fixture"
+        "ingest", help="ingest a source-identified Amesh signal JSON fixture"
     )
-    ingest_cmd.add_argument("--sender", required=True)
+    ingest_cmd.add_argument("--source", required=True)
     ingest_cmd.add_argument("--file", type=Path, required=True)
     ingest_cmd.set_defaults(func=cmd_discovery_ingest)
 
@@ -627,6 +658,28 @@ def build_parser() -> argparse.ArgumentParser:
     publish_cmd.add_argument("--ttl", type=int, default=7 * 86_400)
     publish_cmd.add_argument("--destination", default="")
     publish_cmd.set_defaults(func=cmd_discovery_publish)
+
+    agent = sub.add_parser(
+        "agent", help="register agents and manage their explicit adapter grants"
+    )
+    agent_sub = agent.add_subparsers(dest="agent_command", required=True)
+    agent_register = agent_sub.add_parser("register", help="register one local agent")
+    agent_register.add_argument("agent_id")
+    agent_register.add_argument("name")
+    agent_register.add_argument("--scope", action="append", choices=AGENT_ACTIONS, default=[])
+    agent_register.set_defaults(func=cmd_agent_register)
+    agent_list = agent_sub.add_parser("list", help="list local agents without tokens")
+    agent_list.set_defaults(func=cmd_agent_list)
+    agent_revoke = agent_sub.add_parser("revoke", help="disable one local agent")
+    agent_revoke.add_argument("agent_id")
+    agent_revoke.set_defaults(func=cmd_agent_revoke)
+    agent_grant = agent_sub.add_parser("grant", help="grant one adapter action to an agent")
+    agent_grant.add_argument("agent_id")
+    agent_grant.add_argument("adapter")
+    agent_grant.add_argument("action", choices=AGENT_ACTIONS)
+    agent_grant.add_argument("effect", choices=("allow", "deny"))
+    agent_grant.add_argument("--reason", default="")
+    agent_grant.set_defaults(func=cmd_agent_grant)
 
     permit = sub.add_parser(
         "permit", help="manage operator permission rules on adapters"

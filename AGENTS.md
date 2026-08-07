@@ -44,6 +44,18 @@ The scheduled OpenWiki GitHub Actions workflow refreshes the repository wiki. Do
   server implementation out of the default `anet` and `anet.carriers` import
   surfaces; use explicit `anet.ahub*` modules and the `ahub` optional dependency.
 
+## Amesh independence
+
+- `amesh/` is a standalone social-security middleware project. Its core,
+  adapters, tests, CLI, MCP server, private homes, and deployment assets must
+  not import, install, or reuse Anet or another application's identity,
+  packet, trust, relationship, or database models.
+- Amesh platform adapters own their external API clients and authenticate
+  their own sources. Discovery matches are observer-local candidates only;
+  they must never grant agent scopes, platform permissions, trust, or identity.
+- Amesh homes use `AMESH_HOME` and Amesh-owned files. Never place them under an
+  Anet node home merely because the two projects live in one repository.
+
 ## Handoff and commit discipline
 
 - At the end of each implementation session, write a concise handoff record under

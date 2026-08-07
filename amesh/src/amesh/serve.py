@@ -22,7 +22,7 @@ LOGGER = logging.getLogger("amesh.serve")
 
 
 class ServeLock:
-    """Home-exclusive lock so only one ``amesh serve`` owns a node home.
+    """Home-exclusive lock so only one ``amesh serve`` owns an Amesh home.
 
     The lock is an advisory OS file lock, held for the process lifetime and
     released automatically if the process exits. It prevents two supervisors
@@ -125,7 +125,7 @@ async def _serve(
         def _project(event: Mapping[str, Any]) -> Any:
             try:
                 return adapter.project_event(event)
-            except Exception as exc:  # pragma: no cover - node-home dependent
+            except Exception as exc:  # pragma: no cover - platform-home dependent
                 LOGGER.warning(
                     "relationship projection failed for %s: %s",
                     adapter.name,

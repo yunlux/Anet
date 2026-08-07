@@ -6,12 +6,12 @@ import time
 from pathlib import Path
 from typing import Any
 
-from anet.discovery import (
-    DISCOVERY_SIGNAL_KIND,
+from .discovery import (
     DiscoveryStore,
     build_discovery_signal,
     discovery_database_path,
 )
+from .agent import AgentStore, agent_database_path
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.server import Settings as FastMCPSettings
@@ -38,9 +38,7 @@ server = FastMCP("amesh", log_level="ERROR")
 def _home() -> Path:
     return (
         Path(
-            os.environ.get("AMESH_HOME")
-            or os.environ.get("ANET_HOME")
-            or "~/.config/anet"
+            os.environ.get("AMESH_HOME") or "~/.config/amesh"
         )
         .expanduser()
         .resolve()
@@ -93,6 +91,10 @@ def _discovery() -> DiscoveryStore:
     return DiscoveryStore(discovery_database_path(_home()))
 
 
+def _agents() -> AgentStore:
+    return AgentStore(agent_database_path(_home()))
+
+
 @server.tool(
     name="amesh_adapters",
     description="List installed Amesh adapters and their non-secret configuration.",
@@ -109,6 +111,54 @@ async def amesh_adapters() -> str:
 
 
 @server.tool(
+    name="amesh_agents",
+    description="List local agents and their declared scopes without exposing bearer tokens.",
+)
+async def amesh_agents() -> str:
+    store = _agents()
+    try:
+        return _dump({"agents": [record.to_dict() for record in store.list()]})
+    finally:
+        store.close()
+
+
+@server.tool(
+    name="amesh_agent_register",
+    description="Register a local agent; the returned bearer token is shown only once.",
+)
+async def amesh_agent_register(agent_id: str, name: str, scopes: list[str] | None = None) -> str:
+    store = _agents()
+    try:
+        return _dump(store.register(agent_id, name, scopes=tuple(scopes or ())))
+    finally:
+        store.close()
+
+
+@server.tool(
+    name="amesh_agent_grant",
+    description="Add an explicit allow or deny grant for one agent, adapter, and action.",
+)
+async def amesh_agent_grant(agent_id: str, adapter: str, action: str, effect: str, reason: str = "") -> str:
+    store = _agents()
+    try:
+        return _dump(store.grant(agent_id, adapter, action, effect, reason=reason))
+    finally:
+        store.close()
+
+
+@server.tool(
+    name="amesh_agent_revoke",
+    description="Disable one local agent without deleting its audit history.",
+)
+async def amesh_agent_revoke(agent_id: str) -> str:
+    store = _agents()
+    try:
+        return _dump({"agent_id": agent_id, "revoked": store.revoke(agent_id)})
+    finally:
+        store.close()
+
+
+@server.tool(
     name="amesh_adapter_status",
     description="Return one Amesh adapter's ledger counts, runtime state, and policy health.",
 )
@@ -122,7 +172,7 @@ async def amesh_adapter_status(adapter: str) -> str:
 
 @server.tool(
     name="amesh_adapter_setup",
-    description="Write one adapter's default configuration file for the node home.",
+    description="Write one adapter's default configuration file for the Amesh home.",
 )
 async def amesh_adapter_setup(adapter: str) -> str:
     instance = _load(adapter)
@@ -380,12 +430,11 @@ async def amesh_discovery_feedback(
 @server.tool(
     name="amesh_discovery_publish",
     description=(
-        "Publish a public-safe discovery signal to an already trusted Anet peer. "
+        "Publish a public-safe discovery signal to the local Amesh outbox. "
         "Disabled unless AMESH_MCP_ALLOW_DISCOVERY_PUBLISH=1."
     ),
 )
 async def amesh_discovery_publish(
-    destination: str,
     intent: str,
     summary: str,
     topics: list[str] | None = None,
@@ -394,6 +443,7 @@ async def amesh_discovery_publish(
     visibility: str = "public",
     tenant: str = "",
     ttl_seconds: int = 7 * 86_400,
+    destination: str = "",
 ) -> str:
     _require_discovery_publish_enabled()
     now = int(time.time() * 1000)
@@ -413,21 +463,9 @@ async def amesh_discovery_publish(
             "revision": "manual",
         },
     )
-    from anet.config import NodeConfig
-    from anet.node import AnetNode
-
-    node = AnetNode(NodeConfig.load(_home()))
-    try:
-        packet_id = node.queue(
-            destination,
-            kind=DISCOVERY_SIGNAL_KIND,
-            body=signal,
-            ttl_seconds=int(ttl_seconds),
-            qos="normal",
-        )
-    finally:
-        node.close()
-    return _dump({"packet_id": packet_id, "signal": signal})
+    sink = DirectorySignalSink(amesh_outbound_dir(_home()))
+    signal_id = sink.emit(signal)
+    return _dump({"signal_id": signal_id, "destination": destination, "signal": signal})
 
 
 @server.tool(
@@ -442,10 +480,13 @@ async def amesh_social_reply(
     adapter: str,
     event_key: str,
     content: str,
+    agent_id: str = "operator",
+    agent_token: str = "",
 ) -> str:
     _require_reply_enabled()
     instance = _load(adapter)
     try:
+        instance.require_agent(agent_id, "reply", token=agent_token)
         return _dump(instance.reply(event_key, content))
     finally:
         instance.close()
@@ -520,7 +561,7 @@ async def amesh_permit_decisions(adapter: str = "", limit: int = 100) -> str:
 
 @server.tool(
     name="amesh_relations",
-    description="List the observer-local relationship records in the node home.",
+    description="List the observer-local relationship records in the Amesh home.",
 )
 async def amesh_relations() -> str:
     hub = RelationshipHub(_home())

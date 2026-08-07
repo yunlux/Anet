@@ -67,7 +67,7 @@ function Get-NodeSnapshot {
     $protected = [ordered]@{}
     foreach ($name in @(
         "identity.json", "card.json", "config.json", "peers.json",
-        "relationships.json", "relationship-claims.json", "discovery.sqlite3",
+        "relationships.json", "relationship-claims.json",
         "relationship-disclosures.json",
         "relationship-disclosure-schedules.json",
         "relationship-disclosure-gap-notices.json",

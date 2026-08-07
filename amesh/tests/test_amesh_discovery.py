@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from anet.discovery import (
+from amesh.discovery import (
     DiscoveryStore,
     build_discovery_signal,
     discovery_database_path,
@@ -12,7 +12,7 @@ from anet.discovery import (
 )
 
 
-SENDER = "an1" + "a" * 20
+SOURCE = "agent-main"
 
 
 def _signal(*, intent: str = "need", topic: str = "research") -> dict:
@@ -64,13 +64,13 @@ def test_local_profile_subscription_feed_cursor_and_feedback(tmp_path) -> None:
         assert subscription["subscription_id"] == "research-needs"
 
         signal = _signal()
-        first = store.ingest(signal, sender_node_id=SENDER)
+        first = store.ingest(signal, source_id=SOURCE)
         assert first == {
             "signal_id": signal["signal_id"],
             "duplicate": False,
             "matches": 1,
         }
-        assert store.ingest(signal, sender_node_id=SENDER)["duplicate"] is True
+        assert store.ingest(signal, source_id=SOURCE)["duplicate"] is True
 
         page = store.feed("research-needs", limit=10)
         assert len(page["items"]) == 1
@@ -121,7 +121,7 @@ def test_tenant_signal_is_not_matched_to_another_profile(tmp_path) -> None:
             tenant="team-b",
             provenance={"source": "test", "adapter": "fixture"},
         )
-        assert store.ingest(signal, sender_node_id=SENDER)["matches"] == 0
+        assert store.ingest(signal, source_id=SOURCE)["matches"] == 0
         assert store.feed("all")["items"] == []
     finally:
         store.close()

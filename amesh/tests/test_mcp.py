@@ -27,8 +27,7 @@ from amesh.mcp_server import (
 )
 from amesh.serve import amesh_outbound_dir
 from amesh.signal import DirectorySignalSink
-from anet.config import initialize_node
-from anet.social import SocialPolicy, SocialThreshold
+from amesh.policy import SocialPolicy, SocialThreshold
 
 LOW_POLICY = SocialPolicy(
     surface=SocialThreshold(0, 0),
@@ -36,11 +35,11 @@ LOW_POLICY = SocialPolicy(
     amplify=SocialThreshold(0, 0),
     connect_candidate=SocialThreshold(0, 0, ("relationship:vouched",)),
 )
-DEST = "an1" + "a" * 20
+DEST = "agent-main"
 
 
 def _node_home(tmp_path):
-    return initialize_node(tmp_path / "node", label="mcp-node")
+    return tmp_path / "node"
 
 
 def test_mcp_reply_is_disabled_by_default(monkeypatch) -> None:
@@ -68,13 +67,13 @@ def test_mcp_adapters_list_unconfigured(tmp_path, monkeypatch) -> None:
 
 def test_mcp_loopback_shell_flow(tmp_path, monkeypatch) -> None:
     node = _node_home(tmp_path)
-    monkeypatch.setenv("AMESH_HOME", str(node.home))
+    monkeypatch.setenv("AMESH_HOME", str(node))
     LoopbackConfig(
         channels=("lobby",),
         policy=LOW_POLICY,
-        destination_node_id=DEST,
+        destination_id=DEST,
         poll_interval_seconds=1.0,
-    ).save(node.home)
+    ).save(node)
 
     async def scenario() -> None:
         injected = json.loads(
@@ -86,8 +85,8 @@ def test_mcp_loopback_shell_flow(tmp_path, monkeypatch) -> None:
         assert poll["ingested"] == 1
 
         ledger = LoopbackLedger(
-            loopback_database_path(node.home),
-            loopback_key_path(node.home),
+            loopback_database_path(node),
+            loopback_key_path(node),
         )
         try:
             actor_key = ledger.pseudonym("actor", "alice")
@@ -131,16 +130,16 @@ def test_mcp_loopback_shell_flow(tmp_path, monkeypatch) -> None:
 
 def test_mcp_reply_denied_by_permission_rule(tmp_path, monkeypatch) -> None:
     node = _node_home(tmp_path)
-    monkeypatch.setenv("AMESH_HOME", str(node.home))
+    monkeypatch.setenv("AMESH_HOME", str(node))
     monkeypatch.setenv("AMESH_MCP_ALLOW_REPLY", "1")
-    LoopbackConfig(channels=("lobby",), policy=LOW_POLICY).save(node.home)
+    LoopbackConfig(channels=("lobby",), policy=LOW_POLICY).save(node)
 
     async def scenario() -> None:
         await amesh_social_inject("loopback", "alice", "@amesh hi")
         await amesh_social_poll("loopback")
         ledger = LoopbackLedger(
-            loopback_database_path(node.home),
-            loopback_key_path(node.home),
+            loopback_database_path(node),
+            loopback_key_path(node),
         )
         try:
             actor_key = ledger.pseudonym("actor", "alice")
@@ -156,16 +155,16 @@ def test_mcp_reply_denied_by_permission_rule(tmp_path, monkeypatch) -> None:
 
 def test_mcp_reply_allowed_when_granted(tmp_path, monkeypatch) -> None:
     node = _node_home(tmp_path)
-    monkeypatch.setenv("AMESH_HOME", str(node.home))
+    monkeypatch.setenv("AMESH_HOME", str(node))
     monkeypatch.setenv("AMESH_MCP_ALLOW_REPLY", "1")
-    LoopbackConfig(channels=("lobby",), policy=LOW_POLICY).save(node.home)
+    LoopbackConfig(channels=("lobby",), policy=LOW_POLICY).save(node)
 
     async def scenario() -> None:
         await amesh_social_inject("loopback", "alice", "@amesh hi")
         await amesh_social_poll("loopback")
         ledger = LoopbackLedger(
-            loopback_database_path(node.home),
-            loopback_key_path(node.home),
+            loopback_database_path(node),
+            loopback_key_path(node),
         )
         try:
             event_key = ledger.events()[0]["event_key"]
@@ -179,16 +178,16 @@ def test_mcp_reply_allowed_when_granted(tmp_path, monkeypatch) -> None:
 
 def test_mcp_signals_lists_outbound(tmp_path, monkeypatch) -> None:
     node = _node_home(tmp_path)
-    monkeypatch.setenv("AMESH_HOME", str(node.home))
+    monkeypatch.setenv("AMESH_HOME", str(node))
     LoopbackConfig(
         channels=("lobby",),
         policy=LOW_POLICY,
-        destination_node_id=DEST,
-    ).save(node.home)
-    adapter = LoopbackAdapter(node.home)
+        destination_id=DEST,
+    ).save(node)
+    adapter = LoopbackAdapter(node)
     try:
         adapter.inject("alice", "@amesh hi")
-        sink = DirectorySignalSink(amesh_outbound_dir(node.home))
+        sink = DirectorySignalSink(amesh_outbound_dir(node))
         adapter.poll_once(
             queue_signal=lambda destination_id, kind, body: sink.emit(dict(body))
         )

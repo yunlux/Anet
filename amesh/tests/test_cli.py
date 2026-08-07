@@ -147,10 +147,8 @@ def test_social_signals_lists_outbound(tmp_path, capsys) -> None:
     from amesh.adapters.loopback import LoopbackAdapter, LoopbackConfig
     from amesh.serve import amesh_outbound_dir
     from amesh.signal import DirectorySignalSink
-    from anet.config import initialize_node
-    from anet.social import SocialPolicy, SocialThreshold
+    from amesh.policy import SocialPolicy, SocialThreshold
 
-    node = initialize_node(tmp_path, label="cli-signals")
     low = SocialPolicy(
         surface=SocialThreshold(0, 0),
         reply=SocialThreshold(0, 0),
@@ -160,11 +158,11 @@ def test_social_signals_lists_outbound(tmp_path, capsys) -> None:
     LoopbackConfig(
         channels=("lobby",),
         policy=low,
-        destination_node_id="an1" + "a" * 20,
+        destination_id="agent-main",
         poll_interval_seconds=1.0,
-    ).save(node.home)
-    sink = DirectorySignalSink(amesh_outbound_dir(node.home))
-    adapter = LoopbackAdapter(node.home)
+    ).save(tmp_path)
+    sink = DirectorySignalSink(amesh_outbound_dir(tmp_path))
+    adapter = LoopbackAdapter(tmp_path)
     try:
         adapter.inject("alice", "@amesh hi")
         adapter.poll_once(
@@ -173,7 +171,7 @@ def test_social_signals_lists_outbound(tmp_path, capsys) -> None:
     finally:
         adapter.close()
 
-    code = main(["--home", str(node.home), "social", "signals", "loopback"])
+    code = main(["--home", str(tmp_path), "social", "signals", "loopback"])
     assert code == 0
     out = json.loads(capsys.readouterr().out)
     assert out["count"] == 1

@@ -12,8 +12,7 @@ from amesh.adapters.loopback import (
     loopback_key_path,
     loopback_outbox_dir,
 )
-from anet.config import initialize_node
-from anet.social import SocialPolicy, SocialThreshold
+from amesh.policy import SocialPolicy, SocialThreshold
 
 LOW_POLICY = SocialPolicy(
     surface=SocialThreshold(0, 0),
@@ -191,8 +190,7 @@ def test_reply_blocked_by_permission_rule(tmp_path) -> None:
 
 
 def test_project_into_relations(tmp_path) -> None:
-    node = initialize_node(tmp_path, label="loopback-test")
-    adapter = _configured_adapter(node.home)
+    adapter = _configured_adapter(tmp_path)
     try:
         adapter.inject("alice", "@amesh hello")
         adapter.poll_once()
@@ -205,8 +203,7 @@ def test_project_into_relations(tmp_path) -> None:
 
 
 def test_relation_mapping(tmp_path) -> None:
-    node = initialize_node(tmp_path, label="loopback-test")
-    adapter = _configured_adapter(node.home)
+    adapter = _configured_adapter(tmp_path)
     try:
         ledger = LoopbackLedger(
             loopback_database_path(tmp_path),

@@ -2,14 +2,14 @@
 # Install amesh-serve.service as a systemd --user unit and start it.
 #
 # Usage:
-#   ./install-amesh-service.sh [--python /path/to/python] [--home /path/to/node-home]
+#   ./install-amesh-service.sh [--python /path/to/python] [--home /path/to/amesh-home]
 #
-# Defaults: python3 on PATH; home $HOME/.config/anet (overridable via
+# Defaults: python3 on PATH; home $HOME/.config/amesh (overridable via
 # AMESH_PYTHON / AMESH_HOME environment variables).
 set -euo pipefail
 
 PYTHON="${AMESH_PYTHON:-}"
-HOME_PATH="${AMESH_HOME:-$HOME/.config/anet}"
+HOME_PATH="${AMESH_HOME:-$HOME/.config/amesh}"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 
 while [[ $# -gt 0 ]]; do

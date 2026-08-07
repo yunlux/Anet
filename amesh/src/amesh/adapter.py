@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
+from .agent import AgentStore, agent_database_path
 from .model import validate_adapter_name
 from .policy import PermissionStore, amesh_database_path
 
@@ -12,9 +13,9 @@ class PlatformAdapter(ABC):
     """Contract every Amesh platform adapter implements.
 
     An adapter owns the platform-specific projection of raw activity into the
-    Anet social vocabulary and never creates an identity root, social graph,
-    or authorization decision of its own. Operator permission rules are
-    provided by the shared base so every adapter applies the same overlay.
+    Amesh social vocabulary. It never creates an agent identity or grants a
+    capability of its own. Shared actor rules and agent grants are applied by
+    the Amesh base layer.
     """
 
     name = ""
@@ -22,6 +23,7 @@ class PlatformAdapter(ABC):
     def __init__(self, home: Path) -> None:
         self.home = Path(home)
         self._permissions = PermissionStore(amesh_database_path(self.home))
+        self._agents = AgentStore(agent_database_path(self.home))
 
     @abstractmethod
     def descriptor(self) -> dict[str, Any]:
@@ -74,6 +76,22 @@ class PlatformAdapter(ABC):
         rule = self._permissions.effective(self.name, actor_key, action)
         return rule is not None and rule.effect == "deny"
 
+    def agent_allows(self, agent_id: str, action: str) -> bool:
+        if str(agent_id).strip().lower() == "operator":
+            return True
+        return self._agents.authorize(agent_id, self.name, action)
+
+    def require_agent(self, agent_id: str, action: str, *, token: str = "") -> None:
+        normalized = str(agent_id).strip().lower()
+        if normalized != "operator":
+            record = self._agents.authenticate(token)
+            if record.agent_id != normalized:
+                raise PermissionError("Amesh agent token does not match the requested agent")
+        if not self.agent_allows(normalized, action):
+            raise PermissionError(
+                f"agent {normalized[:64]!r} has no {action} grant for {self.name}"
+            )
+
     def record_permission_decision(
         self,
         actor_key: str,
@@ -122,6 +140,7 @@ class PlatformAdapter(ABC):
 
     def close(self) -> None:
         self._permissions.close()
+        self._agents.close()
 
 
 def builtin_adapter_names() -> list[str]:
@@ -129,7 +148,7 @@ def builtin_adapter_names() -> list[str]:
 
 
 def load_adapter(home: Path, name: str) -> PlatformAdapter:
-    """Load one built-in adapter by name for a node home."""
+    """Load one built-in adapter by name for an Amesh home."""
     name = validate_adapter_name(name)
     if name == "discord":
         from .adapters.discord import DiscordAdapter

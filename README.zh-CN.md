@@ -235,13 +235,6 @@ public-safe 的声明式信号匹配，以及 event/state、游标、gap/backfil
 homeserver 联邦。决策记录见
 [`docs/EIGENFLUX_MATRIX_REFERENCE.md`](docs/EIGENFLUX_MATRIX_REFERENCE.md)。
 
-首个 Amesh discovery slice 已实现 `social.discovery.signal`：可信 Anet Packet
-接收端把信号写入本地 `discovery.sqlite3`，按 profile/subscription 做可解释的
-topic、capability、language、intent、freshness 匹配，并提供带 `next_cursor` 的
-Feed 与不可变反馈。Amesh CLI/MCP 可发布到已经 pinned 的 Peer；匹配结果仍只是
-候选，不会创建 Peer trust、capability、关系或 authorization。边界和命令见
-[`docs/AMESH_DISCOVERY_V1.md`](docs/AMESH_DISCOVERY_V1.md)。
-
 Abazr（简称 ABA）是位于 Anet 之上的独立 Agent Bazaar 产品，不属于 Anet 或
 Ahub 核心。它使用非金融化的 Need、Offer、Match、Proposal、Agreement、
 Fulfillment 与 Evidence 表达 Agent 协作；钱包、代币、托管和区块链只允许作为
@@ -255,20 +248,18 @@ python experiments/abazr_demo.py
 Mermaid 架构、路线门禁和信任边界见
 [`docs/ABAZR_BLUEPRINT.md`](docs/ABAZR_BLUEPRINT.md)。
 
-WSL 节点现可把 Discord 作为第一条 social discovery adapter。现有 `anet serve`
-进程只轮询显式允许的 Guild/Channel；默认仅保留明确提及 Bot 的正文，其余事件
-降为元数据。Discord 用户、Guild、Channel 在发往 Anet 前全部变为本地 HMAC
-假名；本地账本分别保存证据、标签、信誉分和置信度，并用单调门限决定
-`observe/surface/reply/amplify/connect_candidate`。最后一项仍只表示需要人工核验
-和显式配对，不能创建 Peer trust 或 capability。配置与边界见
-[`docs/DISCORD_SOCIAL_V1.md`](docs/DISCORD_SOCIAL_V1.md)。
+Amesh 现作为独立社交安全中间层承载 Discord 与 Agent：它只轮询显式允许的
+Guild/Channel；默认仅保留明确提及 Bot 的正文，其余事件降为元数据。Discord
+用户、Guild、Channel 在进入 Amesh 账本前全部变为本地 HMAC 假名；本地账本保存
+证据、标签、信誉分和置信度，并由 actor policy、operator permission 和 agent
+grant 共同决定 `observe/surface/reply/amplify/connect_candidate`。Amesh 不依赖
+Anet、A2A 或其他项目的身份/网络/数据库。架构见
+[`docs/AMESH_STANDALONE_ARCHITECTURE.md`](docs/AMESH_STANDALONE_ARCHITECTURE.md)。
 
 ```bash
-anet --home "$ANET_HOME" discord-social-config \
-  --guild '<GUILD_ID>' --channel '<CHANNEL_ID>' \
-  --destination '<ALREADY_TRUSTED_NODE_ID>' \
-  --content-mode mentions
-anet --home "$ANET_HOME" discord-social-status
+amesh --home "$AMESH_HOME" adapter status discord
+amesh --home "$AMESH_HOME" social poll discord
+amesh --home "$AMESH_HOME" agent list
 ```
 
 新的控制平面兼容切片保留 PeerCard v1、Node ID 和现有 trust pin，另行定义

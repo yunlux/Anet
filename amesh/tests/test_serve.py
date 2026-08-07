@@ -14,8 +14,7 @@ from amesh.adapters.loopback import (
 )
 from amesh.serve import ServeLock, amesh_outbound_dir, serve
 from amesh.signal import DirectorySignalSink, validate_signal
-from anet.config import initialize_node
-from anet.social import SocialPolicy, SocialThreshold
+from amesh.policy import SocialPolicy, SocialThreshold
 
 LOW_POLICY = SocialPolicy(
     surface=SocialThreshold(0, 0),
@@ -23,22 +22,21 @@ LOW_POLICY = SocialPolicy(
     amplify=SocialThreshold(0, 0),
     connect_candidate=SocialThreshold(0, 0, ("relationship:vouched",)),
 )
-DEST = "an1" + "a" * 20
+DEST = "agent-main"
 
 
 def _configure(home, *, destination: str = DEST) -> None:
     LoopbackConfig(
         channels=("lobby",),
         policy=LOW_POLICY,
-        destination_node_id=destination,
+        destination_id=destination,
         poll_interval_seconds=1.0,
     ).save(home)
 
 
 def test_loopback_routes_signal(tmp_path) -> None:
-    node = initialize_node(tmp_path, label="routing-test")
-    _configure(node.home)
-    adapter = LoopbackAdapter(node.home)
+    _configure(tmp_path)
+    adapter = LoopbackAdapter(tmp_path)
     try:
         adapter.inject("alice", "@amesh hello")
         captured = {}
@@ -62,9 +60,8 @@ def test_loopback_routes_signal(tmp_path) -> None:
 
 
 def test_loopback_metadata_event_routes_content_free(tmp_path) -> None:
-    node = initialize_node(tmp_path, label="routing-test")
-    _configure(node.home)
-    adapter = LoopbackAdapter(node.home)
+    _configure(tmp_path)
+    adapter = LoopbackAdapter(tmp_path)
     try:
         adapter.inject("bob", "just a normal message")
         captured = {}
@@ -81,9 +78,8 @@ def test_loopback_metadata_event_routes_content_free(tmp_path) -> None:
 
 
 def test_loopback_routing_respects_permission_deny(tmp_path) -> None:
-    node = initialize_node(tmp_path, label="routing-test")
-    _configure(node.home)
-    adapter = LoopbackAdapter(node.home)
+    _configure(tmp_path)
+    adapter = LoopbackAdapter(tmp_path)
     try:
         ledger = LoopbackLedger(
             loopback_database_path(tmp_path),
@@ -113,9 +109,8 @@ def test_loopback_routing_respects_permission_deny(tmp_path) -> None:
 
 
 def test_serve_hosts_loopback_and_emits_signals(tmp_path) -> None:
-    node = initialize_node(tmp_path, label="serve-test")
-    _configure(node.home)
-    adapter = LoopbackAdapter(node.home)
+    _configure(tmp_path)
+    adapter = LoopbackAdapter(tmp_path)
     try:
         adapter.inject("alice", "@amesh hello from serve")
         adapter.inject("bob", "@amesh me too")
@@ -125,7 +120,7 @@ def test_serve_hosts_loopback_and_emits_signals(tmp_path) -> None:
     async def _run() -> dict:
         stop = asyncio.Event()
         task = asyncio.create_task(
-            serve(node.home, names=("loopback", "discord"), stop=stop)
+            serve(tmp_path, names=("loopback", "discord"), stop=stop)
         )
         await asyncio.sleep(1.6)
         stop.set()
@@ -134,7 +129,7 @@ def test_serve_hosts_loopback_and_emits_signals(tmp_path) -> None:
     result = asyncio.run(_run())
     assert result["hosted"] == ["loopback"]
     assert result["signal_count"] == 2
-    sink = DirectorySignalSink(amesh_outbound_dir(node.home))
+    sink = DirectorySignalSink(amesh_outbound_dir(tmp_path))
     signals = sink.list(platform="loopback")
     assert len(signals) == 2
     assert all(s["provenance"]["adapter"] == "loopback-spool-v1" for s in signals)
@@ -153,7 +148,7 @@ def test_serve_stops_cleanly_when_nothing_configured(tmp_path) -> None:
 
 def test_invalid_destination_node_id(tmp_path) -> None:
     with pytest.raises(ValueError):
-        LoopbackConfig(destination_node_id="not-a-node-id")
+        LoopbackConfig(destination_id="not a target")
 
 
 def test_serve_lock_prevents_second_owner(tmp_path) -> None:

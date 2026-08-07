@@ -8,15 +8,22 @@ import secrets
 from pathlib import Path
 from typing import Any, Mapping
 
-from anet.encoding import canonical_pack
+def canonical_pack(value: Any) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
 
-SIGNAL_PROTOCOL_PREFIX = "anet.social"
+
+SIGNAL_PROTOCOL_PREFIX = "amesh.social"
 SIGNAL_VERSION = 1
 SIGNAL_ACTIONS = ("surface", "reply", "amplify", "connect_candidate")
 
 _HEX32_RE = re.compile(r"^[0-9a-f]{32}$")
 _HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
-_PROTOCOL_RE = re.compile(r"^anet\.social(?:\.[a-z0-9-]+)?$")
+_PROTOCOL_RE = re.compile(r"^amesh\.social(?:\.[a-z0-9-]+)?$")
 
 
 def build_signal(

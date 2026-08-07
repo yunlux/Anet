@@ -372,20 +372,13 @@ Event Collector → Privacy Filter → Feature Extractor
 
 1. Omnigent adapter：把外部副作用 idempotency key 贯穿到执行端；
 2. Humon adapter：只接收经过同意、最小化和标注来源的 Observation/Episode；
-3. Discord bridge：把 P0.3 的直接 allowlist 事件升级为可选 profile/subscribe
-   discovery；ChatGPT 仍只做出口或人工接力；
+3. Amesh Discord bridge：把显式 allowlist 事件升级为独立 profile/subscribe
+   discovery 与 agent grant 中间层；ChatGPT 仍只做出口或人工接力；
 4. 能力目录：发布版本化 schema、负载和可用性，不发布敏感传感数据；
-5. 参考 EigenFlux 扩展 Signal Discovery Plane：声明式 profile/subscribe、
+5. 参考 EigenFlux 扩展 Amesh Signal Discovery Plane：声明式 profile/subscribe、
    public-safe SignalEnvelope、可解释匹配、语义去重和反馈；匹配器不能成为
-   Anet 信任根、必经路径或 capability 授权者。
-
-首个窄切片已落地：`social.discovery.signal` 在 Anet Packet 发送端与可信接收端
-执行 exact-field / digest / TTL / tenant 校验；`discovery.sqlite3` 保存 observer-local
-profile、subscription、feed cursor、match reason 和 immutable feedback。Amesh CLI/MCP
-可以配置兴趣、发布到已 pinned Peer、读取匹配 Feed 并反馈。当前 matcher 仍是精确
-topic/capability/language/intent/freshness 规则，不含 embedding/LLM、公开 registry、
-自动 profile federation 或任何 trust/capability side effect。完整边界见
-[`docs/AMESH_DISCOVERY_V1.md`](docs/AMESH_DISCOVERY_V1.md)。
+   agent grant、平台权限或其他项目的信任根。当前独立切片见
+   `docs/AMESH_STANDALONE_ARCHITECTURE.md`。
 
 ### P2.5 A2A 边缘互操作
 

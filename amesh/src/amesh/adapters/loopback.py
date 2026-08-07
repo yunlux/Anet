@@ -14,15 +14,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from anet.actors import platform_actor_id
-from anet.packet import now_ms
-from anet.relations import (
+from ..identity import platform_actor_id
+from ..time import now_ms
+from ..relations import (
     ActorObservation,
     ActorProof,
     InteractionEvidence,
     RelationshipBook,
 )
-from anet.social import (
+from ..policy import (
     SocialPolicy,
     normalize_social_label,
 )
@@ -37,7 +37,7 @@ LOOPBACK_SIGNAL_KIND = "social.loopback.signal"
 _ACTOR_KEY_RE = re.compile(r"^[0-9a-f]{64}$")
 _CHANNEL_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 _FILE_RE = re.compile(r"^m-[0-9a-f]{32}\.json$")
-_NODE_ID_RE = re.compile(r"^an1[a-z2-7]{17,125}$")
+_TARGET_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:@/-]{0,127}$")
 
 
 def loopback_config_path(home: Path) -> Path:
@@ -64,7 +64,7 @@ def loopback_outbox_dir(home: Path) -> Path:
 class LoopbackConfig:
     channels: tuple[str, ...] = ("lobby",)
     poll_interval_seconds: float = 5.0
-    destination_node_id: str = ""
+    destination_id: str = ""
     signal_ttl_seconds: int = 7 * 86_400
     policy: SocialPolicy = SocialPolicy()
     enabled: bool = True
@@ -87,15 +87,15 @@ class LoopbackConfig:
             raise ValueError("loopback requires 1 to 32 channels")
         if not 1.0 <= float(self.poll_interval_seconds) <= 3600.0:
             raise ValueError("loopback polling interval is outside limits")
-        destination = str(self.destination_node_id).strip().lower()
-        if destination and not _NODE_ID_RE.fullmatch(destination):
-            raise ValueError("invalid loopback destination Node ID")
+        destination = str(self.destination_id).strip()
+        if destination and not _TARGET_ID_RE.fullmatch(destination):
+            raise ValueError("invalid loopback destination ID")
         if not 60 <= int(self.signal_ttl_seconds) <= 7 * 86_400:
             raise ValueError("loopback signal TTL is outside limits")
         if self.version != 1:
             raise ValueError("unsupported loopback config version")
         object.__setattr__(self, "channels", channels)
-        object.__setattr__(self, "destination_node_id", destination)
+        object.__setattr__(self, "destination_id", destination)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -103,7 +103,7 @@ class LoopbackConfig:
             "enabled": self.enabled,
             "channels": list(self.channels),
             "poll_interval_seconds": self.poll_interval_seconds,
-            "destination_node_id": self.destination_node_id,
+            "destination_id": self.destination_id,
             "signal_ttl_seconds": self.signal_ttl_seconds,
             "policy": self.policy.to_dict(),
         }
@@ -117,7 +117,7 @@ class LoopbackConfig:
             "enabled",
             "channels",
             "poll_interval_seconds",
-            "destination_node_id",
+            "destination_id",
             "signal_ttl_seconds",
             "policy",
         }
@@ -137,7 +137,7 @@ class LoopbackConfig:
             enabled=enabled,
             channels=tuple(str(item) for item in channels),
             poll_interval_seconds=float(interval),
-            destination_node_id=str(value["destination_node_id"]),
+            destination_id=str(value["destination_id"]),
             signal_ttl_seconds=int(value["signal_ttl_seconds"]),
             policy=SocialPolicy.from_dict(value["policy"]),
         )
@@ -705,7 +705,7 @@ class LoopbackAdapter(PlatformAdapter):
         ingested = 0
         routed = 0
         decisions: dict[str, int] = {}
-        destination = config.destination_node_id
+        destination = config.destination_id
         for path in sorted(spool_dir.glob("m-*.json")):
             if not _FILE_RE.fullmatch(path.name):
                 continue
@@ -916,8 +916,8 @@ class LoopbackAdapter(PlatformAdapter):
             "interactions_recorded": sum(1 for item in projections if item["recorded"]),
             "actors": sorted({item["actor_id"] for item in projections}),
             "note": (
-                "Loopback evidence created no Anet peer trust, capability, "
-                "context trust, or authorization"
+                "Loopback evidence created no agent grant, platform trust, "
+                "or authorization"
             ),
         }
 
@@ -926,7 +926,7 @@ class LoopbackAdapter(PlatformAdapter):
         hub = RelationshipHub(self.home)
         actor_id = platform_actor_id(
             "loopback",
-            namespace_actor_id=hub.identity.node_id,
+            namespace_actor_id=hub.identity.identity_id,
             platform_actor_key=actor_key,
         )
         subject = hub.book.primary_subject(actor_id)

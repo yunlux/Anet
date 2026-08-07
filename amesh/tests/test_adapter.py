@@ -4,11 +4,11 @@ import pytest
 
 from amesh.adapters.discord import DiscordAdapter
 from amesh.policy import PermissionStore, amesh_database_path
-from anet.discord_social import (
+from amesh.adapters.discord_backend import (
     DISCORD_SIGNAL_KIND,
-    DiscordSocialStore,
-    discord_social_database_path,
-    discord_social_key_path,
+    DiscordStore,
+    discord_database_path,
+    discord_key_path,
 )
 
 ACTOR = "a" * 64
@@ -16,9 +16,9 @@ EVENT = "b" * 32
 
 
 def _empty_ledger(home) -> None:
-    store = DiscordSocialStore(
-        discord_social_database_path(home),
-        discord_social_key_path(home),
+    store = DiscordStore(
+        discord_database_path(home),
+        discord_key_path(home),
     )
     store.close()
 
