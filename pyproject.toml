@@ -41,11 +41,11 @@ test = [
   "ruff>=0.12,<1",
   "twine>=6,<8",
   "uvicorn>=0.35,<1",
-  "websockets>=16.1,<17",
+  "websockets>=16.1,<18",
   "zxing-cpp>=3.1,<4",
 ]
 mcp = ["mcp>=1.0"]
-ahub = ["uvicorn>=0.35,<1", "websockets>=16.1,<17"]
+ahub = ["uvicorn>=0.35,<1", "websockets>=16.1,<18"]
 qr = ["qrcode[pil]>=8.2,<9", "zxing-cpp>=3.1,<4"]
 
 [project.scripts]
