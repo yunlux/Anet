@@ -1,7 +1,7 @@
 # Agent handoff: standalone Amesh pivot checkpoint
 
 Date: 2026-08-07
-Status: checkpoint; implementation is in progress
+Status: completed
 
 ## User decision
 
@@ -10,7 +10,7 @@ Amesh is an independent social-security middleware between Discord/other
 platforms and agents. It must own its own identity, permissions, security,
 ledgers, relationships, CLI, MCP server, and deployment home.
 
-## Completed in this checkpoint
+## Completed
 
 - Removed the Anet runtime dependency from `amesh/pyproject.toml`.
 - Removed all `from anet` / `import anet` usage from `amesh/src` and
@@ -31,23 +31,32 @@ ledgers, relationships, CLI, MCP server, and deployment home.
 - Rewrote Amesh README/deployment/discovery/architecture docs and added the
   standalone rule to `AGENTS.md`.
 
-## Verification so far
+## Final verification
 
 - `python -m compileall -q amesh/src src/anet`: passed
 - Amesh tests: `65 passed`
+- Anet regression suite: `533 passed`; the separate repository-boundary suite:
+  `7 passed`
+- Amesh dependency scan for `from anet`, `import anet`, `anet-fabric`, and
+  `ANET_HOME`: clean
+- `git diff --check`: passed
 - CLI smoke test: agent register/list passed; token is returned only during
   registration and omitted from list output.
 
-## Remaining work for the next agent
+## Future work for the next agent
 
-1. Run the full Anet regression suite after removing the old Anet discovery
-   module and node hooks.
-2. Run `git diff --check` and inspect all staged files for stale Anet wording or
-   accidental unrelated changes.
-3. Add/finish standalone Discord backend tests and agent-token effect tests if
-   needed.
-4. Update any remaining Amesh deployment/source-map references, then create the
-   final commit and report both checkpoint and final commit hashes.
+1. Add an explicit agent connector contract (stdio or local HTTP) that performs
+   token authentication at the adapter boundary and records request audit.
+2. Add a durable route/outbox state machine with retry, deduplication, and
+   destination-specific policy checks.
+3. Add Discord gateway/event-stream support only after REST polling and effect
+   permissions have stable integration coverage.
+4. Keep A2A, Anet, and future platforms as optional adapters outside this core.
+
+## Delivery commits
+
+- `23b0660 refactor: decouple Amesh from Anet`
+- The final handoff update is committed separately after this record is staged.
 
 ## Important boundaries
 
