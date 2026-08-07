@@ -27,11 +27,11 @@ def _canonical(value: Any) -> Any:
 
 
 def pack(value: Any) -> bytes:
-    return msgpack.packb(value, use_bin_type=True, strict_types=False)
+    return msgpack.packb(value, use_bin_type=True, strict_types=False)  # type: ignore[return-value]
 
 
 def canonical_pack(value: Any) -> bytes:
-    return msgpack.packb(_canonical(value), use_bin_type=True, strict_types=False)
+    return msgpack.packb(_canonical(value), use_bin_type=True, strict_types=False)  # type: ignore[return-value]
 
 
 def unpack(raw: bytes) -> Any:

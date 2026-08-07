@@ -153,14 +153,14 @@ class Identity:
 
     @property
     def sign_public(self) -> bytes:
-        return self.sign_private.public_key().public_bytes(
+        return self.sign_private.public_key().public_bytes(  # type: ignore[return-value]
             serialization.Encoding.Raw,
             serialization.PublicFormat.Raw,
         )
 
     @property
     def box_public(self) -> bytes:
-        return self.box_private.public_key().public_bytes(
+        return self.box_private.public_key().public_bytes(  # type: ignore[return-value]
             serialization.Encoding.Raw,
             serialization.PublicFormat.Raw,
         )
@@ -180,7 +180,7 @@ class Identity:
         )
 
     def sign(self, raw: bytes) -> bytes:
-        return self.sign_private.sign(raw)
+        return self.sign_private.sign(raw)  # type: ignore[return-value]
 
     def card(
         self,
