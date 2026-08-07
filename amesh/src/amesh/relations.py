@@ -5,7 +5,7 @@ import json
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from .identity import LocalIdentity, platform_actor_id
 from .time import now_ms
