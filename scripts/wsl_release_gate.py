@@ -186,6 +186,7 @@ class ReleaseGate:
             "relationship-disclosure-schedules.json",
             "relationship-disclosure-gap-notices.json",
             "relationship-disclosure-archive.json",
+            "discovery.sqlite3",
             "tls-key.pem",
             "revocations.json",
         )
@@ -208,11 +209,15 @@ class ReleaseGate:
             "relationship-disclosure-schedules.json",
             "relationship-disclosure-gap-notices.json",
             "relationship-disclosure-archive.json",
+            "discovery.sqlite3",
             "tls-key.pem",
             "revocations.json",
             "anet.sqlite3",
             "anet.sqlite3-wal",
             "anet.sqlite3-shm",
+            "discovery.sqlite3",
+            "discovery.sqlite3-wal",
+            "discovery.sqlite3-shm",
         ):
             path = self.node_home / name
             if path.exists():

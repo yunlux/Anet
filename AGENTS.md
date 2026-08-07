@@ -43,3 +43,13 @@ The scheduled OpenWiki GitHub Actions workflow refreshes the repository wiki. Do
 - Ahub is an optional, agent-neutral rendezvous/mailbox/relay service. Keep its
   server implementation out of the default `anet` and `anet.carriers` import
   surfaces; use explicit `anet.ahub*` modules and the `ahub` optional dependency.
+
+## Handoff and commit discipline
+
+- At the end of each implementation session, write a concise handoff record under
+  `docs/agent-handoffs/` with the date, objective, changed files, verification,
+  open decisions, and the next recommended step.
+- Commit the scoped implementation and its handoff record together. Do not add
+  unrelated user changes; use `git status` and `git diff --check` before committing.
+- In the final response, report the commit hash and link the handoff record so
+  another agent can resume without reconstructing the previous session.

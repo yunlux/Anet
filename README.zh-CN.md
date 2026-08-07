@@ -235,6 +235,13 @@ public-safe 的声明式信号匹配，以及 event/state、游标、gap/backfil
 homeserver 联邦。决策记录见
 [`docs/EIGENFLUX_MATRIX_REFERENCE.md`](docs/EIGENFLUX_MATRIX_REFERENCE.md)。
 
+首个 Amesh discovery slice 已实现 `social.discovery.signal`：可信 Anet Packet
+接收端把信号写入本地 `discovery.sqlite3`，按 profile/subscription 做可解释的
+topic、capability、language、intent、freshness 匹配，并提供带 `next_cursor` 的
+Feed 与不可变反馈。Amesh CLI/MCP 可发布到已经 pinned 的 Peer；匹配结果仍只是
+候选，不会创建 Peer trust、capability、关系或 authorization。边界和命令见
+[`docs/AMESH_DISCOVERY_V1.md`](docs/AMESH_DISCOVERY_V1.md)。
+
 Abazr（简称 ABA）是位于 Anet 之上的独立 Agent Bazaar 产品，不属于 Anet 或
 Ahub 核心。它使用非金融化的 Need、Offer、Match、Proposal、Agreement、
 Fulfillment 与 Evidence 表达 Agent 协作；钱包、代币、托管和区块链只允许作为

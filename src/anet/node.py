@@ -29,6 +29,12 @@ from .control_plane import (
     NodeDescriptor,
     ReachabilityRecord,
 )
+from .discovery import (
+    DISCOVERY_SIGNAL_KIND,
+    DiscoveryStore,
+    discovery_database_path,
+    validate_discovery_signal,
+)
 from .companion_protocol import (
     APPROVAL_REQUEST_KIND,
     COMPANION_KINDS,
@@ -145,6 +151,11 @@ class AnetNode:
             str, tuple[NodeDescriptor, ReachabilityRecord]
         ] = {}
         self._discord_bridge: DiscordSocialBridge | None = None
+        self._discovery_store: DiscoveryStore | None = None
+        if discovery_database_path(config.home).exists():
+            self._discovery_store = DiscoveryStore(
+                discovery_database_path(config.home)
+            )
         self._relationship_projector: RelationshipProjector | None = None
         self._relationship_disclosure_book: (
             RelationshipDisclosureBook | None
@@ -331,6 +342,9 @@ class AnetNode:
         if self._discord_bridge is not None:
             self._discord_bridge.close()
             self._discord_bridge = None
+        if self._discovery_store is not None:
+            self._discovery_store.close()
+            self._discovery_store = None
         self.control.close()
         self.store.close()
 
@@ -370,6 +384,8 @@ class AnetNode:
                 self.store.register_companion_approval_request(body)
         elif normalized_kind == DISCORD_SIGNAL_KIND:
             body = validate_discord_signal(body)
+        elif normalized_kind == DISCOVERY_SIGNAL_KIND:
+            body = validate_discovery_signal(body)
         elif normalized_kind == RELATIONSHIP_DISCLOSURE_KIND:
             body = validate_relationship_disclosure(
                 body,
@@ -2504,6 +2520,11 @@ class AnetNode:
                 message,
                 body=validate_discord_signal(message.body),
             )
+        elif message.kind == DISCOVERY_SIGNAL_KIND:
+            message = replace(
+                message,
+                body=validate_discovery_signal(message.body),
+            )
         elif message.kind == RELATIONSHIP_DISCLOSURE_KIND:
             message = replace(
                 message,
@@ -2552,6 +2573,8 @@ class AnetNode:
             == RELATIONSHIP_DISCLOSURE_GAP_NOTICE_KIND
         ):
             self._store_relationship_disclosure_gap_notice(message)
+        if trusted and message.kind == DISCOVERY_SIGNAL_KIND:
+            self._store_discovery_signal(message)
         created = self.store.commit_local_message(
             message,
             trusted=trusted,
@@ -2628,6 +2651,19 @@ class AnetNode:
             RelationshipDisclosureGapNotice.from_dict(message.body),
             packet_id=message.packet_id,
             sender_actor_id=message.sender_id,
+            received_ms=now_ms(),
+        )
+
+    def _store_discovery_signal(self, message: Any) -> None:
+        """Persist a trusted discovery signal before committing its Inbox row."""
+
+        if self._discovery_store is None:
+            self._discovery_store = DiscoveryStore(
+                discovery_database_path(self.config.home)
+            )
+        self._discovery_store.ingest(
+            message.body,
+            sender_node_id=message.sender_id,
             received_ms=now_ms(),
         )
 
@@ -2721,6 +2757,11 @@ class AnetNode:
                 dialer.to_dict() for dialer in self.config.effective_direct_dialers()
             ],
             "trusted_peers": len(self.peers.all()),
+            "discovery": (
+                self._discovery_store.status()
+                if self._discovery_store is not None
+                else None
+            ),
             "prekeys": {
                 "policy": self.config.prekey_policy,
                 "scope_warning": self._prekey_scope_warning,

@@ -9,6 +9,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from anet.discovery import (
+    DISCOVERY_SIGNAL_KIND,
+    DiscoveryStore,
+    build_discovery_signal,
+    discovery_database_path,
+)
+
 from .adapter import builtin_adapter_names, load_adapter
 from .model import (
     validate_action,
@@ -158,6 +165,158 @@ def cmd_social_signals(args: argparse.Namespace) -> int:
             "platform": adapter,
             "count": len(signals),
             "signals": signals,
+        }
+    )
+    return 0
+
+
+def _discovery_store(home: Path) -> DiscoveryStore:
+    return DiscoveryStore(discovery_database_path(home))
+
+
+def cmd_discovery_profile(args: argparse.Namespace) -> int:
+    store = _discovery_store(args.home)
+    try:
+        _print_json(
+            store.set_profile(
+                args.profile_id,
+                topics=args.topic,
+                capabilities=args.capability,
+                languages=args.language,
+                tenant=args.tenant,
+                enabled=not args.disabled,
+            )
+        )
+    finally:
+        store.close()
+    return 0
+
+
+def cmd_discovery_subscribe(args: argparse.Namespace) -> int:
+    store = _discovery_store(args.home)
+    try:
+        _print_json(
+            store.add_subscription(
+                args.subscription_id,
+                profile_id=args.profile_id,
+                intents=args.intent,
+                topics=args.topic,
+                capabilities=args.capability,
+                languages=args.language,
+                min_score=args.min_score,
+                max_age_seconds=args.max_age,
+                enabled=not args.disabled,
+            )
+        )
+    finally:
+        store.close()
+    return 0
+
+
+def cmd_discovery_subscriptions(args: argparse.Namespace) -> int:
+    store = _discovery_store(args.home)
+    try:
+        _print_json({"subscriptions": store.subscriptions()})
+    finally:
+        store.close()
+    return 0
+
+
+def cmd_discovery_feed(args: argparse.Namespace) -> int:
+    store = _discovery_store(args.home)
+    try:
+        _print_json(
+            store.feed(
+                args.subscription_id,
+                after=args.after,
+                limit=args.limit,
+            )
+        )
+    finally:
+        store.close()
+    return 0
+
+
+def cmd_discovery_feedback(args: argparse.Namespace) -> int:
+    store = _discovery_store(args.home)
+    try:
+        _print_json(
+            store.add_feedback(
+                args.subscription_id,
+                args.signal_id,
+                args.verdict,
+                note=args.note,
+            )
+        )
+    finally:
+        store.close()
+    return 0
+
+
+def cmd_discovery_status(args: argparse.Namespace) -> int:
+    store = _discovery_store(args.home)
+    try:
+        _print_json(store.status())
+    finally:
+        store.close()
+    return 0
+
+
+def cmd_discovery_ingest(args: argparse.Namespace) -> int:
+    value = json.loads(args.file.read_text(encoding="utf-8"))
+    store = _discovery_store(args.home)
+    try:
+        _print_json(store.ingest(value, sender_node_id=args.sender))
+    finally:
+        store.close()
+    return 0
+
+
+def cmd_discovery_publish(args: argparse.Namespace) -> int:
+    import time
+
+    published_ms = int(time.time() * 1000)
+    signal = build_discovery_signal(
+        published_ms=published_ms,
+        expires_ms=published_ms + args.ttl * 1000,
+        intent=args.intent,
+        summary=args.summary,
+        topics=args.topic,
+        capabilities=args.capability,
+        languages=args.language,
+        visibility=args.visibility,
+        tenant=args.tenant,
+        provenance={
+            "source": args.source,
+            "adapter": args.adapter_name,
+            "revision": args.revision,
+        },
+    )
+    if args.destination:
+        from anet.config import NodeConfig
+        from anet.node import AnetNode
+
+        node = AnetNode(NodeConfig.load(args.home))
+        try:
+            packet_id = node.queue(
+                args.destination,
+                kind=DISCOVERY_SIGNAL_KIND,
+                body=signal,
+                ttl_seconds=args.ttl,
+                qos="normal",
+            )
+        finally:
+            node.close()
+        _print_json({"signal": signal, "packet_id": packet_id, "queued": True})
+        return 0
+    sink = DirectorySignalSink(amesh_outbound_dir(args.home))
+    signal_id = sink.emit(signal)
+    _print_json(
+        {
+            "signal": signal,
+            "signal_id": signal_id,
+            "queued": False,
+            "outbox": str(amesh_outbound_dir(args.home)),
         }
     )
     return 0
@@ -384,6 +543,90 @@ def build_parser() -> argparse.ArgumentParser:
     signals_cmd.add_argument("adapter")
     signals_cmd.add_argument("--limit", type=int, default=1000)
     signals_cmd.set_defaults(func=cmd_social_signals)
+
+    discovery = sub.add_parser(
+        "discovery",
+        help="manage EigenFlux-inspired Anet discovery profiles and feeds",
+    )
+    discovery_sub = discovery.add_subparsers(
+        dest="discovery_command", required=True
+    )
+
+    profile_cmd = discovery_sub.add_parser(
+        "profile", help="create or update one local discovery profile"
+    )
+    profile_cmd.add_argument("profile_id")
+    profile_cmd.add_argument("--topic", action="append", default=[])
+    profile_cmd.add_argument("--capability", action="append", default=[])
+    profile_cmd.add_argument("--language", action="append", default=[])
+    profile_cmd.add_argument("--tenant", default="")
+    profile_cmd.add_argument("--disabled", action="store_true")
+    profile_cmd.set_defaults(func=cmd_discovery_profile)
+
+    subscribe_cmd = discovery_sub.add_parser(
+        "subscribe", help="create or update one local signal subscription"
+    )
+    subscribe_cmd.add_argument("subscription_id")
+    subscribe_cmd.add_argument("--profile-id", required=True)
+    subscribe_cmd.add_argument("--intent", action="append", default=[])
+    subscribe_cmd.add_argument("--topic", action="append", default=[])
+    subscribe_cmd.add_argument("--capability", action="append", default=[])
+    subscribe_cmd.add_argument("--language", action="append", default=[])
+    subscribe_cmd.add_argument("--min-score", type=int, default=1)
+    subscribe_cmd.add_argument("--max-age", type=int, default=7 * 86_400)
+    subscribe_cmd.add_argument("--disabled", action="store_true")
+    subscribe_cmd.set_defaults(func=cmd_discovery_subscribe)
+
+    subscriptions_cmd = discovery_sub.add_parser(
+        "subscriptions", help="list local discovery subscriptions"
+    )
+    subscriptions_cmd.set_defaults(func=cmd_discovery_subscriptions)
+
+    feed_cmd = discovery_sub.add_parser(
+        "feed", help="read a matched feed page using a durable cursor"
+    )
+    feed_cmd.add_argument("subscription_id")
+    feed_cmd.add_argument("--after", type=int, default=0)
+    feed_cmd.add_argument("--limit", type=int, default=50)
+    feed_cmd.set_defaults(func=cmd_discovery_feed)
+
+    feedback_cmd = discovery_sub.add_parser(
+        "feedback", help="record immutable local feedback for one feed item"
+    )
+    feedback_cmd.add_argument("subscription_id")
+    feedback_cmd.add_argument("signal_id")
+    feedback_cmd.add_argument("verdict", choices=("useful", "not_relevant", "spam"))
+    feedback_cmd.add_argument("--note", default="")
+    feedback_cmd.set_defaults(func=cmd_discovery_feedback)
+
+    status_cmd = discovery_sub.add_parser(
+        "status", help="show local discovery store counts"
+    )
+    status_cmd.set_defaults(func=cmd_discovery_status)
+
+    ingest_cmd = discovery_sub.add_parser(
+        "ingest", help="ingest a trusted Anet signal JSON fixture"
+    )
+    ingest_cmd.add_argument("--sender", required=True)
+    ingest_cmd.add_argument("--file", type=Path, required=True)
+    ingest_cmd.set_defaults(func=cmd_discovery_ingest)
+
+    publish_cmd = discovery_sub.add_parser(
+        "publish", help="publish a public-safe discovery signal"
+    )
+    publish_cmd.add_argument("--intent", required=True, choices=("know", "need", "offer", "capability"))
+    publish_cmd.add_argument("--summary", required=True)
+    publish_cmd.add_argument("--topic", action="append", default=[])
+    publish_cmd.add_argument("--capability", action="append", default=[])
+    publish_cmd.add_argument("--language", action="append", default=[])
+    publish_cmd.add_argument("--visibility", default="public", choices=("public", "tenant"))
+    publish_cmd.add_argument("--tenant", default="")
+    publish_cmd.add_argument("--source", default="operator")
+    publish_cmd.add_argument("--adapter", dest="adapter_name", default="amesh-cli")
+    publish_cmd.add_argument("--revision", default="manual")
+    publish_cmd.add_argument("--ttl", type=int, default=7 * 86_400)
+    publish_cmd.add_argument("--destination", default="")
+    publish_cmd.set_defaults(func=cmd_discovery_publish)
 
     permit = sub.add_parser(
         "permit", help="manage operator permission rules on adapters"

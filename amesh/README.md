@@ -96,6 +96,14 @@ events into the relationship book best-effort. It stops cleanly on SIGTERM /
 Ctrl-C. Discord is normally hosted inside `anet serve`; under `amesh serve` it
 writes its signals to the outbound directory instead of the node queue.
 
+**Discovery plane** (`amesh discovery`): the `social.discovery.signal` Packet
+is an EigenFlux-inspired public-safe broadcast object. Anet authenticates and
+encrypts it to an already pinned peer; the receiver matches it against its
+observer-local profiles and subscriptions, then exposes a durable feed cursor.
+The matcher is exact and explainable in v1. It never creates PeerBook trust,
+capabilities, relationships, or authorization. See
+[`docs/AMESH_DISCOVERY_V1.md`](../docs/AMESH_DISCOVERY_V1.md).
+
 ## Management plane
 
 ```text
@@ -110,6 +118,11 @@ amesh --home <HOME> social reply <adapter> <event_key> --text <text>
 amesh --home <HOME> social poll <adapter>            # single-shot ingest poll
 amesh --home <HOME> social inject <adapter> <author> --text <text> [--channel] [--bot]
 amesh --home <HOME> social signals <adapter>         # list outbound signals
+amesh --home <HOME> discovery profile <id> ...       # set local interest profile
+amesh --home <HOME> discovery subscribe <id> ...     # set local feed subscription
+amesh --home <HOME> discovery publish ...             # emit/queue Anet signal
+amesh --home <HOME> discovery feed <id>               # read a cursor-based feed
+amesh --home <HOME> discovery feedback <id> <signal>  # record local feedback
 amesh --home <HOME> permit <adapter> <actor_key|*> <action|*> allow|deny [--reason ...]
 amesh --home <HOME> permit list [<adapter>]
 amesh --home <HOME> permit revoke <adapter> <rule_id>

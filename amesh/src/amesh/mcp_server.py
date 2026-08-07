@@ -2,8 +2,16 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any
+
+from anet.discovery import (
+    DISCOVERY_SIGNAL_KIND,
+    DiscoveryStore,
+    build_discovery_signal,
+    discovery_database_path,
+)
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.server import Settings as FastMCPSettings
@@ -67,11 +75,22 @@ def _require_reply_enabled() -> None:
         )
 
 
+def _require_discovery_publish_enabled() -> None:
+    if not _enabled("AMESH_MCP_ALLOW_DISCOVERY_PUBLISH", default=False):
+        raise PermissionError(
+            "discovery publishing is outside the Amesh MCP process capability"
+        )
+
+
 def _load(name: str) -> PlatformAdapter:
     name = validate_adapter_name(name)
     if name not in builtin_adapter_names():
         raise ValueError(f"unknown Amesh adapter: {name}")
     return load_adapter(_home(), name)
+
+
+def _discovery() -> DiscoveryStore:
+    return DiscoveryStore(discovery_database_path(_home()))
 
 
 @server.tool(
@@ -218,6 +237,197 @@ async def amesh_social_signals(adapter: str, limit: int = 1000) -> str:
     sink = DirectorySignalSink(amesh_outbound_dir(_home()))
     signals = sink.list(platform=adapter, limit=limit)
     return _dump({"platform": adapter, "count": len(signals), "signals": signals})
+
+
+@server.tool(
+    name="amesh_discovery_profile",
+    description="Read the observer-local discovery profile used by the matcher.",
+)
+async def amesh_discovery_profile(profile_id: str = "") -> str:
+    store = _discovery()
+    try:
+        return _dump({"profile": store.profile(profile_id)})
+    finally:
+        store.close()
+
+
+@server.tool(
+    name="amesh_discovery_profile_set",
+    description="Create or update the observer-local discovery profile.",
+)
+async def amesh_discovery_profile_set(
+    profile_id: str,
+    topics: list[str] | None = None,
+    capabilities: list[str] | None = None,
+    languages: list[str] | None = None,
+    tenant: str = "",
+    enabled: bool = True,
+) -> str:
+    store = _discovery()
+    try:
+        return _dump(
+            store.set_profile(
+                profile_id,
+                topics=topics or (),
+                capabilities=capabilities or (),
+                languages=languages or (),
+                tenant=tenant,
+                enabled=enabled,
+            )
+        )
+    finally:
+        store.close()
+
+
+@server.tool(
+    name="amesh_discovery_subscribe",
+    description="Create or update an observer-local discovery subscription.",
+)
+async def amesh_discovery_subscribe(
+    subscription_id: str,
+    profile_id: str,
+    intents: list[str] | None = None,
+    topics: list[str] | None = None,
+    capabilities: list[str] | None = None,
+    languages: list[str] | None = None,
+    min_score: int = 1,
+    max_age_seconds: int = 7 * 86_400,
+    enabled: bool = True,
+) -> str:
+    store = _discovery()
+    try:
+        return _dump(
+            store.add_subscription(
+                subscription_id,
+                profile_id=profile_id,
+                intents=intents or (),
+                topics=topics or (),
+                capabilities=capabilities or (),
+                languages=languages or (),
+                min_score=min_score,
+                max_age_seconds=max_age_seconds,
+                enabled=enabled,
+            )
+        )
+    finally:
+        store.close()
+
+
+@server.tool(
+    name="amesh_discovery_status",
+    description="Return local discovery profile, feed and feedback counts.",
+)
+async def amesh_discovery_status() -> str:
+    store = _discovery()
+    try:
+        return _dump(store.status())
+    finally:
+        store.close()
+
+
+@server.tool(
+    name="amesh_discovery_subscriptions",
+    description="List observer-local discovery subscriptions.",
+)
+async def amesh_discovery_subscriptions() -> str:
+    store = _discovery()
+    try:
+        return _dump({"subscriptions": store.subscriptions()})
+    finally:
+        store.close()
+
+
+@server.tool(
+    name="amesh_discovery_feed",
+    description="Read a durable, cursor-based discovery feed page.",
+)
+async def amesh_discovery_feed(
+    subscription_id: str,
+    after: int = 0,
+    limit: int = 50,
+) -> str:
+    store = _discovery()
+    try:
+        return _dump(store.feed(subscription_id, after=after, limit=limit))
+    finally:
+        store.close()
+
+
+@server.tool(
+    name="amesh_discovery_feedback",
+    description="Record immutable local feedback for one discovery signal.",
+)
+async def amesh_discovery_feedback(
+    subscription_id: str,
+    signal_id: str,
+    verdict: str,
+    note: str = "",
+) -> str:
+    store = _discovery()
+    try:
+        return _dump(
+            store.add_feedback(
+                subscription_id,
+                signal_id,
+                verdict,
+                note=note,
+            )
+        )
+    finally:
+        store.close()
+
+
+@server.tool(
+    name="amesh_discovery_publish",
+    description=(
+        "Publish a public-safe discovery signal to an already trusted Anet peer. "
+        "Disabled unless AMESH_MCP_ALLOW_DISCOVERY_PUBLISH=1."
+    ),
+)
+async def amesh_discovery_publish(
+    destination: str,
+    intent: str,
+    summary: str,
+    topics: list[str] | None = None,
+    capabilities: list[str] | None = None,
+    languages: list[str] | None = None,
+    visibility: str = "public",
+    tenant: str = "",
+    ttl_seconds: int = 7 * 86_400,
+) -> str:
+    _require_discovery_publish_enabled()
+    now = int(time.time() * 1000)
+    signal = build_discovery_signal(
+        published_ms=now,
+        expires_ms=now + int(ttl_seconds) * 1000,
+        intent=intent,
+        summary=summary,
+        topics=topics or (),
+        capabilities=capabilities or (),
+        languages=languages or (),
+        visibility=visibility,
+        tenant=tenant,
+        provenance={
+            "source": "amesh-mcp",
+            "adapter": "mcp",
+            "revision": "manual",
+        },
+    )
+    from anet.config import NodeConfig
+    from anet.node import AnetNode
+
+    node = AnetNode(NodeConfig.load(_home()))
+    try:
+        packet_id = node.queue(
+            destination,
+            kind=DISCOVERY_SIGNAL_KIND,
+            body=signal,
+            ttl_seconds=int(ttl_seconds),
+            qos="normal",
+        )
+    finally:
+        node.close()
+    return _dump({"packet_id": packet_id, "signal": signal})
 
 
 @server.tool(

@@ -379,6 +379,14 @@ Event Collector → Privacy Filter → Feature Extractor
    public-safe SignalEnvelope、可解释匹配、语义去重和反馈；匹配器不能成为
    Anet 信任根、必经路径或 capability 授权者。
 
+首个窄切片已落地：`social.discovery.signal` 在 Anet Packet 发送端与可信接收端
+执行 exact-field / digest / TTL / tenant 校验；`discovery.sqlite3` 保存 observer-local
+profile、subscription、feed cursor、match reason 和 immutable feedback。Amesh CLI/MCP
+可以配置兴趣、发布到已 pinned Peer、读取匹配 Feed 并反馈。当前 matcher 仍是精确
+topic/capability/language/intent/freshness 规则，不含 embedding/LLM、公开 registry、
+自动 profile federation 或任何 trust/capability side effect。完整边界见
+[`docs/AMESH_DISCOVERY_V1.md`](docs/AMESH_DISCOVERY_V1.md)。
+
 ### P2.5 A2A 边缘互操作
 
 固定官方 SDK 版本完成严格互操作测试，再开放 HTTP/streaming 网关。
