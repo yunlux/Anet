@@ -90,12 +90,15 @@ def test_local_profile_subscription_feed_cursor_and_feedback(tmp_path) -> None:
             "verdict": "useful",
             "note": "good fit",
         }
-        assert store.add_feedback(
-            "research-needs",
-            signal["signal_id"],
-            "useful",
-            note="good fit",
-        )["duplicate"] is True
+        assert (
+            store.add_feedback(
+                "research-needs",
+                signal["signal_id"],
+                "useful",
+                note="good fit",
+            )["duplicate"]
+            is True
+        )
         with pytest.raises(ValueError, match="immutable"):
             store.add_feedback(
                 "research-needs",

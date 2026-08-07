@@ -26,9 +26,7 @@ SOCIAL_ACTIONS = (
     "amplify",
     "connect_candidate",
 )
-_LABEL_RE = re.compile(
-    r"^[a-z][a-z0-9_.-]{0,31}:[a-z0-9][a-z0-9_.-]{0,63}$"
-)
+_LABEL_RE = re.compile(r"^[a-z][a-z0-9_.-]{0,31}:[a-z0-9][a-z0-9_.-]{0,63}$")
 _BLOCKING_LABELS = frozenset(
     {"risk:block", "risk:impersonation", "risk:malware", "risk:spam"}
 )
@@ -64,7 +62,11 @@ class SocialThreshold:
         object.__setattr__(
             self,
             "required_labels",
-            tuple(sorted({normalize_social_label(label) for label in self.required_labels})),
+            tuple(
+                sorted(
+                    {normalize_social_label(label) for label in self.required_labels}
+                )
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -77,7 +79,9 @@ class SocialThreshold:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "SocialThreshold":
         if not isinstance(value, Mapping) or set(value) != {
-            "min_score", "min_confidence", "required_labels"
+            "min_score",
+            "min_confidence",
+            "required_labels",
         }:
             raise ValueError("invalid social threshold")
         labels = value["required_labels"]
@@ -85,7 +89,9 @@ class SocialThreshold:
             raise ValueError("social threshold labels must be a list")
         return cls(
             min_score=_exact_int(value["min_score"], "threshold min_score"),
-            min_confidence=_exact_int(value["min_confidence"], "threshold min_confidence"),
+            min_confidence=_exact_int(
+                value["min_confidence"], "threshold min_confidence"
+            ),
             required_labels=tuple(str(item) for item in labels),
         )
 
@@ -126,7 +132,11 @@ class SocialPolicy:
     @classmethod
     def from_dict(cls, value: Mapping[str, Any]) -> "SocialPolicy":
         if not isinstance(value, Mapping) or set(value) != {
-            "version", "surface", "reply", "amplify", "connect_candidate"
+            "version",
+            "surface",
+            "reply",
+            "amplify",
+            "connect_candidate",
         }:
             raise ValueError("invalid social policy")
         return cls(
@@ -156,8 +166,10 @@ class SocialPolicy:
         else:
             if self._passes(self.surface, reputation, combined):
                 allowed.append("surface")
-            if "interaction:mention" in combined and not automation and self._passes(
-                self.reply, reputation, combined
+            if (
+                "interaction:mention" in combined
+                and not automation
+                and self._passes(self.reply, reputation, combined)
             ):
                 allowed.append("reply")
             if not automation and self._passes(self.amplify, reputation, combined):

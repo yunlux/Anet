@@ -237,7 +237,16 @@ class DiscoveryStore:
     def close(self) -> None:
         self._conn.close()
 
-    def set_profile(self, profile_id: str, *, topics=(), capabilities=(), languages=(), tenant="", enabled=True) -> dict[str, Any]:
+    def set_profile(
+        self,
+        profile_id: str,
+        *,
+        topics=(),
+        capabilities=(),
+        languages=(),
+        tenant="",
+        enabled=True,
+    ) -> dict[str, Any]:
         profile_id = _local_id(profile_id, "profile ID")
         topics = sorted({str(item).strip().lower() for item in topics})
         capabilities = sorted({str(item).strip().lower() for item in capabilities})
@@ -251,13 +260,26 @@ class DiscoveryStore:
                ON CONFLICT(profile_id) DO UPDATE SET topics_json=excluded.topics_json,
                capabilities_json=excluded.capabilities_json, languages_json=excluded.languages_json,
                tenant=excluded.tenant, enabled=excluded.enabled, updated_ms=excluded.updated_ms""",
-            (profile_id, _json(topics), _json(capabilities), _json(languages), tenant, int(enabled), now_ms()),
+            (
+                profile_id,
+                _json(topics),
+                _json(capabilities),
+                _json(languages),
+                tenant,
+                int(enabled),
+                now_ms(),
+            ),
         )
         return self.profile(profile_id)  # type: ignore[return-value]
 
     def profile(self, profile_id: str = "") -> dict[str, Any] | None:
         row = self._conn.execute(
-            "SELECT * FROM discovery_profiles" + (" WHERE profile_id = ?" if profile_id else " ORDER BY profile_id LIMIT 1"),
+            "SELECT * FROM discovery_profiles"
+            + (
+                " WHERE profile_id = ?"
+                if profile_id
+                else " ORDER BY profile_id LIMIT 1"
+            ),
             (_local_id(profile_id, "profile ID"),) if profile_id else (),
         ).fetchone()
         if row is None:
@@ -272,7 +294,19 @@ class DiscoveryStore:
             "updated_ms": int(row["updated_ms"]),
         }
 
-    def add_subscription(self, subscription_id: str, *, profile_id: str, intents=(), topics=(), capabilities=(), languages=(), min_score=1, max_age_seconds=7 * 86_400, enabled=True) -> dict[str, Any]:
+    def add_subscription(
+        self,
+        subscription_id: str,
+        *,
+        profile_id: str,
+        intents=(),
+        topics=(),
+        capabilities=(),
+        languages=(),
+        min_score=1,
+        max_age_seconds=7 * 86_400,
+        enabled=True,
+    ) -> dict[str, Any]:
         subscription_id = _local_id(subscription_id, "subscription ID")
         profile_id = _local_id(profile_id, "profile ID")
         if self.profile(profile_id) is None:
@@ -288,7 +322,10 @@ class DiscoveryStore:
         _list(languages, "subscription languages", maximum=8, token=False)
         if isinstance(min_score, bool) or not 0 <= int(min_score) <= 100:
             raise ValueError("subscription min_score must be 0 to 100")
-        if isinstance(max_age_seconds, bool) or not 60 <= int(max_age_seconds) <= 7 * 86_400:
+        if (
+            isinstance(max_age_seconds, bool)
+            or not 60 <= int(max_age_seconds) <= 7 * 86_400
+        ):
             raise ValueError("subscription max age is outside limits")
         self._conn.execute(
             """INSERT INTO discovery_subscriptions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -296,7 +333,18 @@ class DiscoveryStore:
                intents_json=excluded.intents_json, topics_json=excluded.topics_json,
                capabilities_json=excluded.capabilities_json, languages_json=excluded.languages_json,
                min_score=excluded.min_score, max_age_ms=excluded.max_age_ms, enabled=excluded.enabled""",
-            (subscription_id, profile_id, _json(intents), _json(topics), _json(capabilities), _json(languages), int(min_score), int(max_age_seconds) * 1000, int(enabled), now_ms()),
+            (
+                subscription_id,
+                profile_id,
+                _json(intents),
+                _json(topics),
+                _json(capabilities),
+                _json(languages),
+                int(min_score),
+                int(max_age_seconds) * 1000,
+                int(enabled),
+                now_ms(),
+            ),
         )
         return self.subscription(subscription_id)  # type: ignore[return-value]
 
@@ -308,29 +356,53 @@ class DiscoveryStore:
         if row is None:
             return None
         return {
-            "subscription_id": str(row["subscription_id"]), "profile_id": str(row["profile_id"]),
-            "intents": json.loads(row["intents_json"]), "topics": json.loads(row["topics_json"]),
-            "capabilities": json.loads(row["capabilities_json"]), "languages": json.loads(row["languages_json"]),
-            "min_score": int(row["min_score"]), "max_age_ms": int(row["max_age_ms"]),
-            "enabled": bool(row["enabled"]), "created_ms": int(row["created_ms"]),
+            "subscription_id": str(row["subscription_id"]),
+            "profile_id": str(row["profile_id"]),
+            "intents": json.loads(row["intents_json"]),
+            "topics": json.loads(row["topics_json"]),
+            "capabilities": json.loads(row["capabilities_json"]),
+            "languages": json.loads(row["languages_json"]),
+            "min_score": int(row["min_score"]),
+            "max_age_ms": int(row["max_age_ms"]),
+            "enabled": bool(row["enabled"]),
+            "created_ms": int(row["created_ms"]),
         }
 
     def subscriptions(self) -> list[dict[str, Any]]:
-        rows = self._conn.execute("SELECT subscription_id FROM discovery_subscriptions ORDER BY subscription_id").fetchall()
+        rows = self._conn.execute(
+            "SELECT subscription_id FROM discovery_subscriptions ORDER BY subscription_id"
+        ).fetchall()
         return [self.subscription(str(row["subscription_id"])) for row in rows]  # type: ignore[list-item]
 
-    def ingest(self, signal: Mapping[str, Any], *, source_id: str, received_ms: int | None = None) -> dict[str, Any]:
+    def ingest(
+        self,
+        signal: Mapping[str, Any],
+        *,
+        source_id: str,
+        received_ms: int | None = None,
+    ) -> dict[str, Any]:
         signal = validate_discovery_signal(dict(signal))
         source_id = _source_id(source_id)
         received_ms = int(received_ms or now_ms())
-        existing = self._conn.execute("SELECT body_json, source_id FROM discovery_signals WHERE signal_id = ?", (signal["signal_id"],)).fetchone()
+        existing = self._conn.execute(
+            "SELECT body_json, source_id FROM discovery_signals WHERE signal_id = ?",
+            (signal["signal_id"],),
+        ).fetchone()
         if existing is not None:
-            if json.loads(existing["body_json"]) != signal or str(existing["source_id"]) != source_id:
-                raise ValueError("discovery signal ID conflicts with stored source/body")
+            if (
+                json.loads(existing["body_json"]) != signal
+                or str(existing["source_id"]) != source_id
+            ):
+                raise ValueError(
+                    "discovery signal ID conflicts with stored source/body"
+                )
             return {"signal_id": signal["signal_id"], "duplicate": True, "matches": 0}
         if signal["expires_ms"] <= received_ms:
             return {"signal_id": signal["signal_id"], "expired": True, "matches": 0}
-        self._conn.execute("INSERT INTO discovery_signals VALUES (?, ?, ?, ?)", (signal["signal_id"], source_id, _json(signal), received_ms))
+        self._conn.execute(
+            "INSERT INTO discovery_signals VALUES (?, ?, ?, ?)",
+            (signal["signal_id"], source_id, _json(signal), received_ms),
+        )
         matches = 0
         for subscription in self.subscriptions():
             profile = self.profile(subscription["profile_id"])
@@ -341,12 +413,29 @@ class DiscoveryStore:
                 continue
             self._conn.execute(
                 "INSERT OR IGNORE INTO discovery_matches(subscription_id, signal_id, score, reasons_json, matched_ms) VALUES (?, ?, ?, ?, ?)",
-                (subscription["subscription_id"], signal["signal_id"], score, _json(reasons), received_ms),
+                (
+                    subscription["subscription_id"],
+                    signal["signal_id"],
+                    score,
+                    _json(reasons),
+                    received_ms,
+                ),
             )
             matches += 1
-        return {"signal_id": signal["signal_id"], "duplicate": False, "matches": matches}
+        return {
+            "signal_id": signal["signal_id"],
+            "duplicate": False,
+            "matches": matches,
+        }
 
-    def feed(self, subscription_id: str, *, after: int = 0, limit: int = 50, now_ms_value: int | None = None) -> dict[str, Any]:
+    def feed(
+        self,
+        subscription_id: str,
+        *,
+        after: int = 0,
+        limit: int = 50,
+        now_ms_value: int | None = None,
+    ) -> dict[str, Any]:
         subscription_id = _local_id(subscription_id, "subscription ID")
         if int(after) < 0 or not 1 <= int(limit) <= 200:
             raise ValueError("invalid discovery feed cursor or limit")
@@ -364,39 +453,96 @@ class DiscoveryStore:
             signal = json.loads(row["body_json"])
             if int(signal["expires_ms"]) <= current:
                 continue
-            items.append({
-                "cursor": int(row["match_id"]), "subscription_id": str(row["subscription_id"]),
-                "signal_id": str(row["signal_id"]), "source_id": str(row["source_id"]),
-                "score": int(row["score"]), "reasons": json.loads(row["reasons_json"]),
-                "matched_ms": int(row["matched_ms"]), "signal": signal,
-                "feedback": ({"verdict": str(row["verdict"]), "note": str(row["note"])} if row["verdict"] is not None else None),
-            })
+            items.append(
+                {
+                    "cursor": int(row["match_id"]),
+                    "subscription_id": str(row["subscription_id"]),
+                    "signal_id": str(row["signal_id"]),
+                    "source_id": str(row["source_id"]),
+                    "score": int(row["score"]),
+                    "reasons": json.loads(row["reasons_json"]),
+                    "matched_ms": int(row["matched_ms"]),
+                    "signal": signal,
+                    "feedback": (
+                        {"verdict": str(row["verdict"]), "note": str(row["note"])}
+                        if row["verdict"] is not None
+                        else None
+                    ),
+                }
+            )
             if len(items) >= int(limit):
                 break
-        return {"subscription_id": subscription_id, "items": items, "next_cursor": items[-1]["cursor"] if items else int(after), "limited": len(items) == int(limit)}
+        return {
+            "subscription_id": subscription_id,
+            "items": items,
+            "next_cursor": items[-1]["cursor"] if items else int(after),
+            "limited": len(items) == int(limit),
+        }
 
-    def add_feedback(self, subscription_id: str, signal_id: str, verdict: str, *, note: str = "") -> dict[str, Any]:
+    def add_feedback(
+        self, subscription_id: str, signal_id: str, verdict: str, *, note: str = ""
+    ) -> dict[str, Any]:
         subscription_id = _local_id(subscription_id, "subscription ID")
         signal_id = _text(signal_id, "signal ID", 32).strip().lower()
         verdict = _text(verdict, "feedback verdict", 32).strip().lower()
         note = _text(note, "feedback note", 256)
         if not _HEX32_RE.fullmatch(signal_id) or verdict not in DISCOVERY_FEEDBACK:
             raise ValueError("invalid discovery feedback")
-        if self.subscription(subscription_id) is None or self._conn.execute("SELECT 1 FROM discovery_signals WHERE signal_id=?", (signal_id,)).fetchone() is None:
+        if (
+            self.subscription(subscription_id) is None
+            or self._conn.execute(
+                "SELECT 1 FROM discovery_signals WHERE signal_id=?", (signal_id,)
+            ).fetchone()
+            is None
+        ):
             raise ValueError("unknown discovery subscription or signal")
-        existing = self._conn.execute("SELECT verdict, note FROM discovery_feedback WHERE subscription_id=? AND signal_id=?", (subscription_id, signal_id)).fetchone()
+        existing = self._conn.execute(
+            "SELECT verdict, note FROM discovery_feedback WHERE subscription_id=? AND signal_id=?",
+            (subscription_id, signal_id),
+        ).fetchone()
         if existing is not None:
             if (str(existing["verdict"]), str(existing["note"])) != (verdict, note):
                 raise ValueError("feedback is immutable for a subscription/signal")
-            return {"subscription_id": subscription_id, "signal_id": signal_id, "duplicate": True, "verdict": verdict, "note": note}
-        self._conn.execute("INSERT INTO discovery_feedback VALUES (?, ?, ?, ?, ?)", (subscription_id, signal_id, verdict, note, now_ms()))
-        return {"subscription_id": subscription_id, "signal_id": signal_id, "duplicate": False, "verdict": verdict, "note": note}
+            return {
+                "subscription_id": subscription_id,
+                "signal_id": signal_id,
+                "duplicate": True,
+                "verdict": verdict,
+                "note": note,
+            }
+        self._conn.execute(
+            "INSERT INTO discovery_feedback VALUES (?, ?, ?, ?, ?)",
+            (subscription_id, signal_id, verdict, note, now_ms()),
+        )
+        return {
+            "subscription_id": subscription_id,
+            "signal_id": signal_id,
+            "duplicate": False,
+            "verdict": verdict,
+            "note": note,
+        }
 
     def status(self) -> dict[str, int]:
-        return {table: int(self._conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]) for table in ("discovery_profiles", "discovery_subscriptions", "discovery_signals", "discovery_matches", "discovery_feedback")}
+        return {
+            table: int(
+                self._conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+            )
+            for table in (
+                "discovery_profiles",
+                "discovery_subscriptions",
+                "discovery_signals",
+                "discovery_matches",
+                "discovery_feedback",
+            )
+        }
 
 
-def _match_signal(signal: Mapping[str, Any], profile: Mapping[str, Any], subscription: Mapping[str, Any], received_ms: int) -> tuple[int, list[str]]:
+def _match_signal(
+    signal: Mapping[str, Any],
+    profile: Mapping[str, Any],
+    subscription: Mapping[str, Any],
+    received_ms: int,
+) -> tuple[int, list[str]]:
     if signal["visibility"] == "tenant" and signal["tenant"] != profile["tenant"]:
         return -1, ["tenant mismatch"]
     if subscription["intents"] and signal["intent"] not in subscription["intents"]:
@@ -416,7 +562,9 @@ def _match_signal(signal: Mapping[str, Any], profile: Mapping[str, Any], subscri
     if subscription["intents"]:
         score += 10
         reasons.append("intent:" + str(signal["intent"]))
-    if int(received_ms) - int(signal["published_ms"]) <= int(subscription["max_age_ms"]):
+    if int(received_ms) - int(signal["published_ms"]) <= int(
+        subscription["max_age_ms"]
+    ):
         score += 5
         reasons.append("freshness:within-subscription-window")
     return min(100, score), reasons or ["no declared profile overlap"]

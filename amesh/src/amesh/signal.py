@@ -8,6 +8,7 @@ import secrets
 from pathlib import Path
 from typing import Any, Mapping
 
+
 def canonical_pack(value: Any) -> bytes:
     return json.dumps(
         value,

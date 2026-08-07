@@ -37,11 +37,7 @@ server = FastMCP("amesh", log_level="ERROR")
 
 def _home() -> Path:
     return (
-        Path(
-            os.environ.get("AMESH_HOME") or "~/.config/amesh"
-        )
-        .expanduser()
-        .resolve()
+        Path(os.environ.get("AMESH_HOME") or "~/.config/amesh").expanduser().resolve()
     )
 
 
@@ -126,7 +122,9 @@ async def amesh_agents() -> str:
     name="amesh_agent_register",
     description="Register a local agent; the returned bearer token is shown only once.",
 )
-async def amesh_agent_register(agent_id: str, name: str, scopes: list[str] | None = None) -> str:
+async def amesh_agent_register(
+    agent_id: str, name: str, scopes: list[str] | None = None
+) -> str:
     store = _agents()
     try:
         return _dump(store.register(agent_id, name, scopes=tuple(scopes or ())))
@@ -138,7 +136,9 @@ async def amesh_agent_register(agent_id: str, name: str, scopes: list[str] | Non
     name="amesh_agent_grant",
     description="Add an explicit allow or deny grant for one agent, adapter, and action.",
 )
-async def amesh_agent_grant(agent_id: str, adapter: str, action: str, effect: str, reason: str = "") -> str:
+async def amesh_agent_grant(
+    agent_id: str, adapter: str, action: str, effect: str, reason: str = ""
+) -> str:
     store = _agents()
     try:
         return _dump(store.grant(agent_id, adapter, action, effect, reason=reason))

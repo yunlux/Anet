@@ -86,7 +86,9 @@ class PlatformAdapter(ABC):
         if normalized != "operator":
             record = self._agents.authenticate(token)
             if record.agent_id != normalized:
-                raise PermissionError("Amesh agent token does not match the requested agent")
+                raise PermissionError(
+                    "Amesh agent token does not match the requested agent"
+                )
         if not self.agent_allows(normalized, action):
             raise PermissionError(
                 f"agent {normalized[:64]!r} has no {action} grant for {self.name}"

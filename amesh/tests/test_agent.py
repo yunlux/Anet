@@ -14,7 +14,9 @@ def test_agent_token_is_one_time_and_grant_is_explicit(tmp_path) -> None:
         record = store.authenticate(created["token"])
         assert record.agent_id == "reviewer"
         assert store.authorize("reviewer", "discord", "reply") is False
-        grant = store.grant("reviewer", "discord", "reply", "allow", reason="review queue")
+        grant = store.grant(
+            "reviewer", "discord", "reply", "allow", reason="review queue"
+        )
         assert grant["effect"] == "allow"
         assert store.authorize("reviewer", "discord", "reply") is True
         assert store.authorize("reviewer", "discord", "admin") is False
