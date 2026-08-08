@@ -30,8 +30,9 @@ jobs:
           enable-cache: true
       - run: uv sync --locked --all-extras
       - run: uv run ruff check src tests scripts
-      - run: uv run python -m build
-      - run: uv run python -m twine check dist/*.whl dist/*.tar.gz
+      - run: uv run ruff check amesh
+      - run: uv run pytest -q
+      - run: uv run pytest -q amesh
   package:
     runs-on: ubuntu-latest
     env:
